@@ -2,14 +2,22 @@ import {
   pnms, 
   votingRounds, 
   votes,
+  events,
+  attendance,
   type PNM, 
   type InsertPNM, 
   type VotingRound, 
   type InsertVotingRound,
   type Vote,
   type InsertVote,
+  type Event,
+  type InsertEvent,
+  type Attendance,
+  type InsertAttendance,
   type PNMWithVotes,
-  type VotingRoundWithDetails
+  type PNMWithAttendance,
+  type VotingRoundWithDetails,
+  type EventWithAttendance
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, inArray, and } from "drizzle-orm";
@@ -35,6 +43,21 @@ export interface IStorage {
   getVotesForRound(roundId: string): Promise<Vote[]>;
   getVoteByRoundAndVoter(roundId: string, voterId: string, pnmId: string): Promise<Vote | undefined>;
   updateVote(id: string, vote: Partial<InsertVote>): Promise<Vote | undefined>;
+
+  // Event methods
+  getEvent(id: string): Promise<Event | undefined>;
+  getAllEvents(): Promise<Event[]>;
+  getActiveEvents(): Promise<Event[]>;
+  createEvent(event: InsertEvent): Promise<Event>;
+  updateEvent(id: string, event: Partial<InsertEvent>): Promise<Event | undefined>;
+  deleteEvent(id: string): Promise<boolean>;
+
+  // Attendance methods
+  markAttendance(attendance: InsertAttendance): Promise<Attendance>;
+  getEventAttendance(eventId: string): Promise<EventWithAttendance>;
+  getPNMAttendance(pnmId: string): Promise<PNMWithAttendance>;
+  getAllPNMsWithAttendance(): Promise<PNMWithAttendance[]>;
+  removeAttendance(eventId: string, pnmId: string): Promise<boolean>;
 
   // Analytics methods
   getPNMsWithVotesForRound(roundId: string): Promise<PNMWithVotes[]>;
@@ -266,6 +289,139 @@ export class DatabaseStorage implements IStorage {
       avgYesPercentage: stats?.avgYesPercentage || 0,
       totalFavorites: stats?.totalFavorites || 0,
     };
+  }
+
+  // Event methods
+  async getEvent(id: string): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event || undefined;
+  }
+
+  async getAllEvents(): Promise<Event[]> {
+    return await db.select().from(events).orderBy(desc(events.date));
+  }
+
+  async getActiveEvents(): Promise<Event[]> {
+    return await db.select().from(events).where(eq(events.isActive, true)).orderBy(desc(events.date));
+  }
+
+  async createEvent(insertEvent: InsertEvent): Promise<Event> {
+    const [event] = await db.insert(events).values(insertEvent).returning();
+    return event;
+  }
+
+  async updateEvent(id: string, updateEvent: Partial<InsertEvent>): Promise<Event | undefined> {
+    const [event] = await db
+      .update(events)
+      .set(updateEvent)
+      .where(eq(events.id, id))
+      .returning();
+    return event || undefined;
+  }
+
+  async deleteEvent(id: string): Promise<boolean> {
+    const result = await db.delete(events).where(eq(events.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Attendance methods
+  async markAttendance(insertAttendance: InsertAttendance): Promise<Attendance> {
+    const [attendanceRecord] = await db
+      .insert(attendance)
+      .values(insertAttendance)
+      .onConflictDoNothing({ target: [attendance.eventId, attendance.pnmId] })
+      .returning();
+    
+    if (!attendanceRecord) {
+      // Already exists, return existing record
+      const [existing] = await db
+        .select()
+        .from(attendance)
+        .where(and(
+          eq(attendance.eventId, insertAttendance.eventId),
+          eq(attendance.pnmId, insertAttendance.pnmId)
+        ));
+      return existing;
+    }
+    
+    return attendanceRecord;
+  }
+
+  async getEventAttendance(eventId: string): Promise<EventWithAttendance> {
+    const event = await this.getEvent(eventId);
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    const attendanceRecords = await db
+      .select({
+        attendance,
+        pnm: pnms,
+      })
+      .from(attendance)
+      .innerJoin(pnms, eq(attendance.pnmId, pnms.id))
+      .where(eq(attendance.eventId, eventId));
+
+    return {
+      ...event,
+      attendeeCount: attendanceRecords.length,
+      attendees: attendanceRecords.map(record => ({
+        ...record.attendance,
+        pnm: record.pnm,
+      })),
+    };
+  }
+
+  async getPNMAttendance(pnmId: string): Promise<PNMWithAttendance> {
+    const pnm = await this.getPNM(pnmId);
+    if (!pnm) {
+      throw new Error('PNM not found');
+    }
+
+    const [attendanceStats] = await db
+      .select({
+        totalEvents: sql<number>`count(distinct ${events.id})`,
+        attendedEvents: sql<number>`count(distinct ${attendance.eventId})`,
+        missedMandatoryEvents: sql<number>`
+          count(distinct case when ${events.type} = 'mandatory' and ${attendance.eventId} is null then ${events.id} end)
+        `,
+      })
+      .from(events)
+      .leftJoin(attendance, and(
+        eq(attendance.eventId, events.id),
+        eq(attendance.pnmId, pnmId)
+      ))
+      .where(eq(events.isActive, true));
+
+    const totalEvents = attendanceStats?.totalEvents || 0;
+    const attendedEvents = attendanceStats?.attendedEvents || 0;
+    const attendancePercentage = totalEvents > 0 ? Math.round((attendedEvents / totalEvents) * 100) : 0;
+
+    return {
+      ...pnm,
+      totalEvents,
+      attendedEvents,
+      attendancePercentage,
+      missedMandatoryEvents: attendanceStats?.missedMandatoryEvents || 0,
+    };
+  }
+
+  async getAllPNMsWithAttendance(): Promise<PNMWithAttendance[]> {
+    const allPNMs = await this.getAllPNMs();
+    const pnmsWithAttendance = await Promise.all(
+      allPNMs.map(pnm => this.getPNMAttendance(pnm.id))
+    );
+    return pnmsWithAttendance;
+  }
+
+  async removeAttendance(eventId: string, pnmId: string): Promise<boolean> {
+    const result = await db
+      .delete(attendance)
+      .where(and(
+        eq(attendance.eventId, eventId),
+        eq(attendance.pnmId, pnmId)
+      ));
+    return (result.rowCount || 0) > 0;
   }
 }
 

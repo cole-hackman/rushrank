@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
 import Voting from "@/pages/Voting";
 import Results from "@/pages/Results";
+import Events from "@/pages/Events";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/voting" component={Voting} />
       <Route path="/results" component={Results} />
+      <Route path="/events" component={Events} />
       <Route component={NotFound} />
     </Switch>
   );

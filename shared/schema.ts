@@ -1,7 +1,8 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uuid, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { nanoid } from "nanoid";
 
 export const pnms = pgTable("pnms", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -99,4 +100,81 @@ export type VotingRoundWithDetails = VotingRound & {
   currentPNM?: PNM;
   totalPNMs: number;
   voterCount: number;
+};
+
+// Events table for attendance tracking
+export const events = pgTable("events", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  date: timestamp("date").notNull(),
+  type: text("type", { enum: ["mandatory", "optional", "invite-only"] }).default("optional").notNull(),
+  location: text("location"),
+  checkInCode: text("check_in_code"), // For PIN-based check-ins
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Attendance table
+export const attendance = pgTable("attendance", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  pnmId: uuid("pnm_id").notNull().references(() => pnms.id, { onDelete: "cascade" }),
+  checkedInAt: timestamp("checked_in_at").defaultNow().notNull(),
+  checkedInBy: text("checked_in_by"), // Admin/officer who checked them in (optional)
+  notes: text("notes"),
+}, (table) => ({
+  uniqueEventPnm: unique("unique_event_pnm").on(table.eventId, table.pnmId),
+}));
+
+export const eventsRelations = relations(events, ({ many }) => ({
+  attendance: many(attendance),
+}));
+
+export const attendanceRelations = relations(attendance, ({ one }) => ({
+  event: one(events, {
+    fields: [attendance.eventId],
+    references: [events.id],
+  }),
+  pnm: one(pnms, {
+    fields: [attendance.pnmId],
+    references: [pnms.id],
+  }),
+}));
+
+// Update PNM relations to include attendance
+export const pnmRelationsUpdated = relations(pnms, ({ many }) => ({
+  votes: many(votes),
+  attendance: many(attendance),
+}));
+
+// Insert schemas for new tables
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAttendanceSchema = createInsertSchema(attendance).omit({
+  id: true,
+  checkedInAt: true,
+});
+
+// Types for new tables
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type Attendance = typeof attendance.$inferSelect;
+export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
+
+// Enhanced PNM type with attendance stats
+export type PNMWithAttendance = PNM & {
+  totalEvents: number;
+  attendedEvents: number;
+  attendancePercentage: number;
+  missedMandatoryEvents: number;
+};
+
+// Event with attendance details
+export type EventWithAttendance = Event & {
+  attendeeCount: number;
+  attendees: (Attendance & { pnm: PNM })[];
 };

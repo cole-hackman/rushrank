@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertPNMSchema, insertVotingRoundSchema, insertVoteSchema } from "@shared/schema";
+import { insertPNMSchema, insertVotingRoundSchema, insertVoteSchema, insertEventSchema, insertAttendanceSchema } from "@shared/schema";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { z } from "zod";
 
@@ -395,6 +395,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error exporting results:", error);
       res.status(500).json({ error: "Failed to export results" });
+    }
+  });
+
+  // Event routes
+  app.get("/api/events", async (req, res) => {
+    try {
+      const events = await storage.getAllEvents();
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      res.status(500).json({ error: "Failed to fetch events" });
+    }
+  });
+
+  app.get("/api/events/active", async (req, res) => {
+    try {
+      const events = await storage.getActiveEvents();
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching active events:", error);
+      res.status(500).json({ error: "Failed to fetch active events" });
+    }
+  });
+
+  app.post("/api/events", async (req, res) => {
+    try {
+      const validatedData = insertEventSchema.parse(req.body);
+      // Generate check-in code if not provided
+      if (!validatedData.checkInCode) {
+        validatedData.checkInCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      }
+      const event = await storage.createEvent(validatedData);
+      res.json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid event data", details: error.errors });
+      } else {
+        console.error("Error creating event:", error);
+        res.status(500).json({ error: "Failed to create event" });
+      }
+    }
+  });
+
+  app.put("/api/events/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertEventSchema.partial().parse(req.body);
+      const event = await storage.updateEvent(id, validatedData);
+      
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      
+      res.json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid event data", details: error.errors });
+      } else {
+        console.error("Error updating event:", error);
+        res.status(500).json({ error: "Failed to update event" });
+      }
+    }
+  });
+
+  app.delete("/api/events/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteEvent(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      res.status(500).json({ error: "Failed to delete event" });
+    }
+  });
+
+  // Attendance routes
+  app.get("/api/events/:eventId/attendance", async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      const eventWithAttendance = await storage.getEventAttendance(eventId);
+      res.json(eventWithAttendance);
+    } catch (error) {
+      console.error("Error fetching event attendance:", error);
+      res.status(500).json({ error: "Failed to fetch event attendance" });
+    }
+  });
+
+  app.post("/api/attendance", async (req, res) => {
+    try {
+      const validatedData = insertAttendanceSchema.parse(req.body);
+      const attendanceRecord = await storage.markAttendance(validatedData);
+      res.json(attendanceRecord);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid attendance data", details: error.errors });
+      } else {
+        console.error("Error marking attendance:", error);
+        res.status(500).json({ error: "Failed to mark attendance" });
+      }
+    }
+  });
+
+  app.delete("/api/attendance/:eventId/:pnmId", async (req, res) => {
+    try {
+      const { eventId, pnmId } = req.params;
+      const success = await storage.removeAttendance(eventId, pnmId);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Attendance record not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing attendance:", error);
+      res.status(500).json({ error: "Failed to remove attendance" });
+    }
+  });
+
+  app.get("/api/pnms/attendance", async (req, res) => {
+    try {
+      const pnmsWithAttendance = await storage.getAllPNMsWithAttendance();
+      res.json(pnmsWithAttendance);
+    } catch (error) {
+      console.error("Error fetching PNMs with attendance:", error);
+      res.status(500).json({ error: "Failed to fetch PNMs with attendance" });
+    }
+  });
+
+  app.get("/api/pnms/:pnmId/attendance", async (req, res) => {
+    try {
+      const { pnmId } = req.params;
+      const pnmWithAttendance = await storage.getPNMAttendance(pnmId);
+      res.json(pnmWithAttendance);
+    } catch (error) {
+      console.error("Error fetching PNM attendance:", error);
+      res.status(500).json({ error: "Failed to fetch PNM attendance" });
+    }
+  });
+
+  // Check-in by code endpoint
+  app.post("/api/events/checkin/:checkInCode", async (req, res) => {
+    try {
+      const { checkInCode } = req.params;
+      const { pnmId, checkedInBy, notes } = req.body;
+
+      // Find event by check-in code
+      const events = await storage.getAllEvents();
+      const event = events.find(e => e.checkInCode === checkInCode.toUpperCase() && e.isActive);
+
+      if (!event) {
+        return res.status(404).json({ error: "Invalid or expired check-in code" });
+      }
+
+      const attendanceRecord = await storage.markAttendance({
+        eventId: event.id,
+        pnmId,
+        checkedInBy,
+        notes,
+      });
+
+      res.json({ success: true, attendance: attendanceRecord, event });
+    } catch (error) {
+      console.error("Error checking in with code:", error);
+      res.status(500).json({ error: "Failed to check in" });
     }
   });
 

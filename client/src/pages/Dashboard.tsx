@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Hand, PlayCircle, UserPlus, BarChart, Clock, Copy, Trash2, MoreVertical } from 'lucide-react';
+import { Users, Hand, PlayCircle, UserPlus, BarChart, Clock, Copy, Trash2, MoreVertical, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -296,21 +296,31 @@ export default function Dashboard() {
               </div>
             </Button>
 
-            <Link href="/results">
-              <Button
-                variant="outline"
-                className="w-full border border-gray-200 p-4 rounded-xl flex items-center justify-between hover:bg-gray-50"
-                data-testid="button-view-results"
-              >
-                <div className="flex items-center space-x-3">
-                  <BarChart className="text-gray-600 text-xl" />
-                  <div className="text-left">
-                    <div className="font-semibold text-gray-900">View Results</div>
-                    <div className="text-gray-500 text-sm">Rankings and analytics</div>
-                  </div>
-                </div>
-              </Button>
-            </Link>
+            <div className="grid grid-cols-2 gap-3">
+              <Link href="/events">
+                <Button
+                  variant="outline"
+                  className="w-full border border-gray-200 p-4 rounded-xl flex flex-col items-center justify-center hover:bg-gray-50"
+                  data-testid="button-manage-events"
+                >
+                  <Calendar className="text-gray-600 text-lg mb-1" />
+                  <div className="font-semibold text-gray-900 text-sm">Events</div>
+                  <div className="text-gray-500 text-xs">Track attendance</div>
+                </Button>
+              </Link>
+              
+              <Link href="/results">
+                <Button
+                  variant="outline"
+                  className="w-full border border-gray-200 p-4 rounded-xl flex flex-col items-center justify-center hover:bg-gray-50"
+                  data-testid="button-view-results"
+                >
+                  <BarChart className="text-gray-600 text-lg mb-1" />
+                  <div className="font-semibold text-gray-900 text-sm">Results</div>
+                  <div className="text-gray-500 text-xs">View analytics</div>
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Recent PNMs */}
