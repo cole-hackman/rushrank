@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Hand, PlayCircle, UserPlus, BarChart, Clock, Copy } from 'lucide-react';
+import { Users, Hand, PlayCircle, UserPlus, BarChart, Clock, Copy, Trash2, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,10 +8,29 @@ import { apiRequest } from '@/lib/queryClient';
 import { AddPNMModal } from '@/components/AddPNMModal';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
+import { motion } from 'framer-motion';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { PNM, VotingRoundWithDetails } from '@shared/schema';
 
 export default function Dashboard() {
   const [showAddPNMModal, setShowAddPNMModal] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pnmToDelete, setPNMToDelete] = useState<{ id: string; name: string } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -46,6 +65,30 @@ export default function Dashboard() {
       toast({
         title: "Error",
         description: "Failed to start voting round.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete PNM mutation
+  const deletePNMMutation = useMutation({
+    mutationFn: async (pnmId: string) => {
+      const response = await apiRequest('DELETE', `/api/pnms/${pnmId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pnms'] });
+      toast({
+        title: "PNM deleted",
+        description: "The PNM has been removed successfully.",
+      });
+      setDeleteDialogOpen(false);
+      setPNMToDelete(null);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete PNM.",
         variant: "destructive",
       });
     },
@@ -101,6 +144,17 @@ export default function Dashboard() {
         title: "Copied!",
         description: "Room code copied to clipboard.",
       });
+    }
+  };
+
+  const handleDeletePNM = (id: string, name: string) => {
+    setPNMToDelete({ id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeletePNM = () => {
+    if (pnmToDelete) {
+      deletePNMMutation.mutate(pnmToDelete.id);
     }
   };
 
@@ -201,7 +255,7 @@ export default function Dashboard() {
                           <Copy className="w-3 h-3 ml-1" />
                         </Button>
                         <span className="text-xs text-yellow-600">
-                          {activeRound.currentPNMIndex + 1}/{activeRound.totalPNMs} PNMs
+                          {(activeRound.currentPNMIndex || 0) + 1}/{activeRound.totalPNMs} PNMs
                         </span>
                       </div>
                     </div>
@@ -303,7 +357,7 @@ export default function Dashboard() {
                         <p className="text-gray-400 text-xs">{pnm.hometown}</p>
                       )}
                     </div>
-                    <div>
+                    <div className="flex items-center space-x-2">
                       {pnm.tags && pnm.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {pnm.tags.slice(0, 2).map((tag, index) => (
@@ -318,6 +372,23 @@ export default function Dashboard() {
                           )}
                         </div>
                       )}
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="p-1">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => handleDeletePNM(pnm.id, pnm.name)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete PNM
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </CardContent>
                 </Card>
@@ -346,6 +417,28 @@ export default function Dashboard() {
           open={showAddPNMModal}
           onOpenChange={setShowAddPNMModal}
         />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete PNM</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {pnmToDelete?.name}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDeletePNM}
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deletePNMMutation.isPending}
+              >
+                {deletePNMMutation.isPending ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

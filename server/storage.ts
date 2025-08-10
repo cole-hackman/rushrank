@@ -72,7 +72,7 @@ export class DatabaseStorage implements IStorage {
 
   async deletePNM(id: string): Promise<boolean> {
     const result = await db.delete(pnms).where(eq(pnms.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   async getVotingRound(id: string): Promise<VotingRound | undefined> {
@@ -105,6 +105,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       ...round,
+      currentPNM: round.currentPNM || undefined,
       totalPNMs: round.selectedPNMIds?.length || 0,
       voterCount: voterCount[0]?.count || 0,
     };
@@ -136,6 +137,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       ...round,
+      currentPNM: round.currentPNM || undefined,
       totalPNMs: round.selectedPNMIds?.length || 0,
       voterCount: voterCount[0]?.count || 0,
     };
@@ -160,7 +162,7 @@ export class DatabaseStorage implements IStorage {
       .update(votingRounds)
       .set({ isActive: false })
       .where(eq(votingRounds.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   async createVote(insertVote: InsertVote): Promise<Vote> {

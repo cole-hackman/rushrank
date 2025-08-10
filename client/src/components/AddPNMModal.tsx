@@ -93,7 +93,7 @@ export function AddPNMModal({ open, onOpenChange }: AddPNMModalProps) {
   const handleUploadComplete = (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     if (result.successful && result.successful[0]) {
       const uploadURL = result.successful[0].uploadURL;
-      setUploadedPhotoPath(uploadURL);
+      setUploadedPhotoPath(uploadURL || null);
       toast({
         title: "Photo uploaded",
         description: "Profile photo uploaded successfully!",
