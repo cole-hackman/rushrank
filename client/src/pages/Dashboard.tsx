@@ -259,7 +259,7 @@ export default function Dashboard() {
             <div className="flex items-center space-x-2">
               <LiveIndicator
                 isLive={activeRound?.isActive || false}
-                voterCount={activeRound?.totalVotes || 0}
+                voterCount={activeRound?.voterCount || 0}
               />
               <ThemeToggle />
             </div>

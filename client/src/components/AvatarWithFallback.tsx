@@ -20,6 +20,7 @@ export function AvatarWithFallback({ src, name, size = 'md', className = '' }: A
   const getInitials = (fullName: string) => {
     return fullName
       .split(' ')
+      .filter(word => word.length > 0)
       .map(word => word[0])
       .join('')
       .toUpperCase()
