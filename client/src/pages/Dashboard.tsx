@@ -46,6 +46,11 @@ export default function Dashboard() {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
 
+  // Fetch PNMs
+  const { data: pnms = [], isLoading: pnmsLoading } = useQuery<PNM[]>({
+    queryKey: ['/api/pnms'],
+  });
+
   // Check if user is new and should see onboarding
   useEffect(() => {
     const hasSeenOnboarding = localStorage.getItem('rushrank-onboarding-seen');
@@ -54,11 +59,6 @@ export default function Dashboard() {
       setShowOnboarding(true);
     }
   }, [pnms.length]);
-
-  // Fetch PNMs
-  const { data: pnms = [], isLoading: pnmsLoading } = useQuery<PNM[]>({
-    queryKey: ['/api/pnms'],
-  });
 
   // Fetch active round
   const { data: activeRound, isLoading: roundLoading } = useQuery<VotingRoundWithDetails | null>({
