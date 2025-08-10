@@ -1,0 +1,191 @@
+Absolutely — here’s a full expanded PRD for RushRank, including your original features, additional UX and admin ideas, and future expansion paths. This version is designed to reflect your desire to use Python for the backend (FastAPI) and build a mobile-focused website (React/Next.js frontend with Tailwind).
+
+⸻
+
+📱 RushRank PRD (Product Requirements Document)
+
+🔖 Overview
+
+Name: RushRank
+Type: Mobile-optimized Web App (PWA)
+Core Purpose: A digital voting and ranking system for fraternity rush events. Allows brothers to view PNMs, vote via swipe interface, and generate ranked lists in real time — all controlled by a central “rush chair” device.
+
+⸻
+
+🎯 Goals
+	•	Digitize and streamline rush voting processes.
+	•	Make voting intuitive, fast, and mobile-first.
+	•	Empower rush chairs with tools to manage and analyze rounds.
+	•	Maintain flexibility for chapter-specific customization.
+
+⸻
+
+🧑‍🤝‍🧑 User Roles
+
+1. Rush Chair (Admin)
+	•	Add/edit/delete PNMs
+	•	Start/end and control voting rounds
+	•	Advance group to next PNM
+	•	View and export voting results
+	•	Configure round settings (e.g., enable “favorites”, customize questions)
+
+2. Brother (Participant)
+	•	Join voting round via code/link
+	•	Swipe to vote on PNMs
+	•	Mark “favorites”
+	•	View summary (optional if allowed by admin)
+
+⸻
+
+🧩 Core Features
+
+1. Homepage / Dashboard
+	•	Welcome message or branding
+	•	Buttons:
+	•	➕ Add PNM
+	•	🗳️ Start Voting Round
+	•	📊 View Results
+	•	⚙️ Round Settings (rush chair only)
+
+⸻
+
+2. PNM Management
+
+Add/Edit PNM
+	•	📸 Take or upload picture
+	•	🧾 Required Fields:
+	•	Name
+	•	Hometown
+	•	Major
+	•	🎭 Optional Custom Questions:
+	•	“What’s your walkout song?”
+	•	“Weirdest talent?”
+	•	“Chick-fil-A order?”
+	•	📌 Tag system (e.g., athlete, legacy, funny)
+	•	🔄 Edit/delete PNMs anytime
+
+⸻
+
+3. Voting Round
+	•	🧠 Admin setup:
+	•	Select PNMs for this round
+	•	Enable or disable custom questions
+	•	Toggle “favorite” option
+	•	Generate room code
+	•	🔗 Brothers join voting session via link/code
+	•	👀 Swipe UI (Tinder-style):
+	•	Swipe Right: Yes
+	•	Swipe Up: Don’t Know
+	•	Swipe Left: No
+	•	Tap Star ⭐: Favorite
+	•	⏭️ Admin advances group to next PNM manually
+	•	⏳ Each voting round is real-time synced
+
+⸻
+
+4. Post-Round Results
+	•	📈 Rankings generated based on Yes votes
+	•	🔥 Favorites shown separately or tagged in rankings
+	•	🧮 Voting breakdown per PNM (total Yes / No / Don’t Know)
+	•	🧠 Advanced filters (e.g., filter by favorites only)
+	•	📤 Export results as CSV or PDF
+	•	🧍‍♂️ Optional: display individual vote history (if transparency is desired)
+
+⸻
+
+🧠 Feature Ideas for MVP+
+
+A. Live Feedback & Reactions
+	•	Emojis during voting (e.g., 👍 😂 😐)
+	•	Comments section for each PNM (admin or public toggle)
+
+B. Weighted Voting (Exec Bonus)
+	•	Set certain users (exec board) to have higher vote weight
+	•	Toggle in round settings
+
+C. Anonymous vs. Tracked Voting
+	•	Option to anonymize or track votes for transparency
+
+D. Quick Filters
+	•	“Most Yeses”
+	•	“Most Controversial” (mixed votes)
+	•	“Hidden Gem” (few votes but many favorites)
+
+E. Fun Analytics
+	•	Vote heatmaps
+	•	“Most liked hometown”
+	•	Word cloud from funny questions
+
+F. Profiles for Brothers
+	•	Track past votes
+	•	See who they’ve favorited
+
+⸻
+
+💡 Stretch Goals
+	•	🏆 Gamification: Badges for funny answers, most favorited, etc.
+	•	🧪 AI integration:
+	•	Suggest questions based on trends
+	•	Flag low-engagement PNMs for admin attention
+	•	🧩 Chapter Customization:
+	•	Branding/logo
+	•	Save templates for custom questions
+
+⸻
+
+⚙️ Technical Architecture
+
+Frontend
+	•	Framework: Next.js + React
+	•	Styling: Tailwind CSS
+	•	Mobile Optimization: PWA support (installable as app)
+
+Backend
+	•	Framework: FastAPI (Python)
+	•	Database: Supabase (PostgreSQL)
+	•	Real-time Sync: Supabase or WebSockets (via FastAPI)
+	•	Auth: Simple session-based, or code-based access per round
+
+⸻
+
+🧪 Dev Tools
+
+Area	Tool
+Hosting (frontend)	Vercel
+Hosting (backend)	Railway or Render
+Database	Supabase
+Analytics	Plausible / PostHog (optional)
+Issue Tracking	GitHub Projects or Linear
+CI/CD	GitHub Actions
+
+
+⸻
+
+✅ Success Criteria
+	•	✅ All brothers can join and vote with no confusion
+	•	✅ Admin can smoothly control voting session
+	•	✅ Ranked results are accurate and easy to export
+	•	✅ Mobile experience is fast, intuitive, and bug-free
+	•	✅ App is testable by 1–2 fraternities in early pilot
+
+⸻
+
+📆 Milestones
+
+Week	Goals
+Week 1	Frontend and backend scaffolding
+Week 2	Build PNM adding system + DB
+Week 3	Implement voting UI + backend sync
+Week 4	Admin control + result calculation
+Week 5	Export features + polish
+Week 6	Pilot with 1 fraternity
+
+
+⸻
+
+Would you like me to:
+	•	Build a task list from this PRD?
+	•	Generate the database schema?
+	•	Start wireframing the mobile UI?
+
+Let me know what step comes next.
