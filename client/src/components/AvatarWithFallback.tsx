@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 interface AvatarWithFallbackProps {
   src?: string | null;
-  name: string;
+  name?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
@@ -14,14 +14,17 @@ const sizeClasses = {
   xl: 'w-24 h-24 text-lg',
 };
 
-export function AvatarWithFallback({ src, name, size = 'md', className = '' }: AvatarWithFallbackProps) {
+export function AvatarWithFallback({ src, name = 'Unknown', size = 'md', className = '' }: AvatarWithFallbackProps) {
   const [imageError, setImageError] = useState(false);
   
   const getInitials = (fullName: string) => {
-    return fullName
-      .split(' ')
-      .filter(word => word.length > 0)
-      .map(word => word[0])
+    if (!fullName || typeof fullName !== 'string') return 'NA';
+    
+    const words = fullName.trim().split(/\s+/).filter(word => word.length > 0);
+    if (words.length === 0) return 'NA';
+    
+    return words
+      .map(word => word.charAt(0))
       .join('')
       .toUpperCase()
       .slice(0, 2);
@@ -38,6 +41,10 @@ export function AvatarWithFallback({ src, name, size = 'md', className = '' }: A
       ['from-red-400', 'to-red-600'],
       ['from-teal-400', 'to-teal-600'],
     ];
+    
+    if (!fullName || typeof fullName !== 'string' || fullName.length === 0) {
+      return colors[0];
+    }
     
     const index = fullName.charCodeAt(0) % colors.length;
     return colors[index];
