@@ -13,9 +13,10 @@ export default {
         mono: ["var(--font-mono)"],
       },
       colors: {
-        // RushRank brand colors
+        // RushRank brand colors - Updated with orange accent
         'rr-surface': 'hsl(240, 10%, 8%)',
-        'rr-accent': 'hsl(100, 85%, 55%)', 
+        'rr-accent': 'hsl(25, 95%, 55%)', // Orange accent
+        'rr-accent-dark': 'hsl(15, 90%, 50%)', // Darker orange for gradients
         'rr-secondary': 'hsl(270, 70%, 60%)',
         'rr-card': 'hsl(0, 0%, 100%, 0.06)',
         brand: {
@@ -29,6 +30,10 @@ export default {
           700: '#2048ad',
           800: '#1d3c8a',
           900: '#182f6b',
+        },
+        accent: {
+          500: '#ff7a18', // mid orange
+          600: '#ff5418', // darker orange
         },
         // Semantic tokens
         surface: {
@@ -66,7 +71,7 @@ export default {
           DEFAULT: "var(--muted)",
           foreground: "var(--muted-foreground)",
         },
-        accent: {
+        accentLegacy: {
           DEFAULT: "var(--accent)",
           foreground: "var(--accent-foreground)",
         },
@@ -76,7 +81,6 @@ export default {
         },
         border: "var(--border)",
         input: "var(--input)",
-        ringLegacy: "var(--ring)",
         chart: {
           "1": "var(--chart-1)",
           "2": "var(--chart-2)",

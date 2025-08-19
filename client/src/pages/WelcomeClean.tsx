@@ -28,7 +28,7 @@ export default function WelcomeClean() {
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-semibold text-sm">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-accent-500 to-accent-600 text-white font-semibold text-sm">
               RR
             </div>
             <div className="leading-tight">
@@ -60,7 +60,10 @@ export default function WelcomeClean() {
                   <li>• Advanced filtering & analytics</li>
                   <li>• Export results securely</li>
                 </ul>
-                <Button onClick={() => setJoinOpen(true)} className="ml-4">
+                <Button 
+                  onClick={() => setJoinOpen(true)} 
+                  className="ml-4 bg-gradient-to-r from-accent-500 to-accent-600 hover:opacity-90 text-white border-0"
+                >
                   Join a Voting Round
                 </Button>
               </div>
@@ -113,7 +116,11 @@ export default function WelcomeClean() {
               <Button variant="secondary" type="button" onClick={() => setJoinOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={code.length < 4}>
+              <Button 
+                type="submit"
+                disabled={code.length < 4}
+                className="bg-gradient-to-r from-accent-500 to-accent-600 hover:opacity-90 text-white border-0"
+              >
                 Join Round
               </Button>
             </div>

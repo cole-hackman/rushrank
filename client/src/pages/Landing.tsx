@@ -28,7 +28,7 @@ export default function Landing() {
         <nav className="mx-auto max-w-6xl rounded-2xl bg-black/40 backdrop-blur px-4 py-3 border border-white/10">
           <div className="flex items-center justify-between">
             <a className="flex items-center gap-2 font-semibold text-white">
-              <div className="h-7 w-7 rounded-xl bg-rr-accent text-black grid place-items-center font-bold text-sm">
+              <div className="h-7 w-7 rounded-xl bg-gradient-to-r from-accent-500 to-accent-600 text-white grid place-items-center font-bold text-sm">
                 RR
               </div>
               RushRank
@@ -47,7 +47,7 @@ export default function Landing() {
               </button>
               <button 
                 onClick={handleGetStarted}
-                className="rounded-full px-4 py-2 text-sm font-medium bg-rr-accent text-black hover:bg-rr-accent/90 transition-colors"
+                className="rounded-full px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-accent-500 to-accent-600 shadow-md hover:opacity-90 transition-all"
               >
                 Get Started
               </button>
@@ -68,15 +68,9 @@ export default function Landing() {
         <div className="mt-10 flex flex-wrap justify-center gap-4">
           <button 
             onClick={handleGetStarted}
-            className="rounded-xl px-6 py-3 bg-rr-accent text-black font-semibold hover:bg-rr-accent/90 transition-all hover:scale-105 shadow-lg"
+            className="rounded-xl px-6 py-3 text-white bg-gradient-to-r from-accent-500 to-accent-600 font-semibold hover:opacity-90 transition-all hover:scale-105 shadow-lg"
           >
             Create Chapter
-          </button>
-          <button 
-            onClick={handleGetStarted}
-            className="rounded-xl px-6 py-3 bg-white/10 border border-white/15 text-white hover:bg-white/15 transition-all hover:scale-105"
-          >
-            See Demo
           </button>
           <button 
             onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
@@ -96,7 +90,7 @@ export default function Landing() {
           <FeatureCard
             title="Attendance"
             icon={Users}
-            iconColor="text-rr-accent"
+            iconColor="text-accent-500"
             points={[
               "QR or tap check-ins",
               "Event caps & notes", 
@@ -168,12 +162,12 @@ export default function Landing() {
             placeholder="you@school.edu"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full max-w-md rounded-xl bg-white/10 border border-white/15 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-rr-accent/50 focus:border-rr-accent/50"
+            className="w-full max-w-md rounded-xl bg-white/10 border border-white/15 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-accent-500/50 focus:border-accent-500/50"
             required
           />
           <button 
             type="submit"
-            className="rounded-xl bg-rr-accent text-black px-6 py-3 font-semibold hover:bg-rr-accent/90 transition-colors whitespace-nowrap"
+            className="rounded-xl text-white bg-gradient-to-r from-accent-500 to-accent-600 px-6 py-3 font-semibold hover:opacity-90 transition-all whitespace-nowrap"
           >
             Notify me
           </button>
@@ -184,7 +178,7 @@ export default function Landing() {
       <footer className="mx-auto max-w-6xl px-4 py-10 text-white/60 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
           <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded-lg bg-rr-accent text-black grid place-items-center font-bold text-xs">
+            <div className="h-6 w-6 rounded-lg bg-gradient-to-r from-accent-500 to-accent-600 text-white grid place-items-center font-bold text-xs">
               RR
             </div>
             <span>© {new Date().getFullYear()} RushRank</span>
