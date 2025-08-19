@@ -25,7 +25,7 @@ export default function DashboardClean() {
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-semibold text-sm">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-accent-500 to-accent-600 text-white font-semibold text-sm">
               RR
             </div>
             <div className="leading-tight">
@@ -89,7 +89,11 @@ export default function DashboardClean() {
                 <p className="text-sm text-muted-foreground">
                   Start by adding your first potential new member.
                 </p>
-                <Button onClick={() => setShowAddPNM(true)} size="sm">
+                <Button 
+                  onClick={() => setShowAddPNM(true)} 
+                  size="sm"
+                  className="bg-gradient-to-r from-accent-500 to-accent-600 hover:opacity-90 text-white border-0"
+                >
                   <Plus className="h-4 w-4 mr-1" />
                   Add
                 </Button>
