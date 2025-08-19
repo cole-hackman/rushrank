@@ -1,11 +1,28 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
+import { Link, Redirect } from 'wouter';
 import { VoteIcon as Vote, Settings, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { JoinRoundModal } from '@/components/JoinRoundModal';
+import { AuthHeader } from '@/components/AuthHeader';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Home() {
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const { user, loading } = useAuth();
+
+  // Redirect to login if not authenticated
+  if (!loading && !user) {
+    return <Redirect to="/login" />;
+  }
+
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
 
   const handleJoinSuccess = (roundData: any) => {
     // Store voter ID in sessionStorage
@@ -17,20 +34,10 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-md mx-auto bg-white min-h-screen shadow-lg">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-4 py-6">
-          <div className="text-center">
-            <div className="flex items-center justify-center space-x-3 mb-2">
-              <Vote className="w-8 h-8 text-primary" />
-              <h1 className="text-2xl font-bold text-gray-900" data-testid="app-title">
-                RushRank
-              </h1>
-            </div>
-            <p className="text-gray-600 text-sm">Digital Rush Voting Platform</p>
-          </div>
-        </header>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 dark:from-gray-950 dark:via-blue-950 dark:to-purple-950">
+      <div className="max-w-md mx-auto bg-white dark:bg-gray-950 min-h-screen shadow-lg">
+        {/* Auth Header */}
+        <AuthHeader />
 
         {/* Main Content */}
         <div className="p-6 space-y-8">
