@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,12 +9,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 export default function WelcomeClean() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [code, setCode] = useState('');
+  const [, setLocation] = useLocation();
 
   const handleJoinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log('Joining with code:', code);
     // TODO: Navigate to voting round
     setJoinOpen(false);
+  };
+
+  const handleOpenDashboard = () => {
+    setLocation('/dashboard-clean');
   };
 
   return (
@@ -73,7 +79,7 @@ export default function WelcomeClean() {
                 <p className="text-sm text-muted-foreground">
                   For rush chairs and admins only.
                 </p>
-                <Button variant="secondary">
+                <Button variant="secondary" onClick={handleOpenDashboard}>
                   Open Dashboard
                 </Button>
               </div>
