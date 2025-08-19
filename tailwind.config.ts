@@ -5,16 +5,36 @@ export default {
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
+
       borderRadius: {
+        xl2: '1.25rem',
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      boxShadow: {
+        sm2: '0 1px 2px rgba(0,0,0,.08)',
+        md2: '0 2px 12px rgba(0,0,0,.14)',
+      },
+      spacing: { 
+        '4.5': '1.125rem' // nice 8px-ish rhythm
+      },
       colors: {
+        // New semantic tokens
+        bg: 'hsl(var(--bg))',
+        pop: 'hsl(var(--pop))',           // brand
+        text: 'hsl(var(--text))',
+        textDim: 'hsl(var(--text-dim))',
+        stroke: 'hsl(var(--stroke))',
+        success: 'hsl(var(--success))',
+        warn: 'hsl(var(--warn))',
+        danger: 'hsl(var(--danger))',
+        
+        // Legacy shadcn tokens (keep for compatibility)
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {
-          DEFAULT: "var(--card)",
+          DEFAULT: "hsl(var(--card))",
           foreground: "var(--card-foreground)",
         },
         popover: {
@@ -63,7 +83,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)"],
+        sans: ['Inter var', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji'],
         serif: ["var(--font-serif)"],
         mono: ["var(--font-mono)"],
       },

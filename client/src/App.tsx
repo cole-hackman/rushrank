@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AuthHandler } from "@/components/AuthHandler";
 import Home from "@/pages/Home";
+import HomeNew from "@/pages/HomeNew";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
 import AuthRedirect from "@/pages/AuthRedirect";
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/auth/callback" component={AuthCallback} />
       <Route path="/auth/redirect" component={AuthRedirect} />
+      <Route path="/home-new" component={HomeNew} />
       <Route path="/" component={Home} />
       <Route path="/dashboard">
         <ProtectedRoute>
