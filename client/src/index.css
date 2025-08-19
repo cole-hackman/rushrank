@@ -3,6 +3,18 @@
 @tailwind utilities;
 
 :root {
+  /* New Social App Design Tokens - Light */
+  --bg: 220 20% 98%;
+  --card: 0 0% 100%;
+  --pop: 221 83% 53%;           /* brand blue */
+  --text: 224 71% 4%;
+  --text-dim: 224 10% 40%;
+  --stroke: 220 14% 90%;
+  --success: 160 84% 39%;
+  --warn: 38 92% 50%;
+  --danger: 0 84% 60%;
+  
+  /* Legacy shadcn tokens (keep for compatibility) */
   --background: hsl(0 0% 100%);
   --foreground: hsl(210 25% 7.8431%);
   --card: hsl(180 6.6667% 97.0588%);
@@ -52,6 +64,18 @@
 }
 
 .dark {
+  /* New Social App Design Tokens - Dark (true dark, not gray-on-black mush) */
+  --bg: 220 18% 8%;
+  --card: 220 14% 12%;
+  --pop: 221 83% 56%;           /* slightly brighter in dark */
+  --text: 0 0% 100%;
+  --text-dim: 220 10% 65%;
+  --stroke: 220 10% 22%;
+  --success: 160 84% 44%;
+  --warn: 38 92% 56%;
+  --danger: 0 84% 64%;
+  
+  /* Legacy shadcn tokens (keep for compatibility) */
   --background: hsl(0 0% 0%);
   --foreground: hsl(200 6.6667% 91.1765%);
   --card: hsl(228 9.8039% 10%);
@@ -98,13 +122,26 @@
   --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
 }
 
+/* Global reset and base styles */
+html, body, #root { 
+  height: 100%; 
+}
+
+body {
+  background: hsl(var(--bg));
+  color: hsl(var(--text));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02","cv03","cv04","cv11"; /* Inter */
+}
+
 @layer base {
   * {
     @apply border-border;
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans antialiased;
   }
 }
 
