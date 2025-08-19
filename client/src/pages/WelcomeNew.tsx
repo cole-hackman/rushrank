@@ -2,8 +2,8 @@ import { useState } from 'react';
 import AppShell from '@/components/AppShell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { TextInput } from '@/components/ui/input';  
-import { Modal } from '@/components/ui/dialog';
+import { Input as TextInput } from '@/components/ui/input';  
+import { Dialog as Modal, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function WelcomeNew() {
   const [joinOpen, setJoinOpen] = useState(false);
@@ -51,32 +51,35 @@ export default function WelcomeNew() {
         </Card>
       </div>
 
-      <Modal open={joinOpen} onClose={() => setJoinOpen(false)} title="Join Voting Round">
-        <form className="space-y-4" onSubmit={handleJoinSubmit}>
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">Room Code</label>
-            <TextInput
-              data-autofocus
-              inputMode="text"
-              placeholder="e.g., ABC123"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              aria-describedby="join-help"
-              maxLength={6}
-            />
-            <p id="join-help" className="text-xs text-text-muted mt-1">
-              Enter the code shared by your rush chair.
-            </p>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="secondary" type="button" onClick={() => setJoinOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={code.length < 4}>
-              Join Round
-            </Button>
-          </div>
-        </form>
+      <Modal open={joinOpen} onOpenChange={setJoinOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Join Voting Round</DialogTitle>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleJoinSubmit}>
+            <div>
+              <label className="block text-sm font-medium mb-2">Room Code</label>
+              <TextInput
+                autoFocus
+                placeholder="e.g., ABC123"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                maxLength={6}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Enter the code shared by your rush chair.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="secondary" type="button" onClick={() => setJoinOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={code.length < 4}>
+                Join Round
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
       </Modal>
     </AppShell>
   );
