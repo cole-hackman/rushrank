@@ -10,6 +10,7 @@ import { AuthHandler } from "@/components/AuthHandler";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
+import AuthRedirect from "@/pages/AuthRedirect";
 import Dashboard from "@/pages/Dashboard";
 import Voting from "@/pages/Voting";
 import Results from "@/pages/Results";
@@ -21,6 +22,7 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/auth/callback" component={AuthCallback} />
+      <Route path="/auth/redirect" component={AuthRedirect} />
       <Route path="/" component={Home} />
       <Route path="/dashboard">
         <ProtectedRoute>
