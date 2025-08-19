@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AuthHandler } from "@/components/AuthHandler";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
@@ -52,6 +53,7 @@ function App() {
       <AuthProvider>
         <ThemeProvider defaultTheme="light">
           <TooltipProvider>
+            <AuthHandler />
             <Toaster />
             <Router />
           </TooltipProvider>

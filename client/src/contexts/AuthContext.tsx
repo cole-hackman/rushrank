@@ -19,12 +19,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    // Handle initial session and auth callback
+    const handleAuth = async () => {
+      try {
+        // Check for auth callback in URL hash
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const refreshToken = hashParams.get('refresh_token')
+        
+        if (accessToken && refreshToken) {
+          // Set session from URL params
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          })
+          
+          if (error) {
+            console.error('Auth callback error:', error)
+          } else if (data.session) {
+            setSession(data.session)
+            setUser(data.session.user)
+            // Clean up URL and redirect to dashboard
+            window.location.hash = ''
+            window.location.pathname = '/dashboard'
+          }
+        } else {
+          // Get existing session
+          const { data: { session } } = await supabase.auth.getSession()
+          setSession(session)
+          setUser(session?.user ?? null)
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    handleAuth()
 
     // Listen for auth changes
     const {
@@ -42,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
     
