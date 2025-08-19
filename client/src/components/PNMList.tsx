@@ -9,6 +9,19 @@ import { Search, MoreVertical, MessageSquare, Flag, User, MapPin } from 'lucide-
 import { usePNMs, useUserChapters } from '@/hooks/usePNMs';
 // import { Skeleton } from '@/components/ui/skeleton';
 
+interface PNM {
+  id: string;
+  name: string;
+  major?: string;
+  hometown?: string;
+  year?: string;
+  tags?: string[];
+  photo_url?: string;
+  notes_count?: number;
+  flagged?: boolean;
+  chapter_id: string;
+}
+
 export function PNMList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -42,7 +55,7 @@ export function PNMList() {
     if (pnm.flagged) {
       return <Badge variant="destructive" className="text-xs">Flagged</Badge>;
     }
-    if (pnm.notes_count > 0) {
+    if (pnm.notes_count && pnm.notes_count > 0) {
       return <Badge variant="secondary" className="text-xs">Has Notes</Badge>;
     }
     return <Badge variant="outline" className="text-xs">Active</Badge>;
@@ -137,7 +150,7 @@ export function PNMList() {
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={pnm.photo_url} alt={pnm.name} />
                       <AvatarFallback>
-                        {pnm.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                        {pnm.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     
