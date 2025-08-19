@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiRequest } from '@/lib/queryClient';
 import { AddPNMModal } from '@/components/AddPNMModal';
+import { PNMList } from '@/components/PNMList';
+import { AuthHeader } from '@/components/AuthHeader';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
 import { motion } from 'framer-motion';
@@ -444,107 +446,15 @@ export default function Dashboard() {
             </div>
           </motion.div>
 
-          {/* Recent PNMs */}
+          {/* Enhanced PNM Management */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
             className="space-y-3"
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent PNMs</h2>
-              {pnms.length > 3 && (
-                <Button variant="ghost" size="sm" className="text-primary btn-interactive">
-                  View All ({pnms.length})
-                </Button>
-              )}
-            </div>
-            
-            {pnmsLoading ? (
-              <div className="space-y-2">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="bg-gray-200 animate-pulse rounded-xl h-20"></div>
-                ))}
-              </div>
-            ) : recentPNMs.length > 0 ? (
-              recentPNMs.map((pnm, index) => (
-                <motion.div
-                  key={pnm.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.1 * index }}
-                  whileHover={{ scale: 1.01 }}
-                >
-                  <Card className="card-elevated border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                    <CardContent className="p-3 flex items-center space-x-3">
-                    <AvatarWithFallback
-                      src={pnm.photoPath}
-                      name={pnm.name}
-                      size="md"
-                    />
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900" data-testid={`pnm-name-${pnm.id}`}>
-                        {pnm.name}
-                      </h3>
-                      <p className="text-gray-500 text-sm">{pnm.major}</p>
-                      {pnm.hometown && (
-                        <p className="text-gray-400 text-xs">{pnm.hometown}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {pnm.tags && pnm.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {pnm.tags.slice(0, 2).map((tag, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {pnm.tags.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{pnm.tags.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="p-1">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem
-                            onClick={() => handleDeletePNM(pnm.id, pnm.name)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete PNM
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardContent>
-                </Card>
-                </motion.div>
-              ))
-            ) : (
-              <Card className="border border-gray-200">
-                <CardContent className="p-6 text-center text-gray-500">
-                  <UserPlus className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                  <p className="text-sm">No PNMs added yet</p>
-                  <Button
-                    onClick={() => setShowAddPNMModal(true)}
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 text-primary"
-                    data-testid="button-add-first-pnm"
-                  >
-                    Add your first PNM
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+            <PNMList />
+
           </motion.div>
         </div>
 

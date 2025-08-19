@@ -6,6 +6,14 @@ RushRank is a mobile-optimized web application designed to streamline fraternity
 
 ## Recent Changes (January 2025)
 
+### Frontend Auth Integration Complete
+- **Supabase Auth**: Complete login/logout flows with magic link authentication
+- **Protected Routes**: Automatic redirects for unauthenticated users
+- **JWT Integration**: Frontend connects to backend with proper authorization headers
+- **Enhanced UI**: Modern PNM management with search, filters, and real-time data
+- **Schema Fixes**: Resolved Express/FastAPI schema compatibility issues
+- **Working Features**: Delete PNMs, view PNM lists, search and filter functionality
+
 ### FastAPI Migration Complete
 - **Backend Migration**: Successfully migrated from Express.js to FastAPI with Python 3.11
 - **Authentication**: Integrated Supabase JWT authentication with JWKS verification
