@@ -1,36 +1,42 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  darkMode: ["class"],
+  darkMode: ['class', '[data-theme="dark"]'],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
-
-      borderRadius: {
-        xl2: '1.25rem',
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-      },
-      boxShadow: {
-        sm2: '0 1px 2px rgba(0,0,0,.08)',
-        md2: '0 2px 12px rgba(0,0,0,.14)',
-      },
-      spacing: { 
-        '4.5': '1.125rem' // nice 8px-ish rhythm
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        serif: ["var(--font-serif)"],
+        mono: ["var(--font-mono)"],
       },
       colors: {
-        // New semantic tokens
-        bg: 'hsl(var(--bg))',
-        pop: 'hsl(var(--pop))',           // brand
-        text: 'hsl(var(--text))',
-        textDim: 'hsl(var(--text-dim))',
-        stroke: 'hsl(var(--stroke))',
-        success: 'hsl(var(--success))',
-        warn: 'hsl(var(--warn))',
-        danger: 'hsl(var(--danger))',
+        brand: {
+          50:  '#eef6ff',
+          100: '#d9ebff',
+          200: '#b6d5ff',
+          300: '#8fbaff',
+          400: '#5f97ff',
+          500: '#3a76ff',    // primary
+          600: '#285adb',
+          700: '#2048ad',
+          800: '#1d3c8a',
+          900: '#182f6b',
+        },
+        // Semantic tokens
+        surface: {
+          DEFAULT: 'var(--surface)',
+          muted: 'var(--surface-muted)',
+        },
+        text: {
+          DEFAULT: 'var(--text)',
+          muted: 'var(--text-muted)',
+        },
+        ring: {
+          DEFAULT: 'var(--ring)',
+        },
         
-        // Legacy shadcn tokens (keep for compatibility)
+        // Legacy tokens for compatibility
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {
@@ -63,7 +69,7 @@ export default {
         },
         border: "var(--border)",
         input: "var(--input)",
-        ring: "var(--ring)",
+        ringLegacy: "var(--ring)",
         chart: {
           "1": "var(--chart-1)",
           "2": "var(--chart-2)",
@@ -82,11 +88,7 @@ export default {
           ring: "var(--sidebar-ring)",
         },
       },
-      fontFamily: {
-        sans: ['Inter var', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji'],
-        serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
-      },
+
       keyframes: {
         "accordion-down": {
           from: {
