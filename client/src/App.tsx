@@ -4,7 +4,10 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Home from "@/pages/Home";
+import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Voting from "@/pages/Voting";
 import Results from "@/pages/Results";
@@ -14,11 +17,28 @@ import NotFound from "@/pages/not-found";
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={Login} />
       <Route path="/" component={Home} />
-      <Route path="/dashboard" component={Dashboard} />
-      <Route path="/voting" component={Voting} />
-      <Route path="/results" component={Results} />
-      <Route path="/events" component={Events} />
+      <Route path="/dashboard">
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/voting">
+        <ProtectedRoute>
+          <Voting />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/results">
+        <ProtectedRoute>
+          <Results />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/events">
+        <ProtectedRoute>
+          <Events />
+        </ProtectedRoute>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -27,12 +47,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider defaultTheme="light">
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </ThemeProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
