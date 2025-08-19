@@ -33,3 +33,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 Button.displayName = "Button";
+
+// Export buttonVariants for compatibility with other components
+export const buttonVariants = {
+  primary: "bg-brand-500 text-white hover:bg-brand-600",
+  secondary: "border hover:bg-black/5 dark:hover:bg-white/5", 
+  ghost: "hover:bg-black/5 dark:hover:bg-white/5",
+};
