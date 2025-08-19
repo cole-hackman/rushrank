@@ -2,18 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Light/Dark tokens - Production Ready */
 :root {
-  /* New Social App Design Tokens - Light */
-  --bg: 220 20% 98%;
-  --card: 0 0% 100%;
-  --pop: 221 83% 53%;           /* brand blue */
-  --text: 224 71% 4%;
-  --text-dim: 224 10% 40%;
-  --stroke: 220 14% 90%;
-  --success: 160 84% 39%;
-  --warn: 38 92% 50%;
-  --danger: 0 84% 60%;
-  
+  --surface: hsl(0 0% 100%);
+  --surface-muted: hsl(210 20% 98%);
+  --text: hsl(222 47% 10%);
+  --text-muted: hsl(222 10% 40%);
+  --ring: hsl(217 91% 60%);
   /* Legacy shadcn tokens (keep for compatibility) */
   --background: hsl(0 0% 100%);
   --foreground: hsl(210 25% 7.8431%);
@@ -63,17 +58,12 @@
   --spacing: 0.25rem;
 }
 
-.dark {
-  /* New Social App Design Tokens - Dark (true dark, not gray-on-black mush) */
-  --bg: 220 18% 8%;
-  --card: 220 14% 12%;
-  --pop: 221 83% 56%;           /* slightly brighter in dark */
-  --text: 0 0% 100%;
-  --text-dim: 220 10% 65%;
-  --stroke: 220 10% 22%;
-  --success: 160 84% 44%;
-  --warn: 38 92% 56%;
-  --danger: 0 84% 64%;
+[data-theme="dark"] {
+  --surface: hsl(222 47% 11%);
+  --surface-muted: hsl(222 47% 13%);
+  --text: hsl(210 40% 98%);
+  --text-muted: hsl(214 14% 65%);
+  --ring: hsl(217 91% 70%);
   
   /* Legacy shadcn tokens (keep for compatibility) */
   --background: hsl(0 0% 0%);
@@ -122,17 +112,16 @@
   --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
 }
 
-/* Global reset and base styles */
 html, body, #root { 
   height: 100%; 
 }
 
-body {
-  background: hsl(var(--bg));
-  color: hsl(var(--text));
+body { 
+  background: var(--surface); 
+  color: var(--text); 
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv02","cv03","cv04","cv11"; /* Inter */
 }
 
 @layer base {
