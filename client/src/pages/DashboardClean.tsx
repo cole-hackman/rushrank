@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Plus, Calendar, BarChart3 } from 'lucide-react';
+import { Plus, Calendar, BarChart3, ArrowLeft } from 'lucide-react';
+import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 export default function DashboardClean() {
   const [showAddPNM, setShowAddPNM] = useState(false);
+  const [, setLocation] = useLocation();
 
   return (
     <div className="min-h-screen bg-background">
@@ -15,12 +17,20 @@ export default function DashboardClean() {
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setLocation('/')}
+              className="p-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
             <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-semibold text-sm">
               RR
             </div>
             <div className="leading-tight">
               <div className="text-lg font-semibold text-foreground">RushRank</div>
-              <div className="text-xs text-muted-foreground">Digital Rush Voting Platform</div>
+              <div className="text-xs text-muted-foreground">Admin Dashboard</div>
             </div>
           </div>
           <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 grid place-items-center font-medium text-sm">
