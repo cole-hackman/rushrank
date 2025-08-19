@@ -1,0 +1,59 @@
+Backend Language
+
+Go all‑in on FastAPI and retire Express. It’s early—keeping two servers adds complexity with no real benefit.
+
+Migration Strategy
+
+Full replacement (greenfield). Stand up FastAPI with Supabase auth + the new schema, then point the frontend to the new API base URL. No side‑by‑side.
+
+Authentication Priority
+
+Start with Email Magic Link / OTP only. It’s frictionless and fastest to ship. Add Google OAuth later (nice‑to‑have, not MVP‑critical).
+
+Chapter Management
+
+Bootstrap via seed + invite flow:
+
+Create a single system admin (your email) via a seed SQL script.
+
+That system admin creates a Chapter and designates the first Chapter Admin (by email).
+
+Chapter Admin invites members by email (or enables a domain allowlist like @university.edu).
+
+Roles: admin | member | observer. Only admins can create rounds, import PNMs, export data.
+
+This keeps control tight and avoids accidental open signups.
+
+Data Migration
+
+If your existing data is toy/demo, start fresh with the new schema (faster, cleaner).
+
+If you have meaningful test or pilot data, write a one‑off migration script:
+
+Export old PNMs/votes → map to new tables (chapters, pnms, rounds, votes, notes).
+
+Generate missing foreign keys (e.g., set chapter_id for PNMs from your default chapter).
+
+Validate referential integrity, then import.
+
+Concrete next steps for the agent
+
+Stand up FastAPI with Supabase JWT verification (JWKS), and envs set in Replit.
+
+Create schema + RLS (chapters, users, memberships, pnms, rounds, votes, events, notes; RLS by chapter_id via memberships).
+
+Seed script:
+
+Create system admin user (your email in users + memberships with role='admin' on a bootstrap “RushRank HQ” chapter).
+
+Minimal endpoints:
+
+GET /api/me
+
+GET /api/pnms?chapter_id=...
+
+POST /api/rounds/{round_id}/votes (score mode)
+
+Frontend: switch API base to FastAPI; use Supabase magic link auth; protect routes.
+
+If you later want Google OAuth or a migration script, we’ll add it—after MVP auth, voting, and PNM list are stable.
