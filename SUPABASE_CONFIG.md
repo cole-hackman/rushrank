@@ -18,14 +18,14 @@ Your current Replit URL should be something like:
 
 **Site URL:**
 ```
-https://your-repl-name-username.replit.app
+https://6b46e86e-e710-4e93-9a1c-437c1e10f233-00-30bc73uxafgnw.spock.replit.dev
 ```
 
 **Redirect URLs:**
 ```
-https://your-repl-name-username.replit.app/**
-https://your-repl-name-username.replit.app/auth/callback
-https://your-repl-name-username.replit.app/dashboard
+https://6b46e86e-e710-4e93-9a1c-437c1e10f233-00-30bc73uxafgnw.spock.replit.dev/**
+https://6b46e86e-e710-4e93-9a1c-437c1e10f233-00-30bc73uxafgnw.spock.replit.dev/auth/callback
+https://6b46e86e-e710-4e93-9a1c-437c1e10f233-00-30bc73uxafgnw.spock.replit.dev/dashboard
 ```
 
 ### Step 3: Test the Fix

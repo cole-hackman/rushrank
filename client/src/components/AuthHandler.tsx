@@ -13,8 +13,12 @@ export function AuthHandler() {
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token');
+      const authType = hashParams.get('type');
       
-      if (accessToken && refreshToken && !user) {
+      console.log('Auth handler check:', { accessToken: !!accessToken, refreshToken: !!refreshToken, authType, currentPath: location });
+      
+      if (accessToken && refreshToken && authType === 'magiclink') {
+        console.log('Processing magic link authentication...');
         try {
           const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
@@ -25,8 +29,9 @@ export function AuthHandler() {
             console.error('Auth callback error:', error);
             setLocation('/login?error=auth_failed');
           } else if (data.session) {
-            // Clean up URL
-            window.location.hash = '';
+            console.log('Session created successfully:', data.user?.email);
+            // Clean up URL hash
+            window.history.replaceState(null, '', window.location.pathname);
             // Redirect to dashboard
             setLocation('/dashboard');
           }
@@ -37,8 +42,9 @@ export function AuthHandler() {
       }
     };
 
+    // Run auth callback check
     handleAuthCallback();
-  }, [setLocation, user]);
+  }, [setLocation, location]);
 
   return null;
 }

@@ -19,36 +19,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Handle initial session and auth callback
+    // Handle initial session
     const handleAuth = async () => {
       try {
-        // Check for auth callback in URL hash
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get('access_token')
-        const refreshToken = hashParams.get('refresh_token')
-        
-        if (accessToken && refreshToken) {
-          // Set session from URL params
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          })
-          
-          if (error) {
-            console.error('Auth callback error:', error)
-          } else if (data.session) {
-            setSession(data.session)
-            setUser(data.session.user)
-            // Clean up URL and redirect to dashboard
-            window.location.hash = ''
-            window.location.pathname = '/dashboard'
-          }
-        } else {
-          // Get existing session
-          const { data: { session } } = await supabase.auth.getSession()
-          setSession(session)
-          setUser(session?.user ?? null)
-        }
+        // Get existing session first
+        const { data: { session } } = await supabase.auth.getSession()
+        setSession(session)
+        setUser(session?.user ?? null)
+        console.log('Initial session check:', session?.user?.email || 'No user')
       } catch (error) {
         console.error('Auth initialization error:', error)
       } finally {
@@ -61,7 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state change:', event, session?.user?.email || 'No user')
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
