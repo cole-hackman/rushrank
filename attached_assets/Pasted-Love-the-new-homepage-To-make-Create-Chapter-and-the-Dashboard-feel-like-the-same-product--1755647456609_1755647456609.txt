@@ -1,0 +1,326 @@
+Love the new homepage! To make **Create Chapter** and the **Dashboard** feel like the same product, here’s a tight, copy-pasteable plan with code.
+
+---
+
+# 1) Theme unification (one source of truth)
+
+**tailwind.config.ts**
+
+```ts
+// unify colors, radius, shadows
+extend: {
+  colors: {
+    rr: {
+      bg:   "#0e0e0f",      // page background
+      surface: "#17181a",   // cards, panels
+      border: "rgba(255,255,255,.08)",
+      text:  "#ffffff",
+      muted: "rgba(255,255,255,.70)",
+      // orange accent
+      accent:       "#ff7a18",
+      accentDark:   "#ff5418",
+      accentFaint:  "rgba(255,122,24,.15)",
+    }
+  },
+  borderRadius: { md: "12px", lg: "18px", xl: "22px" },
+  boxShadow: {
+    rr: "0 10px 30px rgba(0,0,0,.35)",
+    rrGlow: "0 0 0 1px rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35)"
+  }
+}
+```
+
+**globals.css**
+
+```css
+:root{
+  --bg: var(--rr-bg, #0e0e0f);
+  --surface: var(--rr-surface, #17181a);
+  --border: var(--rr-border, rgba(255,255,255,.08));
+  --text: var(--rr-text, #fff);
+  --muted: var(--rr-muted, rgba(255,255,255,.7));
+  --accent: var(--rr-accent, #ff7a18);
+  --accent-dark: var(--rr-accent-dark, #ff5418);
+}
+html,body{ background: var(--bg); color: var(--text); }
+```
+
+---
+
+# 2) Reusable UI atoms (shadcn wrappers)
+
+**Button.tsx**
+
+```tsx
+export function PrimaryButton(props: JSX.IntrinsicElements["button"]) {
+  return (
+    <button
+      {...props}
+      className={
+        "inline-flex items-center justify-center rounded-full px-5 py-3 font-medium text-white " +
+        "bg-gradient-to-r from-rr-accent to-rr-accentDark hover:opacity-90 focus:outline-none " +
+        "focus:ring-2 focus:ring-rr-accent/40 " + (props.className ?? "")
+      }
+    />
+  );
+}
+
+export function SecondaryButton(props: JSX.IntrinsicElements["button"]) {
+  return (
+    <button
+      {...props}
+      className={
+        "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm " +
+        "bg-white/5 border border-white/15 text-white hover:bg-white/10 " + (props.className ?? "")
+      }
+    />
+  );
+}
+```
+
+**Card.tsx**
+
+```tsx
+export function Card({children, className=""}:{children:React.ReactNode;className?:string}) {
+  return (
+    <div className={`rounded-2xl bg-rr-surface/95 border border-rr-border shadow-rrGlow ${className}`}>
+      {children}
+    </div>
+  );
+}
+export const CardHeader = ({title, subtitle}:{title:string;subtitle?:string}) => (
+  <div className="p-6 border-b border-rr-border">
+    <h3 className="text-xl font-semibold">{title}</h3>
+    {subtitle && <p className="text-rr-muted mt-1">{subtitle}</p>}
+  </div>
+);
+export const CardBody = ({children}:{children:React.ReactNode}) => (
+  <div className="p-6">{children}</div>
+);
+```
+
+Use these everywhere (landing, learn-more, dashboard).
+
+---
+
+# 3) Create Chapter page (matches homepage)
+
+**CreateChapter.tsx**
+
+```tsx
+import { PrimaryButton, SecondaryButton } from "@/components/ui/Button";
+import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { useForm } from "react-hook-form";
+import { z } from "zod"; import { zodResolver } from "@hookform/resolvers/zod";
+
+const schema = z.object({
+  chapterName: z.string().min(2),
+  university: z.string().min(2),
+  email: z.string().email(),
+  logo: z.any().optional(),
+});
+
+export default function CreateChapter() {
+  const { register, handleSubmit, formState:{errors,isSubmitting} } =
+    useForm({ resolver: zodResolver(schema) });
+
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-20">
+      <header className="text-center mb-12">
+        <h1 className="text-4xl md:text-5xl font-extrabold">Create your chapter</h1>
+        <p className="text-rr-muted mt-3 max-w-2xl mx-auto">
+          Set up RushRank for your house in minutes. Invite exec, import PNMs, and start your first event.
+        </p>
+      </header>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {/* Left: form */}
+        <Card className="md:col-span-2">
+          <CardHeader title="Chapter details" subtitle="You can change these later in Settings." />
+          <CardBody>
+            <form
+              onSubmit={handleSubmit(() => {/* submit via TanStack mutation */})}
+              className="grid gap-5"
+            >
+              <div>
+                <label className="block text-sm text-rr-muted mb-1">Chapter name</label>
+                <input {...register("chapterName")}
+                  className="w-full rounded-xl bg-white/5 border border-rr-border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-rr-accent/40" />
+                {errors.chapterName && <p className="text-red-400 text-xs mt-1">Required</p>}
+              </div>
+              <div>
+                <label className="block text-sm text-rr-muted mb-1">University</label>
+                <input {...register("university")}
+                  className="w-full rounded-xl bg-white/5 border border-rr-border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-rr-accent/40" />
+              </div>
+              <div>
+                <label className="block text-sm text-rr-muted mb-1">Admin email</label>
+                <input {...register("email")}
+                  className="w-full rounded-xl bg-white/5 border border-rr-border px-4 py-3" />
+              </div>
+              <div>
+                <label className="block text-sm text-rr-muted mb-1">Logo (optional)</label>
+                <input type="file" accept="image/*" {...register("logo")}
+                  className="w-full rounded-xl bg-white/5 border border-rr-border px-4 py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:text-white" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <PrimaryButton disabled={isSubmitting}>Create Chapter</PrimaryButton>
+                <SecondaryButton type="button">Invite Exec</SecondaryButton>
+              </div>
+            </form>
+          </CardBody>
+        </Card>
+
+        {/* Right: helpful panel */}
+        <Card>
+          <CardHeader title="What you’ll set up" />
+          <CardBody>
+            <ul className="space-y-3 text-sm text-rr-muted">
+              <li>• Roles & permissions (admin, exec, member)</li>
+              <li>• Default rush stages & voting rules</li>
+              <li>• Import PNMs via CSV or Google Sheet</li>
+              <li>• First event with QR check-ins</li>
+            </ul>
+            <div className="mt-6 rounded-xl p-4 bg-rr-accentFaint">
+              <div className="text-sm">Tip: you can switch to a demo chapter any time.</div>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Steps (reusing homepage style) */}
+      <section className="mt-14 grid md:grid-cols-4 gap-4">
+        {["Create chapter","Invite exec","Import PNMs","Start first event"].map((t,i)=>(
+          <div key={t} className="rounded-2xl bg-white/5 border border-rr-border p-4">
+            <div className="text-xs text-rr-muted">Step {i+1}</div>
+            <div className="mt-1 font-semibold">{t}</div>
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}
+```
+
+**Nice to add (functionally):**
+
+* “Use Demo Chapter” toggle (creates seeded data)
+* CSV template download
+* Magic-link invites for execs (Supabase)
+* Live validation + optimistic create (TanStack Query)
+
+---
+
+# 4) Dashboard shell (dark theme + orange accents)
+
+**Dashboard.tsx**
+
+```tsx
+import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { PrimaryButton, SecondaryButton } from "@/components/ui/Button";
+
+export default function Dashboard() {
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-10">
+      <section className="grid md:grid-cols-4 gap-6">
+        <Card className="md:col-span-1">
+          <CardBody>
+            <div className="text-sm text-rr-muted">Total PNMs</div>
+            <div className="text-3xl font-bold mt-1">0</div>
+          </CardBody>
+        </Card>
+        <Card className="md:col-span-1">
+          <CardBody>
+            <div className="text-sm text-rr-muted">Active voters</div>
+            <div className="text-3xl font-bold mt-1">0</div>
+          </CardBody>
+        </Card>
+        <Card className="md:col-span-1">
+          <CardBody>
+            <div className="text-sm text-rr-muted">Upcoming events</div>
+            <div className="text-3xl font-bold mt-1">0</div>
+          </CardBody>
+        </Card>
+        <Card className="md:col-span-1">
+          <CardBody>
+            <div className="text-sm text-rr-muted">System status</div>
+            <div className="mt-2 inline-flex items-center gap-2 text-sm">
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500" /> All good
+            </div>
+          </CardBody>
+        </Card>
+      </section>
+
+      <section className="grid md:grid-cols-3 gap-6 mt-6">
+        <Card>
+          <CardHeader title="Add new PNM" subtitle="Upload photo and details" />
+          <CardBody>
+            <PrimaryButton>+ Add PNM</PrimaryButton>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Events" subtitle="Track attendance" />
+          <CardBody>
+            <SecondaryButton>Open</SecondaryButton>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Results" subtitle="View analytics" />
+          <CardBody>
+            <SecondaryButton>Open</SecondaryButton>
+          </CardBody>
+        </Card>
+      </section>
+
+      <section className="mt-8">
+        <Card>
+          <CardHeader title="Potential New Members" subtitle="Search and manage" />
+          <CardBody>
+            <input
+              placeholder="Search PNMs by name, major, or hometown…"
+              className="w-full rounded-xl bg-white/5 border border-rr-border px-4 py-3 mb-6"
+            />
+            <div className="rounded-xl border border-dashed border-rr-border p-10 text-center">
+              <div className="text-rr-muted mb-4">No PNMs yet</div>
+              <PrimaryButton>+ Add PNM</PrimaryButton>
+            </div>
+          </CardBody>
+        </Card>
+      </section>
+    </main>
+  );
+}
+```
+
+**Visual parity with homepage:**
+
+* Dark surfaces, subtle borders
+* Rounded 18–22px cards
+* Orange gradient for primary actions
+* Typography scale identical to landing
+
+---
+
+# 5) Routing + nav consistency
+
+* Use **the same sticky navbar** on public + app pages.
+* In the app, replace “Get Started” with chapter switcher + profile, but keep shape and spacing.
+
+---
+
+# 6) Quick implementation checklist
+
+* [ ] Add tokens to Tailwind + globals
+* [ ] Create `Button` and `Card` wrappers; refactor pages to use them
+* [ ] Update Create Chapter page with hero + card layout above
+* [ ] Port Dashboard widgets into `Card` grid (keep same spacing as homepage)
+* [ ] Replace any default shadcn colors with `bg-white/5 border-white/10` surfaces
+* [ ] Use Framer Motion for subtle hover/lift (`whileHover={{ y:-2 }}` on cards)
+* [ ] Ensure focus states (rings) use orange accent for a11y
+
+---
+
+If you drop these files into your project and swap imports on those pages, they’ll immediately match your homepage look. Want me to tailor the code to your exact file paths/components (e.g., your existing `WelcomeClean`, `DashboardClean` names)? I can refactor to your structure in one go.

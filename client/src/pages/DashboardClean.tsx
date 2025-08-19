@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import { Plus, Calendar, BarChart3, ArrowLeft } from 'lucide-react';
+import { Plus, Calendar, BarChart3, ArrowLeft, Search } from 'lucide-react';
 import { useLocation } from 'wouter';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/unified-button';
+import { UnifiedCard, UnifiedCardHeader, UnifiedCardBody } from '@/components/ui/unified-card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function DashboardClean() {
@@ -12,31 +10,31 @@ export default function DashboardClean() {
   const [, setLocation] = useLocation();
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setLocation('/')}
-              className="p-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-accent-500 to-accent-600 text-white font-semibold text-sm">
-              RR
+    <div className="min-h-screen bg-rr-bg">
+      {/* Sticky Navigation */}
+      <header className="sticky top-4 z-50">
+        <nav className="mx-auto max-w-6xl rounded-2xl bg-black/40 backdrop-blur px-4 py-3 border border-white/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setLocation('/')}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4 text-white" />
+              </button>
+              <div className="h-7 w-7 rounded-xl bg-gradient-to-r from-rr-accent to-rr-accentDark text-white grid place-items-center font-bold text-sm">
+                RR
+              </div>
+              <span className="font-semibold text-white">RushRank</span>
             </div>
-            <div className="leading-tight">
-              <div className="text-lg font-semibold text-foreground">RushRank</div>
-              <div className="text-xs text-muted-foreground">Admin Dashboard</div>
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-white/70">Chapter Dashboard</div>
+              <div className="h-8 w-8 rounded-full bg-rr-accent/20 text-rr-accent grid place-items-center font-medium text-sm">
+                CO
+              </div>
             </div>
           </div>
-          <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 grid place-items-center font-medium text-sm">
-            CO
-          </div>
-        </div>
+        </nav>
       </header>
 
       {/* Main Content */}

@@ -46,7 +46,7 @@ export default function Landing() {
                 Log in
               </button>
               <button 
-                onClick={handleGetStarted}
+                onClick={() => setLocation('/create-chapter')}
                 className="rounded-full px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-accent-500 to-accent-600 shadow-md hover:opacity-90 transition-all"
               >
                 Get Started
@@ -67,7 +67,7 @@ export default function Landing() {
         </p>
         <div className="mt-10 flex flex-wrap justify-center gap-4">
           <button 
-            onClick={handleGetStarted}
+            onClick={() => setLocation('/create-chapter')}
             className="rounded-xl px-6 py-3 text-white bg-gradient-to-r from-accent-500 to-accent-600 font-semibold hover:opacity-90 transition-all hover:scale-105 shadow-lg"
           >
             Create Chapter

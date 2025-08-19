@@ -18,9 +18,7 @@ export default function WelcomeClean() {
     setJoinOpen(false);
   };
 
-  const handleOpenDashboard = () => {
-    setLocation('/dashboard-clean');
-  };
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,7 +80,10 @@ export default function WelcomeClean() {
                 <p className="text-sm text-muted-foreground">
                   For rush chairs and admins only.
                 </p>
-                <Button variant="secondary" onClick={handleOpenDashboard}>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setLocation('/unified-dashboard')}
+                >
                   Open Dashboard
                 </Button>
               </div>
