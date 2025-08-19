@@ -7,10 +7,17 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+        body: ['Inter', 'system-ui', 'sans-serif'],
         serif: ["var(--font-serif)"],
         mono: ["var(--font-mono)"],
       },
       colors: {
+        // RushRank brand colors
+        'rr-surface': 'hsl(240, 10%, 8%)',
+        'rr-accent': 'hsl(100, 85%, 55%)', 
+        'rr-secondary': 'hsl(270, 70%, 60%)',
+        'rr-card': 'hsl(0, 0%, 100%, 0.06)',
         brand: {
           50:  '#eef6ff',
           100: '#d9ebff',

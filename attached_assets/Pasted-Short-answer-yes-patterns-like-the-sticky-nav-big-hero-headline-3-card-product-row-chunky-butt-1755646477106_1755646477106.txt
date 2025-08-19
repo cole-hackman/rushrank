@@ -1,0 +1,208 @@
+Short answer: yes—*patterns* like the sticky nav, big hero headline, 3-card product row, chunky buttons, and section rhythm are fair game. Don’t copy their wording, illustrations, logos, or exact code. Make it feel “RushRank,” not a skin.
+
+Here’s a fast blueprint you can drop into React + Tailwind (or adapt to your stack) that mirrors the structure, not the brand.
+
+---
+
+# Design guardrails
+
+**Mimic:** layout, spacing scale, component types (nav → hero → 3 cards → how-it-works steps → email CTA → footer), soft radius, subtle glow/shadows, big H1, pill buttons, icon + label cards.
+**Avoid:** identical copy, identical gradients, exact iconography/illustrations, 1:1 paddings/metrics.
+
+---
+
+# Tokens (feel modern, not “AI-ish”)
+
+```css
+:root{
+  --rr-radius:16px;
+  --rr-radius-lg:22px;
+  --rr-shadow:0 8px 24px rgba(0,0,0,.12);
+  --rr-card-bg: hsl(0 0% 100% / .06);      /* tweak to your palette */
+  --rr-surface: hsl(240 10% 8%);           /* page bg */
+  --rr-text: hsl(0 0% 100%);
+  --rr-muted: hsl(0 0% 85%);
+}
+```
+
+---
+
+# Sticky Nav
+
+```jsx
+export default function Nav() {
+  return (
+    <header className="sticky top-4 z-50">
+      <nav className="mx-auto max-w-6xl rounded-2xl bg-black/40 backdrop-blur px-4 py-3 border border-white/10">
+        <div className="flex items-center justify-between">
+          <a className="flex items-center gap-2 font-semibold text-white">
+            <div className="h-7 w-7 rounded-xl bg-white/10 grid place-items-center">RR</div>
+            RushRank
+          </a>
+          <ul className="hidden md:flex items-center gap-6 text-sm text-white/80">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how">How it works</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
+          <div className="flex items-center gap-3">
+            <a href="/login" className="text-white/80 text-sm">Log in</a>
+            <a href="/signup" className="rounded-full px-4 py-2 text-sm font-medium bg-white text-black">
+              Get Started
+            </a>
+          </div>
+        </div>
+      </nav>
+    </header>
+  );
+}
+```
+
+---
+
+# Hero (big headline + 3 CTA pills)
+
+```jsx
+function Hero(){
+  return (
+    <section className="mx-auto max-w-6xl px-4 py-24 text-center">
+      <h1 className="mx-auto max-w-3xl text-5xl md:text-7xl font-extrabold tracking-tight text-white">
+        Rush management that <span className="text-white/70">just works.</span>
+      </h1>
+      <p className="mt-5 text-white/70 max-w-2xl mx-auto">
+        Track attendance, run votes, and stay organized—built for fraternities, free for students.
+      </p>
+      <div className="mt-10 flex flex-wrap justify-center gap-4">
+        <a className="rounded-xl px-5 py-3 bg-white text-black font-medium">Create Chapter</a>
+        <a className="rounded-xl px-5 py-3 bg-white/10 border border-white/15 text-white">See Demo</a>
+        <a className="rounded-xl px-5 py-3 bg-white/10 border border-white/15 text-white">Docs</a>
+      </div>
+    </section>
+  );
+}
+```
+
+---
+
+# “Three Cards” product row (Attendance / Voting / Analytics)
+
+```jsx
+const features = [
+  {
+    title:"Attendance",
+    points:["QR or tap check-ins","Event caps & notes","PNM timelines"]
+  },
+  {
+    title:"Voting",
+    points:["Live sessions","Weighted or blind ballots","Auto-tallies & tie rules"]
+  },
+  {
+    title:"Analytics",
+    points:["Event heatmaps","Member participation","PNM funnel insights"]
+  },
+];
+
+function FeatureCards(){
+  return (
+    <section id="features" className="mx-auto max-w-6xl px-4 pb-20">
+      <h2 className="text-center text-3xl md:text-4xl font-bold text-white mb-10">
+        Built for rush week chaos
+      </h2>
+      <div className="grid md:grid-cols-3 gap-6">
+        {features.map(f=>(
+          <div key={f.title}
+               className="rounded-2xl p-6 bg-white/5 border border-white/10 shadow-[var(--rr-shadow)]">
+            <div className="h-10 w-10 rounded-xl bg-white/10 grid place-items-center mb-4">★</div>
+            <h3 className="text-xl font-semibold text-white">{f.title}</h3>
+            <ul className="mt-4 space-y-2 text-white/80 text-sm">
+              {f.points.map(p=><li key={p} className="flex gap-2"><span>•</span>{p}</li>)}
+            </ul>
+            <button className="mt-6 rounded-lg bg-white text-black px-4 py-2 text-sm font-medium">
+              Learn more
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+```
+
+---
+
+# “How it works” steps
+
+```jsx
+function HowItWorks(){
+  const steps = [
+    ["Create your chapter","Set roles & permissions."],
+    ["Import PNMs","CSV, forms, or manual."],
+    ["Run events","QR check-ins + notes."],
+    ["Vote & decide","Blind ballots, instant results."]
+  ];
+  return (
+    <section id="how" className="mx-auto max-w-5xl px-4 pb-20">
+      <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-10">How it works</h2>
+      <ol className="grid md:grid-cols-2 gap-6">
+        {steps.map(([t,s],i)=>(
+          <li key={t} className="rounded-2xl p-6 bg-white/5 border border-white/10">
+            <div className="text-xs uppercase tracking-wide text-white/50">Step {i+1}</div>
+            <div className="mt-1 text-xl font-semibold text-white">{t}</div>
+            <p className="mt-2 text-white/70 text-sm">{s}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+```
+
+---
+
+# Email CTA + Footer
+
+```jsx
+function CTA(){
+  return (
+    <section className="mx-auto max-w-3xl px-4 py-16 text-center">
+      <h3 className="text-3xl font-bold text-white">Join the early access list</h3>
+      <p className="text-white/70 mt-2">We’ll invite chapters as we scale capacity.</p>
+      <form className="mt-6 flex gap-3 justify-center">
+        <input type="email" placeholder="you@school.edu"
+          className="w-full max-w-md rounded-xl bg-white/10 border border-white/15 px-4 py-3 text-white placeholder-white/40"/>
+        <button className="rounded-xl bg-white text-black px-5 py-3 font-medium">Notify me</button>
+      </form>
+    </section>
+  );
+}
+
+function Footer(){
+  return (
+    <footer className="mx-auto max-w-6xl px-4 py-10 text-white/60 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
+        <div>© {new Date().getFullYear()} RushRank.</div>
+        <ul className="flex gap-6">
+          <li><a href="#">About</a></li>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Terms</a></li>
+        </ul>
+      </div>
+    </footer>
+  );
+}
+```
+
+---
+
+# Make it unmistakably “RushRank”
+
+* **Typography:** pick a single expressive display font for H1 (e.g., Space Grotesk) and a clean text font for UI.
+* **Shape language:** keep generous 16–22px radii + pill buttons for consistency.
+* **Motion:** tiny hover lift on cards (`translate-y-[-2px]`) and focus rings for accessibility.
+* **Content voice:** frat-specific terms (PNM, bid list, IFC, rush chairs).
+* **Icons:** pick one icon set and stick to it (Lucide, Phosphor).
+* **Color:** choose your own brand pair (e.g., deep navy + electric lime) and apply only to accents and buttons.
+
+---
+
+If you want, tell me your stack (Next.js? Tailwind? plain React?) and your current palette, and I’ll tailor these into drop-in components with your brand tokens baked in.

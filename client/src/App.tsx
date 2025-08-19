@@ -10,6 +10,7 @@ import { AuthHandler } from "@/components/AuthHandler";
 import Home from "@/pages/Home";
 
 
+import Landing from "@/pages/Landing";
 import WelcomeClean from "@/pages/WelcomeClean";
 import DashboardClean from "@/pages/DashboardClean";
 import Login from "@/pages/Login";
@@ -31,7 +32,7 @@ function Router() {
       <Route path="/welcome-clean" component={WelcomeClean} />
       <Route path="/dashboard-clean" component={DashboardClean} />
 
-      <Route path="/" component={WelcomeClean} />
+      <Route path="/" component={Landing} />
       <Route path="/dashboard">
         <ProtectedRoute>
           <Dashboard />
