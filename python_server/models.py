@@ -1,7 +1,7 @@
 """
 Pydantic models for RushRank API
 """
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -23,7 +23,7 @@ class Chapter(BaseModel):
     created_at: datetime
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: str
 
 class User(BaseModel):
     id: str

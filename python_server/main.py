@@ -11,9 +11,9 @@ from typing import Optional, Dict, Any
 import logging
 from contextlib import asynccontextmanager
 
-from .auth import get_current_user, verify_token
-from .database import get_db_pool, close_db_pool, set_db_manager
-from .routes import router
+from auth import get_current_user, verify_token
+from database import get_db_pool, close_db_pool, set_db_manager
+from routes import router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

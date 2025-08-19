@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 import logging
 
-from .auth import get_current_user, get_optional_user
-from .models import *
-from .services import (
+from auth import get_current_user, get_optional_user
+from models import *
+from services import (
     UserService, 
     ChapterService, 
     PNMService, 

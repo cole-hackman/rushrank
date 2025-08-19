@@ -2,7 +2,17 @@
 
 ## Overview
 
-RushRank is a mobile-optimized web application designed to streamline fraternity rush voting processes. The platform provides a comprehensive digital solution for managing potential new members (PNMs), conducting real-time voting rounds, and analyzing results. Built as a Progressive Web App (PWA), it combines a React-based frontend with an Express.js backend, featuring real-time communication through WebSockets and secure file storage capabilities.
+RushRank is a mobile-optimized web application designed to streamline fraternity rush voting processes. The platform provides a comprehensive digital solution for managing potential new members (PNMs), conducting real-time voting rounds, and analyzing results. Built as a Progressive Web App (PWA), it combines a React-based frontend with a FastAPI backend, featuring Supabase authentication, multi-tenant architecture, and secure file storage capabilities.
+
+## Recent Changes (January 2025)
+
+### FastAPI Migration Complete
+- **Backend Migration**: Successfully migrated from Express.js to FastAPI with Python 3.11
+- **Authentication**: Integrated Supabase JWT authentication with JWKS verification
+- **Multi-tenancy**: Implemented chapter-based data isolation with Row-Level Security
+- **Enhanced Schema**: Added users, chapters, memberships, events, and notes tables
+- **Security**: Comprehensive RLS policies for data protection and access control
+- **API Testing**: All endpoints tested and working with Pydantic models
 
 ## User Preferences
 
@@ -21,24 +31,29 @@ Preferred communication style: Simple, everyday language.
 - **Mobile-First Design**: Responsive layout optimized for mobile devices
 
 ### Backend Architecture
-- **Runtime**: Node.js with Express.js server framework
-- **Language**: TypeScript with ES modules
-- **Database ORM**: Drizzle ORM with PostgreSQL dialect
-- **Real-time Features**: WebSocket server using 'ws' library for live voting updates
+- **Runtime**: FastAPI with Python 3.11 (migrated from Express.js)
+- **Language**: Python with async/await support
+- **Database**: AsyncPG with PostgreSQL connection pooling
+- **Authentication**: Supabase JWT verification with JWKS validation
+- **Real-time Features**: WebSocket server using 'ws' library for live voting updates (to be migrated)
 - **File Storage**: Google Cloud Storage integration with ACL-based access control
-- **API Design**: RESTful endpoints with JSON responses
-- **Error Handling**: Centralized error middleware with structured responses
+- **API Design**: RESTful FastAPI endpoints with Pydantic models
+- **Error Handling**: FastAPI exception handlers with structured responses
+- **Multi-tenancy**: Chapter-based data isolation with Row-Level Security
 
 ### Data Storage Solutions
-- **Primary Database**: Neon serverless PostgreSQL database
-- **Connection Pooling**: @neondatabase/serverless with connection pool management
-- **Schema Management**: Drizzle migrations in /migrations directory
+- **Primary Database**: Neon serverless PostgreSQL database (Supabase-compatible)
+- **Connection Pooling**: AsyncPG with connection pool management
+- **Schema Management**: SQL migrations in /supabase directory with RLS policies
 - **Object Storage**: Google Cloud Storage for photo uploads with custom ACL policies
+- **Multi-tenancy**: Chapter-based data isolation with memberships table
 
 ### Authentication and Authorization
-- **Session-based Authentication**: Temporary voter IDs stored in sessionStorage
+- **Supabase Authentication**: JWT-based auth with magic link/email OTP
+- **JWT Verification**: Server-side validation against Supabase JWKS endpoint
+- **Multi-tenant Access**: Chapter-based memberships with admin/member/observer roles
+- **Row-Level Security**: Comprehensive RLS policies for data isolation
 - **Room-based Access Control**: 6-character room codes for joining voting rounds
-- **Role-based Permissions**: Admin (Rush Chair) and Participant (Brother) roles
 - **Object-level Security**: Custom ACL system for file access control
 
 ### Real-time Communication
@@ -48,9 +63,14 @@ Preferred communication style: Simple, everyday language.
 - **Message Types**: Round state updates, PNM changes, vote updates, and round completion
 
 ### Core Data Models
+- **Users**: Supabase auth users mirrored in application database
+- **Chapters**: Organizations/fraternities with domain allowlists
+- **Memberships**: User-chapter relationships with role-based access
 - **PNMs**: Comprehensive profiles with personal information, tags, and photo storage
-- **Voting Rounds**: Session management with room codes, PNM selection, and state tracking
-- **Votes**: Individual voting records with voter identification and favorite marking
+- **Voting Rounds**: Session management with room codes, PNM selection, and state tracking  
+- **Votes**: Individual voting records with authenticated voter IDs and scoring
+- **Events**: Rush events with attendance tracking capabilities
+- **Notes**: Per-PNM notes with author tracking and tag system
 - **Analytics**: Aggregated voting statistics and result calculations
 
 ### Mobile Optimization
@@ -62,11 +82,20 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### Cloud Services
+- **Supabase**: Authentication service with JWT verification and user management
 - **Neon Database**: Serverless PostgreSQL hosting with connection pooling
 - **Google Cloud Storage**: Object storage for PNM photos with ACL management
 - **Replit Infrastructure**: Development and deployment platform integration
 
-### Third-party Libraries
+### Backend Dependencies
+- **FastAPI**: Modern Python web framework with async support
+- **AsyncPG**: PostgreSQL async database driver with connection pooling
+- **Pydantic**: Data validation and serialization with type hints
+- **Python-JOSE**: JWT token verification library
+- **Uvicorn**: ASGI server for FastAPI applications
+- **HTTPX**: Async HTTP client for external API calls
+
+### Frontend Dependencies
 - **UI Framework**: React ecosystem with TypeScript support
 - **Component Library**: Radix UI primitives with shadcn/ui styling
 - **File Uploads**: Uppy with AWS S3 integration for photo management
@@ -75,7 +104,7 @@ Preferred communication style: Simple, everyday language.
 - **Development Tools**: Vite build system with TypeScript configuration
 
 ### Development Dependencies
-- **Build Tools**: Vite for frontend bundling, esbuild for server compilation
-- **Database Tools**: Drizzle Kit for schema migrations and management
-- **Type Safety**: TypeScript with strict configuration across frontend and backend
-- **Code Quality**: PostCSS for CSS processing with Tailwind integration
+- **Build Tools**: Vite for frontend bundling, Python packaging for backend
+- **Database Tools**: SQL migrations for schema management with RLS
+- **Type Safety**: TypeScript for frontend, Python type hints for backend
+- **Testing**: Pytest for backend testing, React Testing Library for frontend

@@ -7,8 +7,8 @@ from fastapi import HTTPException
 import secrets
 import string
 
-from .database import get_db
-from .models import *
+from database import get_db
+from models import *
 
 class UserService:
     """User management service"""
