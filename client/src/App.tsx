@@ -13,6 +13,8 @@ import Home from "@/pages/Home";
 import Landing from "@/pages/Landing";
 import WelcomeClean from "@/pages/WelcomeClean";
 import DashboardClean from "@/pages/DashboardClean";
+import CreateChapter from "@/pages/CreateChapter";
+import UnifiedDashboard from "@/pages/UnifiedDashboard";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
 import AuthRedirect from "@/pages/AuthRedirect";
@@ -31,6 +33,8 @@ function Router() {
 
       <Route path="/welcome-clean" component={WelcomeClean} />
       <Route path="/dashboard-clean" component={DashboardClean} />
+      <Route path="/create-chapter" component={CreateChapter} />
+      <Route path="/unified-dashboard" component={UnifiedDashboard} />
 
       <Route path="/" component={Landing} />
       <Route path="/dashboard">

@@ -13,12 +13,17 @@ export default {
         mono: ["var(--font-mono)"],
       },
       colors: {
-        // RushRank brand colors - Updated with orange accent
-        'rr-surface': 'hsl(240, 10%, 8%)',
-        'rr-accent': 'hsl(25, 95%, 55%)', // Orange accent
-        'rr-accent-dark': 'hsl(15, 90%, 50%)', // Darker orange for gradients
-        'rr-secondary': 'hsl(270, 70%, 60%)',
-        'rr-card': 'hsl(0, 0%, 100%, 0.06)',
+        // RushRank unified design tokens
+        rr: {
+          bg: '#0e0e0f',           // page background
+          surface: '#17181a',      // cards, panels
+          border: 'rgba(255,255,255,.08)',
+          text: '#ffffff',
+          muted: 'rgba(255,255,255,.70)',
+          accent: '#ff7a18',       // orange accent
+          accentDark: '#ff5418',   // darker orange
+          accentFaint: 'rgba(255,122,24,.15)',
+        },
         brand: {
           50:  '#eef6ff',
           100: '#d9ebff',
@@ -35,7 +40,18 @@ export default {
           500: '#ff7a18', // mid orange
           600: '#ff5418', // darker orange
         },
-        // Semantic tokens
+      },
+      extend: {
+        borderRadius: {
+          md: '12px',
+          lg: '18px', 
+          xl: '22px'
+        },
+        boxShadow: {
+          rr: '0 10px 30px rgba(0,0,0,.35)',
+          rrGlow: '0 0 0 1px rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35)'
+        },
+      },
         surface: {
           DEFAULT: 'var(--surface)',
           muted: 'var(--surface-muted)',
