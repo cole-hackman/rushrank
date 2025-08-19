@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Mail, Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Redirect } from 'wouter'
+import { AuthDebug } from '@/components/AuthDebug'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -30,12 +31,13 @@ export default function Login() {
       setEmailSent(true)
       toast({
         title: "Check your email",
-        description: "We've sent you a magic link to sign in.",
+        description: "We've sent you a magic link to sign in. Click the link in your email to complete authentication.",
       })
     } catch (error: any) {
+      console.error('Magic link sign in error:', error)
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to send magic link",
         variant: "destructive",
       })
     } finally {
@@ -114,6 +116,7 @@ export default function Login() {
           </div>
         </CardContent>
       </Card>
+      <AuthDebug />
     </div>
   )
 }
