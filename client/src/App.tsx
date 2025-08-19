@@ -8,9 +8,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AuthHandler } from "@/components/AuthHandler";
 import Home from "@/pages/Home";
-import HomeNew from "@/pages/HomeNew";
-import WelcomeNew from "@/pages/WelcomeNew";
-import DashboardNew from "@/pages/DashboardNew";
+
+
 import WelcomeClean from "@/pages/WelcomeClean";
 import DashboardClean from "@/pages/DashboardClean";
 import Login from "@/pages/Login";
@@ -28,11 +27,10 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/auth/callback" component={AuthCallback} />
       <Route path="/auth/redirect" component={AuthRedirect} />
-      <Route path="/welcome-new" component={WelcomeNew} />
-      <Route path="/dashboard-new" component={DashboardNew} />
+
       <Route path="/welcome-clean" component={WelcomeClean} />
       <Route path="/dashboard-clean" component={DashboardClean} />
-      <Route path="/home-new" component={HomeNew} />
+
       <Route path="/" component={WelcomeClean} />
       <Route path="/dashboard">
         <ProtectedRoute>
