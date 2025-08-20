@@ -10,11 +10,13 @@ const buttonVariants = cva(
         primary: "bg-brand-500 text-white hover:bg-brand-600",
         secondary: "border hover:bg-black/5 dark:hover:bg-white/5",
         ghost: "hover:bg-black/5 dark:hover:bg-white/5",
+        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
       },
       size: {
         sm: "px-3 py-1.5 text-sm",
         md: "px-4 py-2.5 text-sm",
         lg: "px-6 py-3 text-base",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: {
@@ -24,7 +26,7 @@ const buttonVariants = cva(
   }
 );
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant, size, className, ...props }, ref) => {
