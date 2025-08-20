@@ -22,7 +22,7 @@ export function FeatureCard({
 }: FeatureCardProps) {
   return (
     <div className="rounded-2xl p-6 bg-rr-card border border-white/10 shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 group">
-      <div className={`h-12 w-12 rounded-xl bg-${iconColor.replace('text-', '')}/20 ${iconColor} grid place-items-center mb-4 group-hover:scale-110 transition-transform`}>
+      <div className={`h-12 w-12 rounded-xl bg-white/10 ${iconColor} grid place-items-center mb-4 group-hover:scale-110 transition-transform`}>
         <Icon className="h-6 w-6" />
       </div>
       <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
