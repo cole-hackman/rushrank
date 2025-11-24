@@ -15,13 +15,13 @@ export default {
       colors: {
         // RushRank unified design tokens
         rr: {
-          bg: '#0e0e0f',           // page background
-          surface: '#17181a',      // cards, panels
+          bg: '#0e0e0f',
+          surface: '#17181a',
           border: 'rgba(255,255,255,.08)',
           text: '#ffffff',
           muted: 'rgba(255,255,255,.70)',
-          accent: '#ff7a18',       // orange accent
-          accentDark: '#ff5418',   // darker orange
+          accent: '#ff7a18',
+          accentDark: '#ff5418',
           accentFaint: 'rgba(255,122,24,.15)',
         },
         brand: {
@@ -30,28 +30,16 @@ export default {
           200: '#b6d5ff',
           300: '#8fbaff',
           400: '#5f97ff',
-          500: '#3a76ff',    // primary
+          500: '#3a76ff',
           600: '#285adb',
           700: '#2048ad',
           800: '#1d3c8a',
           900: '#182f6b',
         },
         accent: {
-          500: '#ff7a18', // mid orange
-          600: '#ff5418', // darker orange
+          500: '#ff7a18',
+          600: '#ff5418',
         },
-      },
-      extend: {
-        borderRadius: {
-          md: '12px',
-          lg: '18px', 
-          xl: '22px'
-        },
-        boxShadow: {
-          rr: '0 10px 30px rgba(0,0,0,.35)',
-          rrGlow: '0 0 0 1px rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35)'
-        },
-      },
         surface: {
           DEFAULT: 'var(--surface)',
           muted: 'var(--surface-muted)',
@@ -63,8 +51,6 @@ export default {
         ring: {
           DEFAULT: 'var(--ring)',
         },
-        
-        // Legacy tokens for compatibility
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {
@@ -115,7 +101,15 @@ export default {
           ring: "var(--sidebar-ring)",
         },
       },
-
+      borderRadius: {
+        md: '12px',
+        lg: '18px', 
+        xl: '22px'
+      },
+      boxShadow: {
+        rr: '0 10px 30px rgba(0,0,0,.35)',
+        rrGlow: '0 0 0 1px rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35)'
+      },
       keyframes: {
         "accordion-down": {
           from: {

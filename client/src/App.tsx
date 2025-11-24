@@ -1,11 +1,77 @@
-// Minimal App for debugging - removed all complex imports
+import { Switch, Route } from "wouter";
+import { queryClient } from "./lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AuthHandler } from "@/components/AuthHandler";
+import Landing from "@/pages/Landing";
+import WelcomeClean from "@/pages/WelcomeClean";
+import DashboardClean from "@/pages/DashboardClean";
+import CreateChapter from "@/pages/CreateChapter";
+import UnifiedDashboard from "@/pages/UnifiedDashboard";
+import Login from "@/pages/Login";
+import AuthCallback from "@/pages/AuthCallback";
+import AuthRedirect from "@/pages/AuthRedirect";
+import Dashboard from "@/pages/Dashboard";
+import Voting from "@/pages/Voting";
+import Results from "@/pages/Results";
+import Events from "@/pages/Events";
+import NotFound from "@/pages/not-found";
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/login" component={Login} />
+      <Route path="/auth/callback" component={AuthCallback} />
+      <Route path="/auth/redirect" component={AuthRedirect} />
+
+      <Route path="/welcome-clean" component={WelcomeClean} />
+      <Route path="/dashboard-clean" component={DashboardClean} />
+      <Route path="/create-chapter" component={CreateChapter} />
+      <Route path="/unified-dashboard" component={UnifiedDashboard} />
+
+      <Route path="/" component={Landing} />
+      <Route path="/dashboard">
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/voting">
+        <ProtectedRoute>
+          <Voting />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/results">
+        <ProtectedRoute>
+          <Results />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/events">
+        <ProtectedRoute>
+          <Events />
+        </ProtectedRoute>
+      </Route>
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
 
 function App() {
   return (
-    <div style={{ padding: '20px', fontSize: '18px' }}>
-      <h1>App is working! Minimal debug version.</h1>
-      <p>Server should be running on port 5000</p>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ThemeProvider defaultTheme="light">
+          <TooltipProvider>
+            <AuthHandler />
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 
