@@ -20,6 +20,10 @@ import Voting from "@/pages/Voting";
 import Results from "@/pages/Results";
 import Events from "@/pages/Events";
 import NotFound from "@/pages/not-found";
+import DemoOne from "@/pages/DemoOne";
+import TinderSwipeDemo from "@/pages/TinderSwipeDemo";
+import RuixenTableDemo from "@/pages/demo";
+import DemoComponent from "@/pages/demo";
 
 function Router() {
   return (
@@ -32,6 +36,9 @@ function Router() {
       <Route path="/dashboard-clean" component={DashboardClean} />
       <Route path="/create-chapter" component={CreateChapter} />
       <Route path="/unified-dashboard" component={UnifiedDashboard} />
+      <Route path="/demo/shader" component={DemoOne} />
+      <Route path="/tinder-swipe-demo" component={TinderSwipeDemo} />
+      <Route path="/demo" component={DemoComponent} />
 
       <Route path="/" component={Landing} />
       <Route path="/dashboard">
@@ -54,6 +61,7 @@ function Router() {
           <Events />
         </ProtectedRoute>
       </Route>
+      <Route path="/demo/ruixen-table" component={RuixenTableDemo} />
       <Route component={NotFound} />
     </Switch>
   );

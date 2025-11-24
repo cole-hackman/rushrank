@@ -1,0 +1,82 @@
+-- Dev seed data for RushRank
+BEGIN;
+
+-- Chapter
+INSERT INTO chapters (id, name) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Alpha Beta Chapter')
+ON CONFLICT DO NOTHING;
+
+-- Users
+INSERT INTO users (id, chapter_id, email, name, role, is_exec)
+VALUES 
+  ('22222222-2222-2222-2222-222222222221', '11111111-1111-1111-1111-111111111111', 'admin@alphabeta.edu', 'Admin User', 'ADMIN', true),
+  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'exec@alphabeta.edu', 'Exec User', 'EXEC', true),
+  ('22222222-2222-2222-2222-222222222223', '11111111-1111-1111-1111-111111111111', 'brother@alphabeta.edu', 'Brother User', 'BROTHER', false)
+ON CONFLICT DO NOTHING;
+
+-- Allowlist
+INSERT INTO email_allowlist (email, chapter_id, role, active)
+VALUES
+  ('admin@alphabeta.edu', '11111111-1111-1111-1111-111111111111', 'ADMIN', true),
+  ('exec@alphabeta.edu', '11111111-1111-1111-1111-111111111111', 'EXEC', true),
+  ('brother@alphabeta.edu', '11111111-1111-1111-1111-111111111111', 'BROTHER', true)
+ON CONFLICT DO NOTHING;
+
+-- PNMs
+INSERT INTO pnms (id, chapter_id, name, email, phone, hometown, major, year, photo_url, created_by)
+VALUES
+  ('33333333-3333-3333-3333-333333333331', '11111111-1111-1111-1111-111111111111', 'John Carter', 'jc1@ex.com', '555-111-1111', 'Atlanta, GA', 'Business', 'Sophomore', NULL, '22222222-2222-2222-2222-222222222221'),
+  ('33333333-3333-3333-3333-333333333332', '11111111-1111-1111-1111-111111111111', 'Mike Smith', 'ms2@ex.com', '555-222-2222', 'Austin, TX', 'CS', 'Freshman', NULL, '22222222-2222-2222-2222-222222222221'),
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Peter Park', 'pp3@ex.com', '555-333-3333', 'New York, NY', 'Biology', 'Junior', NULL, '22222222-2222-2222-2222-222222222221'),
+  ('33333333-3333-3333-3333-333333333334', '11111111-1111-1111-1111-111111111111', 'Sam Wilson', 'sw4@ex.com', '555-444-4444', 'Denver, CO', 'Economics', 'Senior', NULL, '22222222-2222-2222-2222-222222222221'),
+  ('33333333-3333-3333-3333-333333333335', '11111111-1111-1111-1111-111111111111', 'Chris Lee', 'cl5@ex.com', '555-555-5555', 'Seattle, WA', 'Psychology', 'Freshman', NULL, '22222222-2222-2222-2222-222222222221')
+ON CONFLICT DO NOTHING;
+
+-- Tags
+INSERT INTO tags (id, chapter_id, label, color)
+VALUES
+  ('44444444-4444-4444-4444-444444444441', '11111111-1111-1111-1111-111111111111', 'Athlete', '#4ade80'),
+  ('44444444-4444-4444-4444-444444444442', '11111111-1111-1111-1111-111111111111', 'Legacy', '#60a5fa')
+ON CONFLICT DO NOTHING;
+
+-- Tag mappings
+INSERT INTO pnm_tags (pnm_id, tag_id) VALUES
+  ('33333333-3333-3333-3333-333333333331', '44444444-4444-4444-4444-444444444441'),
+  ('33333333-3333-3333-3333-333333333332', '44444444-4444-4444-4444-444444444442')
+ON CONFLICT DO NOTHING;
+
+-- Event
+INSERT INTO events (id, chapter_id, name, starts_at, location, notes)
+VALUES
+  ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', 'Open House', now() + interval '1 day', 'Chapter House', 'Welcome event')
+ON CONFLICT DO NOTHING;
+
+-- Attendance
+INSERT INTO event_attendance (event_id, pnm_id, checked_in_by_user_id, method)
+VALUES
+  ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333331', '22222222-2222-2222-2222-222222222221', 'SEARCH')
+ON CONFLICT DO NOTHING;
+
+-- Round
+INSERT INTO voting_rounds (id, chapter_id, name, type, status, settings, created_by)
+VALUES
+  ('66666666-6666-6666-6666-666666666666', '11111111-1111-1111-1111-111111111111', 'General Voting 1', 'GENERAL', 'ACTIVE',
+   jsonb_build_object('swipeMode', true, 'anonymous', false, 'allowFavorites', true, 'adminControlled', true, 'timerSecs', 30, 'execWeight', 1.5),
+   '22222222-2222-2222-2222-222222222221')
+ON CONFLICT DO NOTHING;
+
+-- Round PNMs
+INSERT INTO round_pnms (round_id, pnm_id, order_index) VALUES
+  ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333331', 1),
+  ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333332', 2)
+ON CONFLICT DO NOTHING;
+
+-- Votes
+INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite, weight_applied)
+VALUES
+  ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333331', '22222222-2222-2222-2222-222222222221', 'YES', true, 1.5),
+  ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333332', '22222222-2222-2222-2222-222222222223', 'UNKNOWN', false, 1.0)
+ON CONFLICT DO NOTHING;
+
+COMMIT;
+

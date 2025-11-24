@@ -2,6 +2,7 @@
 FastAPI routes for RushRank
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse
 from typing import List, Optional
 import logging
 
@@ -12,7 +13,8 @@ from services import (
     ChapterService, 
     PNMService, 
     VotingService, 
-    EventService
+    EventService,
+    ExportService
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ chapter_service = ChapterService()
 pnm_service = PNMService()
 voting_service = VotingService()
 event_service = EventService()
+export_service = ExportService()
 
 # Auth endpoints
 @router.get("/me", response_model=UserProfile)
@@ -225,6 +228,59 @@ async def mark_attendance(
     
     await chapter_service.verify_membership(current_user["user_id"], event.chapter_id)
     return await event_service.mark_attendance(attendance_data, current_user["user_id"])
+
+# Export endpoints
+@router.get("/exports/pnms.csv")
+async def export_pnms_csv(
+    chapter_id: str = Query(..., description="Chapter ID"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Export PNMs CSV for a chapter"""
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    csv_text = await export_service.export_pnms_csv(chapter_id)
+    return StreamingResponse(
+        iter([csv_text]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="pnms_{chapter_id}.csv"'}
+    )
+
+@router.get("/exports/rounds/{round_id}.csv")
+async def export_round_csv(
+    round_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export round results CSV"""
+    round_obj = await voting_service.get_round(round_id)
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Round not found")
+    await chapter_service.verify_membership(current_user["user_id"], round_obj.chapter_id)
+    csv_text = await export_service.export_round_csv(round_id)
+    return StreamingResponse(
+        iter([csv_text]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="round_{round_id}.csv"'}
+    )
+
+# Back-compat path for current frontend
+@router.get("/rounds/{round_id}/export")
+async def export_round_csv_compat(
+    round_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    return await export_round_csv(round_id, current_user)
+
+@router.post("/exports/pnm-card/{pnm_id}")
+async def generate_pnm_card(
+    pnm_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate a PNM card and return its URL"""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+    url = await export_service.generate_pnm_card(pnm_id)
+    return {"url": url}
 
 # Health check
 @router.get("/health")
