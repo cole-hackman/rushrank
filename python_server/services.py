@@ -9,6 +9,11 @@ import string
 
 from database import get_db
 from models import *
+from io import StringIO, BytesIO
+import csv
+from PIL import Image, ImageDraw
+import os
+import httpx
 
 class UserService:
     """User management service"""
@@ -659,3 +664,134 @@ class EventService:
             checked_in_by=str(row["checked_in_by"]) if row["checked_in_by"] else None,
             notes=row["notes"]
         )
+
+class ExportService:
+    """CSV exports and PNM card generation"""
+    
+    async def export_pnms_csv(self, chapter_id: str) -> str:
+        """Return CSV text for PNMs in a chapter"""
+        db = get_db()
+        query = """
+            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                   COALESCE((
+                       SELECT string_agg(t.label, ',')
+                       FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), '') AS tags,
+                   COALESCE((
+                       SELECT COUNT(*)
+                       FROM attendance a
+                       WHERE a.pnm_id = p.id
+                   ), 0) AS attendance_count,
+                   p.created_at
+            FROM pnms p
+            WHERE p.chapter_id = $1
+            ORDER BY p.name
+        """
+        rows = await db.execute_query(query, chapter_id)
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id","name","major","hometown","year","photo_url","tags","attendance_count","created_at"])
+        for r in rows:
+            writer.writerow([
+                str(r["id"]), r["name"], r["major"], r["hometown"], r["year"],
+                r["photo_url"] or "", r["tags"] or "", r["attendance_count"] or 0, r["created_at"]
+            ])
+        return output.getvalue()
+    
+    async def export_round_csv(self, round_id: str) -> str:
+        """Return CSV text for a round summary"""
+        db = get_db()
+        query = """
+            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.tags,
+                   COUNT(v.id) as vote_count,
+                   COUNT(CASE WHEN v.score >= 7 THEN 1 END) as yes_count,
+                   COUNT(CASE WHEN v.score <= 4 THEN 1 END) as no_count,
+                   COUNT(CASE WHEN v.score BETWEEN 5 AND 6 THEN 1 END) as dont_know_count,
+                   COUNT(CASE WHEN v.is_favorite THEN 1 END) as favorite_count,
+                   CASE WHEN COUNT(v.id) > 0 THEN
+                       ROUND(COUNT(CASE WHEN v.score >= 7 THEN 1 END) * 100.0 / COUNT(v.id), 2)
+                   ELSE 0 END as yes_percentage
+            FROM pnms p
+            LEFT JOIN votes v ON v.pnm_id = p.id AND v.round_id = $1
+            WHERE p.id IN (SELECT UNNEST(selected_pnm_ids) FROM voting_rounds WHERE id = $1)
+            GROUP BY p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.tags
+            ORDER BY yes_percentage DESC, vote_count DESC
+        """
+        rows = await db.execute_query(query, round_id)
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "pnm_id","name","major","hometown","year","photo_url","tags",
+            "vote_count","yes_count","no_count","dont_know_count","favorite_count","yes_percentage"
+        ])
+        for r in rows:
+            writer.writerow([
+                str(r["id"]), r["name"], r["major"], r["hometown"], r["year"],
+                r["photo_url"] or "", ",".join(r["tags"] or []) if isinstance(r["tags"], list) else (r["tags"] or ""),
+                r["vote_count"] or 0, r["yes_count"] or 0, r["no_count"] or 0, r["dont_know_count"] or 0, r["favorite_count"] or 0,
+                float(r["yes_percentage"] or 0.0)
+            ])
+        return output.getvalue()
+    
+    async def generate_pnm_card(self, pnm_id: str) -> str:
+        """Generate a PNM share card image and upload to Supabase Storage. Returns a URL."""
+        db = get_db()
+        row = await db.execute_one("""
+            SELECT p.id, p.name, p.major, p.hometown, p.photo_url, p.created_at
+            FROM pnms p WHERE p.id = $1
+        """, pnm_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="PNM not found")
+        
+        width, height = 900, 1200
+        img = Image.new("RGB", (width, height), color=(255,255,255))
+        draw = ImageDraw.Draw(img)
+        # Header
+        draw.rectangle([(0,0),(width,160)], fill=(58,118,255))
+        draw.text((40,50), "RushRank", fill=(255,255,255))
+        # Photo area
+        photo_box = (100, 200, width-100, 700)
+        if row["photo_url"]:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get(row["photo_url"])
+                    resp.raise_for_status()
+                    pimg = Image.open(BytesIO(resp.content)).convert("RGB")
+                    pimg = pimg.resize((photo_box[2]-photo_box[0], photo_box[3]-photo_box[1]))
+                    img.paste(pimg, (photo_box[0], photo_box[1]))
+            except Exception:
+                draw.rectangle(photo_box, fill=(230,230,230))
+                draw.text((photo_box[0]+20, photo_box[1]+20), "Photo unavailable", fill=(120,120,120))
+        else:
+            draw.rectangle(photo_box, fill=(230,230,230))
+            draw.text((photo_box[0]+20, photo_box[1]+20), "No photo", fill=(120,120,120))
+        # Text fields
+        draw.text((100, 760), f"Name: {row['name']}", fill=(0,0,0))
+        draw.text((100, 820), f"Major: {row['major'] or '-'}", fill=(0,0,0))
+        draw.text((100, 880), f"Hometown: {row['hometown'] or '-'}", fill=(0,0,0))
+        # Footer
+        draw.text((100, 1120), "Generated by RushRank", fill=(100,100,100))
+        
+        # Upload to Supabase Storage if configured
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        bucket = os.getenv("SUPABASE_EXPORTS_BUCKET", "exports")
+        filename = f"cards/{pnm_id}.png"
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        
+        if supabase_url and supabase_key:
+            upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{filename}"
+            headers = {"Authorization": f"Bearer {supabase_key}", "Content-Type": "image/png"}
+            async with httpx.AsyncClient(timeout=20) as client:
+                r = await client.post(upload_url, headers=headers, content=buf.read())
+                if r.status_code in (200, 201):
+                    public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{filename}"
+                    return public_url
+                else:
+                    raise HTTPException(status_code=500, detail=f"Upload failed: {r.status_code}")
+        else:
+            return f"/exports/{filename}"

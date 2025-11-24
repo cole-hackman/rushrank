@@ -40,7 +40,7 @@ export default function Results() {
 
   const handleExport = () => {
     if (activeRound?.id) {
-      window.open(`/api/rounds/${activeRound.id}/export`, '_blank');
+      window.open(`/api/exports/rounds/${activeRound.id}.csv`, '_blank');
     }
   };
 

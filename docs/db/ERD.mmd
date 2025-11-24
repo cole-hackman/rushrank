@@ -1,0 +1,148 @@
+erDiagram
+  chapters {
+    uuid id PK
+    text name UK
+    timestamptz created_at
+  }
+  users {
+    uuid id PK
+    uuid chapter_id FK
+    citext email UK
+    text name
+    role_type role
+    boolean is_exec
+    timestamptz created_at
+  }
+  email_allowlist {
+    citext email PK
+    uuid chapter_id FK
+    role_type role
+    boolean active
+    timestamptz invited_at
+    uuid invited_by FK
+  }
+  pnms {
+    uuid id PK
+    uuid chapter_id FK
+    text name
+    citext email
+    text phone
+    text hometown
+    text major
+    text year
+    text photo_url
+    uuid created_by FK
+    timestamptz created_at
+  }
+  tags {
+    uuid id PK
+    uuid chapter_id FK
+    text label
+    text color
+  }
+  pnm_tags {
+    uuid pnm_id FK
+    uuid tag_id FK
+  }
+  questionnaires {
+    uuid id PK
+    uuid chapter_id FK
+    text name
+    jsonb schema
+    boolean active
+    timestamptz created_at
+  }
+  pnm_answers {
+    uuid id PK
+    uuid pnm_id FK
+    uuid questionnaire_id FK
+    jsonb answers
+    timestamptz created_at
+  }
+  events {
+    uuid id PK
+    uuid chapter_id FK
+    text name
+    timestamptz starts_at
+    text location
+    text notes
+  }
+  event_attendance {
+    uuid event_id FK
+    uuid pnm_id FK
+    uuid checked_in_by_user_id FK
+    timestamptz checked_in_at
+    attendance_method method
+  }
+  voting_rounds {
+    uuid id PK
+    uuid chapter_id FK
+    text name
+    round_type type
+    round_status status
+    jsonb settings
+    uuid created_by FK
+    timestamptz created_at
+  }
+  round_pnms {
+    uuid round_id FK
+    uuid pnm_id FK
+    int order_index
+  }
+  votes {
+    uuid id PK
+    uuid round_id FK
+    uuid pnm_id FK
+    uuid voter_user_id FK
+    vote_value value
+    boolean favorite
+    numeric weight_applied
+    timestamptz voted_at
+  }
+  pnm_notes {
+    uuid id PK
+    uuid pnm_id FK
+    uuid author_user_id FK
+    text body
+    boolean anonymous
+    int likes_count
+    timestamptz created_at
+  }
+  sessions {
+    uuid id PK
+    uuid round_id FK
+    text join_code UK
+    uuid current_pnm_id FK
+    boolean locked
+    timestamptz started_at
+    timestamptz ended_at
+  }
+  exports {
+    uuid id PK
+    export_type type
+    text url
+    uuid created_by FK
+    timestamptz created_at
+    jsonb metadata
+  }
+
+  chapters ||--o{ users : contains
+  chapters ||--o{ pnms : contains
+  chapters ||--o{ tags : contains
+  chapters ||--o{ events : contains
+  chapters ||--o{ voting_rounds : contains
+  chapters ||--o{ email_allowlist : scopes
+  users ||--o{ pnm_notes : writes
+  pnms ||--o{ pnm_tags : tagged
+  tags ||--o{ pnm_tags : maps
+  pnms ||--o{ pnm_answers : answers
+  questionnaires ||--o{ pnm_answers : defines
+  events ||--o{ event_attendance : has
+  pnms ||--o{ event_attendance : attends
+  voting_rounds ||--o{ round_pnms : shows
+  pnms ||--o{ round_pnms : appears
+  voting_rounds ||--o{ votes : collects
+  pnms ||--o{ votes : receives
+  users ||--o{ votes : casts
+  voting_rounds ||--o{ sessions : manages
+

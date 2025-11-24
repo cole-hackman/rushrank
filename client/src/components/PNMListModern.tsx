@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Search, Filter, Plus, RefreshCw } from 'lucide-react';
+import { Search, Filter, Plus, RefreshCw, Download } from 'lucide-react';
 import { usePNMs, useUserChapters } from '@/hooks/usePNMs';
 import { PNMCell } from '@/components/PNMCell';
+import { useToast } from '@/hooks/use-toast';
 
 interface PNM {
   id: string;
@@ -31,6 +32,7 @@ export function PNMListModern({ onAddPNM }: PNMListModernProps) {
   const { data: chapters, isLoading: chaptersLoading } = useUserChapters();
   const currentChapter = chapters?.[0]; // Use first chapter for now
   const { data: pnms = [], isLoading: pnmsLoading, error, refetch } = usePNMs(currentChapter?.id);
+  const { toast } = useToast();
 
   const filteredPNMs = (pnms as PNM[]).filter((pnm: PNM) => {
     const matchesSearch = pnm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -105,6 +107,18 @@ export function PNMListModern({ onAddPNM }: PNMListModernProps) {
             className="rounded-full px-3 border-stroke hover:bg-stroke/20"
           >
             <Filter className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (currentChapter?.id) {
+                toast({ title: "Export started", description: "Downloading PNMs CSV..." });
+                window.open(`/api/exports/pnms.csv?chapter_id=${currentChapter.id}`, '_blank');
+              }
+            }}
+            className="rounded-full px-3 border-stroke hover:bg-stroke/20"
+          >
+            <Download className="h-4 w-4" />
           </Button>
           {onAddPNM && (
             <Button
