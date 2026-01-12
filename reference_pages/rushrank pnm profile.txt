@@ -1,0 +1,411 @@
+Copy link for MCP server
+https://app.subframe.com/3122e3d36a51/design/5f3a808b-3276-44e7-bd40-9a89a89c2353/edit
+
+Sync all components in page
+npx @subframe/cli@latest sync DefaultPageLayout Breadcrumbs Button Badge Tabs Avatar IconButton TextArea IconWithBackground
+
+"use client";
+
+import React from "react";
+import { Avatar } from "@/ui/components/Avatar";
+import { Badge } from "@/ui/components/Badge";
+import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
+import { Button } from "@/ui/components/Button";
+import { IconButton } from "@/ui/components/IconButton";
+import { IconWithBackground } from "@/ui/components/IconWithBackground";
+import { Tabs } from "@/ui/components/Tabs";
+import { TextArea } from "@/ui/components/TextArea";
+import { DefaultPageLayout } from "@/ui/layouts/DefaultPageLayout";
+import { FeatherBook } from "@subframe/core";
+import { FeatherCalendar } from "@subframe/core";
+import { FeatherDownload } from "@subframe/core";
+import { FeatherEdit } from "@subframe/core";
+import { FeatherEyeOff } from "@subframe/core";
+import { FeatherMapPin } from "@subframe/core";
+import { FeatherTrash } from "@subframe/core";
+import { FeatherX } from "@subframe/core";
+
+function RushRankVotingView() {
+  return (
+    <DefaultPageLayout>
+      <div className="flex h-full w-full flex-col items-start bg-default-background overflow-auto">
+        <div className="flex w-full items-center justify-between border-b border-solid border-neutral-border px-12 py-4 mobile:px-6 mobile:py-4">
+          <Breadcrumbs>
+            <Breadcrumbs.Item>PNMs</Breadcrumbs.Item>
+            <Breadcrumbs.Divider />
+            <Breadcrumbs.Item active={true}>Michael Anderson</Breadcrumbs.Item>
+          </Breadcrumbs>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="neutral-secondary"
+              icon={<FeatherEdit />}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {}}
+            >
+              Edit
+            </Button>
+            <Button
+              icon={<FeatherDownload />}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {}}
+            >
+              Export Graphic
+            </Button>
+          </div>
+        </div>
+        <div className="flex w-full grow shrink-0 basis-0 items-start gap-8 px-12 py-8 mobile:flex-col mobile:flex-nowrap mobile:gap-8 mobile:px-6 mobile:py-8">
+          <div className="flex w-96 flex-none flex-col items-start gap-6 mobile:h-auto mobile:w-full mobile:flex-none">
+            <div className="flex w-full flex-col items-start gap-4 rounded-md border border-solid border-neutral-border bg-default-background px-6 py-6 shadow-sm">
+              <img
+                className="h-96 w-full flex-none rounded-md object-cover mobile:h-64 mobile:w-full mobile:flex-none"
+                src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop"
+              />
+              <div className="flex w-full flex-col items-start gap-4">
+                <div className="flex w-full flex-col items-start gap-2">
+                  <span className="text-heading-2 font-heading-2 text-default-font">
+                    Michael Anderson
+                  </span>
+                  <div className="flex w-full flex-col items-start gap-1">
+                    <div className="flex items-center gap-2">
+                      <FeatherMapPin className="text-body font-body text-subtext-color" />
+                      <span className="text-body font-body text-subtext-color">
+                        San Luis Obispo, CA
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FeatherBook className="text-body font-body text-subtext-color" />
+                      <span className="text-body font-body text-subtext-color">
+                        Computer Science
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FeatherCalendar className="text-body font-body text-subtext-color" />
+                      <span className="text-body font-body text-subtext-color">
+                        Sophomore
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex w-full items-start gap-2 flex-wrap">
+                  <Badge>Engineering</Badge>
+                  <Badge variant="success">Sports</Badge>
+                  <Badge variant="warning">Leadership</Badge>
+                </div>
+              </div>
+            </div>
+            <div className="flex w-full flex-col items-start gap-2 rounded-md border border-solid border-neutral-border bg-default-background px-6 py-6 shadow-sm">
+              <span className="text-body-bold font-body-bold text-default-font">
+                Quick Stats
+              </span>
+              <div className="flex w-full items-center justify-between py-2">
+                <span className="text-body font-body text-subtext-color">
+                  Yes Rate
+                </span>
+                <span className="text-body-bold font-body-bold text-default-font">
+                  87%
+                </span>
+              </div>
+              <div className="flex w-full items-center justify-between py-2">
+                <span className="text-body font-body text-subtext-color">
+                  Events Attended
+                </span>
+                <span className="text-body-bold font-body-bold text-default-font">
+                  4 of 6
+                </span>
+              </div>
+              <div className="flex w-full items-center justify-between py-2">
+                <span className="text-body font-body text-subtext-color">
+                  Favorites
+                </span>
+                <span className="text-body-bold font-body-bold text-default-font">
+                  12
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-6 self-stretch">
+            <Tabs>
+              <Tabs.Item active={true}>Notes &amp; Comments</Tabs.Item>
+              <Tabs.Item>Attendance</Tabs.Item>
+              <Tabs.Item>Questionnaire</Tabs.Item>
+            </Tabs>
+            <div className="flex w-full grow shrink-0 basis-0 flex-col items-start gap-4 overflow-auto">
+              <div className="flex w-full flex-col items-start gap-4 rounded-md border border-solid border-neutral-border bg-default-background px-6 py-6 shadow-sm">
+                <div className="flex w-full items-center justify-between">
+                  <span className="text-heading-3 font-heading-3 text-default-font">
+                    Comments
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <FeatherEyeOff className="text-body font-body text-subtext-color" />
+                    <span className="text-caption font-caption text-subtext-color">
+                      Anonymous mode
+                    </span>
+                  </div>
+                </div>
+                <div className="flex w-full flex-col items-start gap-4">
+                  <div className="flex w-full flex-col items-start gap-2 border-b border-solid border-neutral-border pb-4">
+                    <div className="flex w-full items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Avatar size="small" image="">
+                          BR
+                        </Avatar>
+                        <div className="flex flex-col items-start">
+                          <span className="text-body-bold font-body-bold text-default-font">
+                            Brother #7
+                          </span>
+                          <span className="text-caption font-caption text-subtext-color">
+                            2 hours ago
+                          </span>
+                        </div>
+                      </div>
+                      <IconButton
+                        size="small"
+                        icon={<FeatherTrash />}
+                        onClick={(
+                          event: React.MouseEvent<HTMLButtonElement>
+                        ) => {}}
+                      />
+                    </div>
+                    <span className="text-body font-body text-default-font">
+                      Great energy during the house tour. Asked thoughtful
+                      questions about our philanthropy work and seemed genuinely
+                      interested in our values.
+                    </span>
+                  </div>
+                  <div className="flex w-full flex-col items-start gap-2 border-b border-solid border-neutral-border pb-4">
+                    <div className="flex w-full items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Avatar size="small" image="">
+                          BR
+                        </Avatar>
+                        <div className="flex flex-col items-start">
+                          <span className="text-body-bold font-body-bold text-default-font">
+                            Brother #12
+                          </span>
+                          <span className="text-caption font-caption text-subtext-color">
+                            5 hours ago
+                          </span>
+                        </div>
+                      </div>
+                      <IconButton
+                        size="small"
+                        icon={<FeatherTrash />}
+                        onClick={(
+                          event: React.MouseEvent<HTMLButtonElement>
+                        ) => {}}
+                      />
+                    </div>
+                    <span className="text-body font-body text-default-font">
+                      Had a good conversation about engineering projects. He is
+                      working on a robotics team and has strong leadership
+                      experience. Would fit in well with our tech-focused
+                      brothers.
+                    </span>
+                  </div>
+                  <div className="flex w-full flex-col items-start gap-2 border-b border-solid border-neutral-border pb-4">
+                    <div className="flex w-full items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Avatar size="small" image="">
+                          BR
+                        </Avatar>
+                        <div className="flex flex-col items-start">
+                          <span className="text-body-bold font-body-bold text-default-font">
+                            Brother #3
+                          </span>
+                          <span className="text-caption font-caption text-subtext-color">
+                            1 day ago
+                          </span>
+                        </div>
+                      </div>
+                      <IconButton
+                        size="small"
+                        icon={<FeatherTrash />}
+                        onClick={(
+                          event: React.MouseEvent<HTMLButtonElement>
+                        ) => {}}
+                      />
+                    </div>
+                    <span className="text-body font-body text-default-font">
+                      Met him at the BBQ event. Really personable and connected
+                      well with multiple brothers. Plays intramural soccer which
+                      is a plus for our sports culture.
+                    </span>
+                  </div>
+                </div>
+                <div className="flex w-full flex-col items-start gap-2">
+                  <TextArea label="" helpText="">
+                    <TextArea.Input
+                      placeholder="Add a comment..."
+                      value=""
+                      onChange={(
+                        event: React.ChangeEvent<HTMLTextAreaElement>
+                      ) => {}}
+                    />
+                  </TextArea>
+                  <div className="flex w-full items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FeatherEyeOff className="text-body font-body text-subtext-color" />
+                      <span className="text-caption font-caption text-subtext-color">
+                        Post anonymously
+                      </span>
+                    </div>
+                    <Button
+                      size="small"
+                      onClick={(
+                        event: React.MouseEvent<HTMLButtonElement>
+                      ) => {}}
+                    >
+                      Post Comment
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex w-full flex-col items-start gap-4 rounded-md border border-solid border-neutral-border bg-default-background px-6 py-6 shadow-sm">
+                <span className="text-heading-3 font-heading-3 text-default-font">
+                  Attendance History
+                </span>
+                <div className="flex w-full flex-col items-start">
+                  <div className="flex w-full items-center justify-between border-b border-solid border-neutral-border py-4">
+                    <div className="flex items-center gap-3">
+                      <IconWithBackground variant="success" size="small" />
+                      <div className="flex flex-col items-start">
+                        <span className="text-body-bold font-body-bold text-default-font">
+                          Fall BBQ
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          Sep 15, 2024
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-body font-body text-subtext-color">
+                      6:45 PM
+                    </span>
+                  </div>
+                  <div className="flex w-full items-center justify-between border-b border-solid border-neutral-border py-4">
+                    <div className="flex items-center gap-3">
+                      <IconWithBackground variant="success" size="small" />
+                      <div className="flex flex-col items-start">
+                        <span className="text-body-bold font-body-bold text-default-font">
+                          House Tours
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          Sep 17, 2024
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-body font-body text-subtext-color">
+                      4:30 PM
+                    </span>
+                  </div>
+                  <div className="flex w-full items-center justify-between border-b border-solid border-neutral-border py-4">
+                    <div className="flex items-center gap-3">
+                      <IconWithBackground variant="success" size="small" />
+                      <div className="flex flex-col items-start">
+                        <span className="text-body-bold font-body-bold text-default-font">
+                          Game Night
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          Sep 19, 2024
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-body font-body text-subtext-color">
+                      7:15 PM
+                    </span>
+                  </div>
+                  <div className="flex w-full items-center justify-between border-b border-solid border-neutral-border py-4">
+                    <div className="flex items-center gap-3">
+                      <IconWithBackground variant="success" size="small" />
+                      <div className="flex flex-col items-start">
+                        <span className="text-body-bold font-body-bold text-default-font">
+                          Casual Dinner
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          Sep 21, 2024
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-body font-body text-subtext-color">
+                      6:00 PM
+                    </span>
+                  </div>
+                  <div className="flex w-full items-center justify-between py-4">
+                    <div className="flex items-center gap-3">
+                      <IconWithBackground
+                        variant="neutral"
+                        size="small"
+                        icon={<FeatherX />}
+                      />
+                      <div className="flex flex-col items-start">
+                        <span className="text-body-bold font-body-bold text-default-font">
+                          Sports Day
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          Sep 18, 2024
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-body font-body text-neutral-400">
+                      Not attended
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex w-full flex-col items-start gap-4 rounded-md border border-solid border-neutral-border bg-default-background px-6 py-6 shadow-sm">
+                <span className="text-heading-3 font-heading-3 text-default-font">
+                  Questionnaire Responses
+                </span>
+                <div className="flex w-full flex-col items-start gap-4">
+                  <div className="flex w-full flex-col items-start gap-2 rounded-md bg-neutral-50 px-4 py-4">
+                    <span className="text-body-bold font-body-bold text-default-font">
+                      Why are you interested in joining Beta Theta Pi?
+                    </span>
+                    <span className="text-body font-body text-subtext-color">
+                      I am drawn to Beta Theta Pi because of its strong
+                      commitment to leadership development and community
+                      service. I have heard great things about the brotherhood
+                      here and the opportunities to grow both personally and
+                      professionally.
+                    </span>
+                  </div>
+                  <div className="flex w-full flex-col items-start gap-2 rounded-md bg-neutral-50 px-4 py-4">
+                    <span className="text-body-bold font-body-bold text-default-font">
+                      What are your hobbies and interests?
+                    </span>
+                    <span className="text-body font-body text-subtext-color">
+                      I enjoy playing soccer, coding side projects, and
+                      volunteering with local STEM education programs. I am also
+                      part of the robotics team on campus and love working on
+                      technical challenges.
+                    </span>
+                  </div>
+                  <div className="flex w-full flex-col items-start gap-2 rounded-md bg-neutral-50 px-4 py-4">
+                    <span className="text-body-bold font-body-bold text-default-font">
+                      What do you hope to contribute to the fraternity?
+                    </span>
+                    <span className="text-body font-body text-subtext-color">
+                      I hope to bring my technical skills to help with any
+                      digital initiatives or projects. I also want to be
+                      involved in philanthropy events and help organize
+                      activities that bring the brotherhood together.
+                    </span>
+                  </div>
+                  <div className="flex w-full flex-col items-start gap-2 rounded-md bg-neutral-50 px-4 py-4">
+                    <span className="text-body-bold font-body-bold text-default-font">
+                      Tell us a fun fact about yourself.
+                    </span>
+                    <span className="text-body font-body text-subtext-color">
+                      I once built a robot that could solve a Rubik&#39;s cube
+                      in under 30 seconds. It was a year-long project that
+                      taught me a lot about persistence and problem-solving.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </DefaultPageLayout>
+  );
+}
+
+export default RushRankVotingView;

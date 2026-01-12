@@ -1,0 +1,604 @@
+Copy link for MCP server
+https://app.subframe.com/3122e3d36a51/design/5f3a808b-3276-44e7-bd40-9a89a89c2353/edit
+
+Sync all components in page
+npx @subframe/cli@latest sync DefaultPageLayout IconButton Breadcrumbs Button IconWithBackground TextField Checkbox Table Avatar Progress Badge
+
+"use client";
+
+import React from "react";
+import { Avatar } from "@/ui/components/Avatar";
+import { Badge } from "@/ui/components/Badge";
+import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
+import { Button } from "@/ui/components/Button";
+import { Checkbox } from "@/ui/components/Checkbox";
+import { IconButton } from "@/ui/components/IconButton";
+import { IconWithBackground } from "@/ui/components/IconWithBackground";
+import { Progress } from "@/ui/components/Progress";
+import { Table } from "@/ui/components/Table";
+import { TextField } from "@/ui/components/TextField";
+import { DefaultPageLayout } from "@/ui/layouts/DefaultPageLayout";
+import { FeatherAlertTriangle } from "@subframe/core";
+import { FeatherCheckCircle } from "@subframe/core";
+import { FeatherChevronLeft } from "@subframe/core";
+import { FeatherChevronRight } from "@subframe/core";
+import { FeatherDownload } from "@subframe/core";
+import { FeatherHelpCircle } from "@subframe/core";
+import { FeatherSearch } from "@subframe/core";
+import { FeatherStar } from "@subframe/core";
+import { FeatherThumbsDown } from "@subframe/core";
+import { FeatherThumbsUp } from "@subframe/core";
+import { FeatherTrendingUp } from "@subframe/core";
+import { FeatherUsers } from "@subframe/core";
+
+function RushRankVotingView() {
+  return (
+    <DefaultPageLayout>
+      <div className="flex h-full w-full flex-col items-start">
+        <div className="flex w-full items-center gap-4 px-4 py-4">
+          <div className="flex items-center gap-1">
+            <IconButton
+              size="small"
+              icon={<FeatherChevronLeft />}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {}}
+            />
+            <IconButton
+              disabled={true}
+              size="small"
+              icon={<FeatherChevronRight />}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {}}
+            />
+          </div>
+          <Breadcrumbs>
+            <Breadcrumbs.Item>Home</Breadcrumbs.Item>
+            <Breadcrumbs.Divider />
+            <Breadcrumbs.Item active={true}>Results</Breadcrumbs.Item>
+          </Breadcrumbs>
+        </div>
+        <div className="container max-w-none flex w-full grow shrink-0 basis-0 flex-col items-start gap-8 bg-default-background py-12 overflow-auto">
+          <div className="flex w-full items-center justify-between">
+            <span className="text-heading-1 font-heading-1 text-default-font">
+              Round Results
+            </span>
+            <Button
+              icon={<FeatherDownload />}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>) => {}}
+            >
+              Export CSV
+            </Button>
+          </div>
+          <div className="flex w-full items-start gap-4 flex-wrap mobile:flex-col mobile:flex-nowrap mobile:gap-4">
+            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-neutral-100 px-6 py-6">
+              <div className="flex w-full items-center gap-2">
+                <IconWithBackground
+                  variant="neutral"
+                  size="small"
+                  icon={<FeatherUsers />}
+                />
+                <span className="text-caption-bold font-caption-bold text-subtext-color">
+                  TOTAL PNMS
+                </span>
+              </div>
+              <span className="text-heading-1 font-heading-1 text-default-font">
+                42
+              </span>
+            </div>
+            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-success-100 px-6 py-6">
+              <div className="flex w-full items-center gap-2">
+                <IconWithBackground
+                  variant="success"
+                  size="small"
+                  icon={<FeatherTrendingUp />}
+                />
+                <span className="text-caption-bold font-caption-bold text-success-700">
+                  AVG YES %
+                </span>
+              </div>
+              <span className="text-heading-1 font-heading-1 text-success-700">
+                68%
+              </span>
+            </div>
+            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-brand-100 px-6 py-6">
+              <div className="flex w-full items-center gap-2">
+                <IconWithBackground size="small" icon={<FeatherStar />} />
+                <span className="text-caption-bold font-caption-bold text-brand-700">
+                  FAVORITES
+                </span>
+              </div>
+              <span className="text-heading-1 font-heading-1 text-brand-700">
+                12
+              </span>
+            </div>
+            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-warning-100 px-6 py-6">
+              <div className="flex w-full items-center gap-2">
+                <IconWithBackground
+                  variant="warning"
+                  size="small"
+                  icon={<FeatherAlertTriangle />}
+                />
+                <span className="text-caption-bold font-caption-bold text-warning-700">
+                  CONTROVERSIAL
+                </span>
+              </div>
+              <span className="text-heading-1 font-heading-1 text-warning-700">
+                5
+              </span>
+            </div>
+          </div>
+          <div className="flex w-full flex-col items-start gap-4">
+            <div className="flex items-center gap-1">
+              <span className="text-caption-bold font-caption-bold text-subtext-color">
+                FILTERS
+              </span>
+            </div>
+            <div className="flex w-full items-center gap-4 flex-wrap mobile:flex-col mobile:flex-nowrap mobile:gap-4">
+              <TextField
+                className="h-10 grow shrink-0 basis-0"
+                variant="filled"
+                label=""
+                helpText=""
+                icon={<FeatherSearch />}
+              >
+                <TextField.Input
+                  placeholder="Search PNMs..."
+                  value=""
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {}}
+                />
+              </TextField>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  label="Favorites only"
+                  checked={false}
+                  onCheckedChange={(checked: boolean) => {}}
+                />
+                <Checkbox
+                  label="Yes % ≥ 70%"
+                  checked={false}
+                  onCheckedChange={(checked: boolean) => {}}
+                />
+                <Checkbox
+                  label="≥ 2 events"
+                  checked={false}
+                  onCheckedChange={(checked: boolean) => {}}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex w-full flex-col items-start gap-4 overflow-hidden overflow-x-auto flex-shrink-0">
+            <Table
+              header={
+                <Table.HeaderRow>
+                  <Table.HeaderCell>RANK</Table.HeaderCell>
+                  <Table.HeaderCell>PNM</Table.HeaderCell>
+                  <Table.HeaderCell>SCORE</Table.HeaderCell>
+                  <Table.HeaderCell>YES</Table.HeaderCell>
+                  <Table.HeaderCell>NO</Table.HeaderCell>
+                  <Table.HeaderCell>UNKNOWN</Table.HeaderCell>
+                  <Table.HeaderCell>FAVORITES</Table.HeaderCell>
+                  <Table.HeaderCell>STATUS</Table.HeaderCell>
+                </Table.HeaderRow>
+              }
+            >
+              <Table.Row>
+                <Table.Cell>
+                  <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                    1
+                  </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Avatar
+                      size="small"
+                      image="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop"
+                    >
+                      JD
+                    </Avatar>
+                    <div className="flex flex-col items-start">
+                      <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                        John Doe
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color">
+                        Computer Science
+                      </span>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Progress className="h-auto w-16 flex-none" value={92} />
+                    <span className="whitespace-nowrap text-body-bold font-body-bold text-success-700">
+                      92%
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsUp className="text-body font-body text-success-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      11
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsDown className="text-body font-body text-error-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      1
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherHelpCircle className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      0
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherStar className="text-body font-body text-brand-600" />
+                    <span className="whitespace-nowrap text-body font-body text-brand-700">
+                      3
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant="success" icon={<FeatherCheckCircle />}>
+                    Top Choice
+                  </Badge>
+                </Table.Cell>
+              </Table.Row>
+              <Table.Row>
+                <Table.Cell>
+                  <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                    2
+                  </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Avatar
+                      size="small"
+                      image="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop"
+                    >
+                      MS
+                    </Avatar>
+                    <div className="flex flex-col items-start">
+                      <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                        Michael Smith
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color">
+                        Business Admin
+                      </span>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Progress className="h-auto w-16 flex-none" value={88} />
+                    <span className="whitespace-nowrap text-body-bold font-body-bold text-success-700">
+                      88%
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsUp className="text-body font-body text-success-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      10
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsDown className="text-body font-body text-error-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      1
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherHelpCircle className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      1
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherStar className="text-body font-body text-brand-600" />
+                    <span className="whitespace-nowrap text-body font-body text-brand-700">
+                      2
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant="success">Strong</Badge>
+                </Table.Cell>
+              </Table.Row>
+              <Table.Row>
+                <Table.Cell>
+                  <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                    3
+                  </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Avatar
+                      size="small"
+                      image="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&h=150&fit=crop"
+                    >
+                      RJ
+                    </Avatar>
+                    <div className="flex flex-col items-start">
+                      <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                        Robert Johnson
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color">
+                        Mechanical Eng
+                      </span>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Progress className="h-auto w-16 flex-none" value={75} />
+                    <span className="whitespace-nowrap text-body-bold font-body-bold text-success-700">
+                      75%
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsUp className="text-body font-body text-success-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      9
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsDown className="text-body font-body text-error-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      3
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherHelpCircle className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      0
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherStar className="text-body font-body text-brand-600" />
+                    <span className="whitespace-nowrap text-body font-body text-brand-700">
+                      4
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant="warning" icon={<FeatherAlertTriangle />}>
+                    Controversial
+                  </Badge>
+                </Table.Cell>
+              </Table.Row>
+              <Table.Row>
+                <Table.Cell>
+                  <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                    4
+                  </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Avatar
+                      size="small"
+                      image="https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=150&h=150&fit=crop"
+                    >
+                      DW
+                    </Avatar>
+                    <div className="flex flex-col items-start">
+                      <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                        David Williams
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color">
+                        Economics
+                      </span>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Progress className="h-auto w-16 flex-none" value={71} />
+                    <span className="whitespace-nowrap text-body-bold font-body-bold text-success-700">
+                      71%
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsUp className="text-body font-body text-success-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      10
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsDown className="text-body font-body text-error-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      2
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherHelpCircle className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      2
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherStar className="text-body font-body text-brand-600" />
+                    <span className="whitespace-nowrap text-body font-body text-brand-700">
+                      1
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant="success">Strong</Badge>
+                </Table.Cell>
+              </Table.Row>
+              <Table.Row>
+                <Table.Cell>
+                  <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                    5
+                  </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Avatar
+                      size="small"
+                      image="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop"
+                    >
+                      CB
+                    </Avatar>
+                    <div className="flex flex-col items-start">
+                      <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                        Chris Brown
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color">
+                        Biology
+                      </span>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Progress className="h-auto w-16 flex-none" value={67} />
+                    <span className="whitespace-nowrap text-body-bold font-body-bold text-brand-700">
+                      67%
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsUp className="text-body font-body text-success-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      8
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsDown className="text-body font-body text-error-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      3
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherHelpCircle className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      1
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherStar className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      0
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant="neutral">Moderate</Badge>
+                </Table.Cell>
+              </Table.Row>
+              <Table.Row>
+                <Table.Cell>
+                  <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                    6
+                  </span>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Avatar
+                      size="small"
+                      image="https://images.unsplash.com/photo-1463453091185-61582044d556?w=150&h=150&fit=crop"
+                    >
+                      JM
+                    </Avatar>
+                    <div className="flex flex-col items-start">
+                      <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                        James Martinez
+                      </span>
+                      <span className="text-caption font-caption text-subtext-color">
+                        Civil Engineering
+                      </span>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Progress className="h-auto w-16 flex-none" value={58} />
+                    <span className="whitespace-nowrap text-body-bold font-body-bold text-brand-700">
+                      58%
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsUp className="text-body font-body text-success-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      7
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherThumbsDown className="text-body font-body text-error-600" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      5
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherHelpCircle className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      0
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-1">
+                    <FeatherStar className="text-body font-body text-neutral-400" />
+                    <span className="whitespace-nowrap text-body font-body text-default-font">
+                      0
+                    </span>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge variant="warning" icon={<FeatherAlertTriangle />}>
+                    Controversial
+                  </Badge>
+                </Table.Cell>
+              </Table.Row>
+            </Table>
+          </div>
+        </div>
+      </div>
+    </DefaultPageLayout>
+  );
+}
+
+export default RushRankVotingView;

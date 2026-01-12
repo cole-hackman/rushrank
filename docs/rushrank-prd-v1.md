@@ -541,5 +541,3 @@ Component Map (21st.dev)
 - Table (RuixenUI): PNM index with filters/tags.
 - Tinder‑like Swipe (HyggeMethat): Voting swipe mode.
 - Shader Animation (Ali Imam): Landing / transitions; already demoed at `/demo/shader`.
-
-

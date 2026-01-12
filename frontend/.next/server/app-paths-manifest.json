@@ -1,0 +1,7 @@
+{
+  "/(dashboard)/pnms/page": "app/(dashboard)/pnms/page.js",
+  "/(dashboard)/events/page": "app/(dashboard)/events/page.js",
+  "/(dashboard)/voting/page": "app/(dashboard)/voting/page.js",
+  "/(dashboard)/page": "app/(dashboard)/page.js",
+  "/(dashboard)/pnms/[id]/page": "app/(dashboard)/pnms/[id]/page.js"
+}

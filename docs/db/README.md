@@ -1,3 +1,68 @@
+# Database setup (Supabase + SQL migrations)
+
+This repo uses Supabase-compatible raw SQL migrations. The canonical DDL lives in:
+
+- `supabase/migrations/0001_init.sql` (tables, constraints, enums)
+- `supabase/migrations/0002_views_indexes.sql` (indexes, views, materialized views)
+- Seed data for local/dev: `db/seed_dev.sql`
+
+## Prerequisites
+
+- Node.js and npm
+- Supabase CLI (installed on-demand via `npx`)
+- psql (for running the seed against a DATABASE_URL)
+
+## Local workflow (Supabase CLI)
+
+Initialize Supabase locally (one-time):
+
+```bash
+npx supabase init
+```
+
+Apply migrations to your local Supabase instance:
+
+```bash
+# Starts local containers and applies migrations
+npx supabase db push
+```
+
+Reset local database (drops and re-applies migrations):
+
+```bash
+npx supabase db reset --local
+```
+
+Apply migrations to a remote database using a connection string:
+
+```bash
+# Use when you have a remote Postgres (e.g., Supabase project) URL
+npx supabase db push --db-url "$DATABASE_URL"
+```
+
+## Seeding dev data
+
+Run the seed script against any Postgres database via `psql`:
+
+```bash
+psql "$DATABASE_URL" -f db/seed_dev.sql
+```
+
+Where `DATABASE_URL` is your Postgres connection string (from Supabase Project Settings → Database).
+
+## Notes
+
+- The file `supabase/schema.sql` may exist for reference, but the source of truth is the migration files in `supabase/migrations/`.
+- The seed contains synthetic development data. Do not run it against production.
+
+## Future Alembic (optional)
+
+We removed Alembic to avoid migration drift while standardizing on raw SQL. If we reintroduce Alembic later:
+
+- Mirror the existing SQL schema into SQLAlchemy models.
+- Use `alembic revision --autogenerate -m "..."` to produce diffs.
+- Ensure Alembic versions only complement, not conflict with, the SQL migrations (one strategy: use Alembic locally to generate SQL, then commit finalized SQL into `supabase/migrations/`).
+
 # RushRank Database Migrations
 
 This repo ships Supabase/Postgres SQL migrations first, with a full Alembic fallback.

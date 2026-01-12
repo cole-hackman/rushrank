@@ -32,7 +32,8 @@ async def get_jwks() -> Dict[str, Any]:
             detail="SUPABASE_URL not configured"
         )
     
-    jwks_url = f"{supabase_url}/auth/v1/keys"
+    # Prefer explicit override if set, else default endpoint
+    jwks_url = os.getenv("SUPABASE_JWKS_URL") or f"{supabase_url}/auth/v1/keys"
     
     try:
         async with httpx.AsyncClient() as client:
@@ -50,51 +51,72 @@ async def get_jwks() -> Dict[str, Any]:
         )
 
 async def verify_token(token: str) -> Dict[str, Any]:
-    """Verify Supabase JWT token"""
+    """Verify Supabase JWT token.
+    Supports:
+    - RS256 via JWKS (Supabase public keys)
+    - HS256 via SUPABASE_JWT_SECRET (Project Settings -> API -> JWT secret)
+    """
+    # Inspect algorithm
     try:
-        # Get JWKS for token verification
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Try HS256 first if configured and the alg indicates HMAC
+    if alg and alg.upper().startswith("HS"):
+        secret = os.getenv("SUPABASE_JWT_SECRET")
+        if secret:
+            try:
+                payload = jwt.decode(
+                    token,
+                    secret,
+                    algorithms=["HS256"],
+                    options={
+                        "verify_aud": False,
+                        "verify_iss": False,
+                    },
+                )
+                return payload
+            except JWTError as e:
+                logger.warning(f"HS256 verification failed, will try JWKS: {e}")
+
+    # Fallback to RS256 using JWKS
+    try:
         jwks = await get_jwks()
-        
-        # Decode token header to get kid
-        unverified_header = jwt.get_unverified_header(token)
-        kid = unverified_header.get("kid")
-        
+        kid = header.get("kid")
         if not kid:
-            raise HTTPException(
-                status_code=401,
-                detail="Token missing key ID"
-            )
-        
-        # Find the matching key
+            raise HTTPException(status_code=401, detail="Token missing key ID")
         key = None
         for jwk in jwks.get("keys", []):
             if jwk.get("kid") == kid:
                 key = jwk
                 break
-        
         if not key:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token key ID"
-            )
-        
-        # Verify and decode token
+            # Refresh JWKS once in case of rotation, then retry lookup
+            global _jwks_cache
+            _jwks_cache = None
+            jwks = await get_jwks()
+            for jwk in jwks.get("keys", []):
+                if jwk.get("kid") == kid:
+                    key = jwk
+                    break
+            if not key:
+                raise HTTPException(status_code=401, detail="Invalid token key ID")
+
         payload = jwt.decode(
             token,
             key,
-            algorithms=["RS256"],
-            audience="authenticated",
-            issuer=f"{os.getenv('SUPABASE_URL')}/auth/v1"
+            algorithms=["RS256", "ES256", "ES384", "ES512"],
+            options={
+                "verify_aud": False,
+                "verify_iss": False,
+            },
         )
-        
         return payload
-        
     except JWTError as e:
         logger.error(f"JWT verification failed: {e}")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired token"
-        )
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     except Exception as e:
         logger.error(f"Token verification error: {e}")
         raise HTTPException(

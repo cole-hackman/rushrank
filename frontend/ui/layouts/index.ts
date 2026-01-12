@@ -1,0 +1,2 @@
+export { DefaultPageLayout } from "./DefaultPageLayout";
+
