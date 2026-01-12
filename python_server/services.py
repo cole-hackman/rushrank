@@ -7,13 +7,14 @@ from fastapi import HTTPException
 import secrets
 import string
 
-from database import get_db
-from models import *
+from .database import get_db
+from .models import *
 from io import StringIO, BytesIO
 import csv
 from PIL import Image, ImageDraw
 import os
 import httpx
+from supabase import create_client
 
 class UserService:
     """User management service"""
@@ -795,3 +796,212 @@ class ExportService:
                     raise HTTPException(status_code=500, detail=f"Upload failed: {r.status_code}")
         else:
             return f"/exports/{filename}"
+
+class NoteService:
+    """Notes/comments on PNMs"""
+    
+    async def list_notes(self, pnm_id: str) -> List[Note]:
+        db = get_db()
+        rows = await db.execute_query("""
+            SELECT id, pnm_id, author_user_id, body, tags, created_at
+            FROM pnm_notes
+            WHERE pnm_id = $1
+            ORDER BY created_at DESC
+        """, pnm_id)
+        return [
+            Note(
+                id=str(r["id"]),
+                pnm_id=str(r["pnm_id"]),
+                author_id=str(r["author_user_id"]),
+                body=r["body"],
+                tags=r["tags"] or [],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+    
+    async def create_note(self, note: NoteCreate, author_id: str) -> Note:
+        db = get_db()
+        row = await db.execute_one("""
+            INSERT INTO pnm_notes (pnm_id, author_user_id, body, tags)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, pnm_id, author_user_id, body, tags, created_at
+        """, note.pnm_id, author_id, note.body, note.tags)
+        return Note(
+            id=str(row["id"]),
+            pnm_id=str(row["pnm_id"]),
+            author_id=str(row["author_user_id"]),
+            body=row["body"],
+            tags=row["tags"] or [],
+            created_at=row["created_at"],
+        )
+    
+    async def delete_note(self, note_id: str) -> bool:
+        db = get_db()
+        res = await db.execute_command("DELETE FROM pnm_notes WHERE id = $1", note_id)
+        return "DELETE 1" in res
+
+class TagService:
+    """Tags and PNM tag relations"""
+    
+    async def list_tags(self, chapter_id: str) -> List[Dict[str, Any]]:
+        db = get_db()
+        rows = await db.execute_query("""
+            SELECT id, label, color, chapter_id
+            FROM tags
+            WHERE chapter_id = $1
+            ORDER BY label
+        """, chapter_id)
+        return [
+            {
+                "id": str(r["id"]),
+                "label": r["label"],
+                "color": r["color"],
+                "chapter_id": str(r["chapter_id"]),
+            }
+            for r in rows
+        ]
+    
+    async def create_tag(self, chapter_id: str, label: str, color: Optional[str]) -> Dict[str, Any]:
+        db = get_db()
+        row = await db.execute_one("""
+            INSERT INTO tags (chapter_id, label, color)
+            VALUES ($1, $2, $3)
+            RETURNING id, label, color, chapter_id
+        """, chapter_id, label, color)
+        return {
+            "id": str(row["id"]),
+            "label": row["label"],
+            "color": row["color"],
+            "chapter_id": str(row["chapter_id"]),
+        }
+    
+    async def delete_tag(self, tag_id: str) -> bool:
+        db = get_db()
+        res = await db.execute_command("DELETE FROM tags WHERE id = $1", tag_id)
+        return "DELETE 1" in res
+    
+    async def add_tag_to_pnm(self, pnm_id: str, tag_id: str) -> bool:
+        db = get_db()
+        await db.execute_command("""
+            INSERT INTO pnm_tags (pnm_id, tag_id)
+            VALUES ($1, $2) ON CONFLICT DO NOTHING
+        """, pnm_id, tag_id)
+        return True
+    
+    async def remove_tag_from_pnm(self, pnm_id: str, tag_id: str) -> bool:
+        db = get_db()
+        res = await db.execute_command("""
+            DELETE FROM pnm_tags WHERE pnm_id = $1 AND tag_id = $2
+        """, pnm_id, tag_id)
+        return "DELETE 1" in res
+
+class SessionService:
+    """Voting session state (advance/lock)"""
+    
+    async def set_current(self, round_id: str, current_pnm_id: Optional[str]) -> Dict[str, Any]:
+        db = get_db()
+        row = await db.execute_one("""
+            INSERT INTO sessions (round_id, current_pnm_id, locked, started_at)
+            VALUES ($1, $2, false, NOW())
+            ON CONFLICT (round_id)
+            DO UPDATE SET current_pnm_id = EXCLUDED.current_pnm_id
+            RETURNING id, round_id, current_pnm_id, locked, started_at, ended_at
+        """, round_id, current_pnm_id)
+        return {
+            "id": str(row["id"]),
+            "round_id": str(row["round_id"]),
+            "current_pnm_id": str(row["current_pnm_id"]) if row["current_pnm_id"] else None,
+            "locked": row["locked"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+        }
+    
+    async def set_locked(self, round_id: str, locked: bool) -> Dict[str, Any]:
+        db = get_db()
+        row = await db.execute_one("""
+            INSERT INTO sessions (round_id, current_pnm_id, locked, started_at)
+            VALUES ($1, NULL, $2, NOW())
+            ON CONFLICT (round_id)
+            DO UPDATE SET locked = EXCLUDED.locked
+            RETURNING id, round_id, current_pnm_id, locked, started_at, ended_at
+        """, round_id, locked)
+        return {
+            "id": str(row["id"]),
+            "round_id": str(row["round_id"]),
+            "current_pnm_id": str(row["current_pnm_id"]) if row["current_pnm_id"] else None,
+            "locked": row["locked"],
+            "started_at": row["started_at"],
+            "ended_at": row["ended_at"],
+        }
+
+class UploadService:
+    """Signed upload URL for PNM photos"""
+    
+    async def create_signed_upload_url(self, pnm_id: str, filename: str) -> Dict[str, Any]:
+        supabase_url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not key:
+            raise HTTPException(status_code=500, detail="Supabase not configured")
+        client = create_client(supabase_url, key)
+        path = f"pnm/{pnm_id}/{filename}"
+        try:
+            res = client.storage.from_("pnm-photos").create_signed_upload_url(path)
+            if not res:
+                raise HTTPException(status_code=500, detail="Failed to create signed URL")
+            return {"path": path, "signed_url": res.get("signedUrl") or res.get("signed_url") or res}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Signed upload error: {e}")
+
+class QuestionnaireService:
+    """Questionnaires and PNM answers"""
+    
+    async def list_questionnaires(self, chapter_id: str) -> List[Questionnaire]:
+        db = get_db()
+        rows = await db.execute_query("""
+            SELECT id, chapter_id, name, schema, active, created_at
+            FROM questionnaires
+            WHERE chapter_id = $1 AND active = true
+            ORDER BY created_at DESC
+        """, chapter_id)
+        return [
+            Questionnaire(
+                id=str(r["id"]),
+                chapter_id=str(r["chapter_id"]),
+                name=r["name"],
+                schema=r["schema"] or {},
+                active=bool(r["active"]),
+                created_at=r["created_at"],
+            ) for r in rows
+        ]
+    
+    async def create_questionnaire(self, chapter_id: str, q: QuestionnaireCreate) -> Questionnaire:
+        db = get_db()
+        row = await db.execute_one("""
+            INSERT INTO questionnaires (chapter_id, name, schema, active)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, chapter_id, name, schema, active, created_at
+        """, chapter_id, q.name, q.schema, q.active)
+        return Questionnaire(
+            id=str(row["id"]),
+            chapter_id=str(row["chapter_id"]),
+            name=row["name"],
+            schema=row["schema"] or {},
+            active=bool(row["active"]),
+            created_at=row["created_at"],
+        )
+    
+    async def save_pnm_answers(self, pnm_id: str, payload: PNMAnswersCreate) -> PNMAnswers:
+        db = get_db()
+        row = await db.execute_one("""
+            INSERT INTO pnm_answers (pnm_id, questionnaire_id, answers)
+            VALUES ($1, $2, $3)
+            RETURNING id, pnm_id, questionnaire_id, answers, created_at
+        """, pnm_id, payload.questionnaire_id, payload.answers)
+        return PNMAnswers(
+            id=str(row["id"]),
+            pnm_id=str(row["pnm_id"]),
+            questionnaire_id=str(row["questionnaire_id"]) if row["questionnaire_id"] else None,
+            answers=row["answers"] or {},
+            created_at=row["created_at"],
+        )

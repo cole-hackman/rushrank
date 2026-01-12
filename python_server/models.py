@@ -175,6 +175,31 @@ class Note(BaseModel):
     tags: List[str]
     created_at: datetime
 
+# Questionnaire Models
+class QuestionnaireCreate(BaseModel):
+    name: str
+    schema: Dict[str, Any]
+    active: bool = True
+
+class Questionnaire(BaseModel):
+    id: str
+    chapter_id: str
+    name: str
+    schema: Dict[str, Any]
+    active: bool
+    created_at: datetime
+
+class PNMAnswersCreate(BaseModel):
+    questionnaire_id: Optional[str] = None
+    answers: Dict[str, Any]
+
+class PNMAnswers(BaseModel):
+    id: str
+    pnm_id: str
+    questionnaire_id: Optional[str]
+    answers: Dict[str, Any]
+    created_at: datetime
+
 # Response Models
 class UserProfile(BaseModel):
     user_id: str
