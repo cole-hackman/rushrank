@@ -1,26 +1,195 @@
 "use client";
-import Sidebar from "@/components/Sidebar";
-import ProfileDropdown from "@/components/ProfileDropdown";
+import { TopbarWithLeftNav } from "@/components/TopbarWithLeftNav";
+import { SubframeCore } from "@/components/SubframeCore";
+import { DropdownMenu } from "@/components/DropdownMenu";
+import { IconButton } from "@/ui/components/IconButton";
+import { Avatar } from "@/ui/components/Avatar";
+import { Bell, User, Settings, LogOut, Shield, Tag, Users, BarChart3 } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import Protected from "@/components/Protected";
 import ToastProvider from "@/components/ToastProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import Link from "next/link";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminCheckReady, setAdminCheckReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const profile = await api<{ memberships: Array<{ role: string }> }>("/me", { timeout: 5000 });
+        const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
+        setIsAdmin(hasAdminRole);
+      } catch (e: any) {
+        console.error("Failed to check admin status:", e);
+        // Don't show error toast for admin check - it's not critical
+        setIsAdmin(false);
+      } finally {
+        setAdminCheckReady(true);
+      }
+    })();
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_email");
+    localStorage.removeItem("user_name");
+    window.location.href = "/login";
+  };
+
+  const getUserInitials = () => {
+    if (typeof window === "undefined") return "U";
+    const name = localStorage.getItem("user_name");
+    const email = localStorage.getItem("user_email");
+    const displayName = name || email?.split("@")[0] || "User";
+    return displayName.slice(0, 2).toUpperCase();
+  };
+
+  const getUserImage = () => {
+    // You can add user image URL from localStorage or API if available
+    return null;
+  };
+
   return (
     <Protected>
       <ThemeProvider>
         <ToastProvider>
-          <div className="flex min-h-screen bg-beta-surface dark:bg-neutral-900">
-            <Sidebar />
-            <div className="flex-1 flex flex-col">
-              <header className="h-14 border-b border-beta-gray/30 dark:border-neutral-700 flex items-center justify-end px-6 bg-white dark:bg-neutral-800">
-                <ProfileDropdown />
-              </header>
-              <main className="flex-1 p-6 bg-beta-surface dark:bg-neutral-900">
-                {children}
-              </main>
-            </div>
-          </div>
+          <TopbarWithLeftNav
+            leftSlot={
+              <>
+                <Link href="/">
+                  <img
+                    className="h-8 w-8 flex-none object-cover rounded-full"
+                    src="/logo.png"
+                    alt="Beta Theta Pi"
+                  />
+                </Link>
+                <div className="flex items-center gap-2">
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/"} href="/">
+                    Home
+                  </TopbarWithLeftNav.NavItem>
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/rush"} href="/rush">
+                    Rush
+                  </TopbarWithLeftNav.NavItem>
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/pnms"} href="/pnms">
+                    PNMs
+                  </TopbarWithLeftNav.NavItem>
+                  {/* Voting and Results pages temporarily hidden - see docs/VOTING_PAGE_REIMPLEMENTATION.md */}
+                  {process.env.NEXT_PUBLIC_ENABLE_VOTING === "true" && (
+                    <>
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/voting"} href="/voting">
+                    Voting
+                  </TopbarWithLeftNav.NavItem>
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/results"} href="/results">
+                    Results
+                  </TopbarWithLeftNav.NavItem>
+                    </>
+                  )}
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/events"} href="/events">
+                    Events
+                  </TopbarWithLeftNav.NavItem>
+                  {adminCheckReady && isAdmin && (
+                    <SubframeCore.DropdownMenu.Root>
+                      <SubframeCore.DropdownMenu.Trigger asChild>
+                        <button
+                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                            pathname?.startsWith("/admin") || pathname === "/settings"
+                              ? "bg-beta-navy/10 text-beta-navy"
+                              : "text-beta-gray hover:bg-beta-navy/5 hover:text-beta-navy"
+                          }`}
+                        >
+                        <Shield className="h-3.5 w-3.5" />
+                        Admin
+                        </button>
+                      </SubframeCore.DropdownMenu.Trigger>
+                      <SubframeCore.DropdownMenu.Portal>
+                        <SubframeCore.DropdownMenu.Content
+                          side="bottom"
+                          align="start"
+                          sideOffset={4}
+                        >
+                          <DropdownMenu.DropdownItem
+                            icon={<Settings className="h-4 w-4" />}
+                            onClick={() => router.push("/settings")}
+                          >
+                            Settings
+                          </DropdownMenu.DropdownItem>
+                          <DropdownMenu.DropdownItem
+                            icon={<Tag className="h-4 w-4" />}
+                            onClick={() => router.push("/admin/tags")}
+                          >
+                            Tag Management
+                          </DropdownMenu.DropdownItem>
+                          <DropdownMenu.DropdownItem
+                            icon={<Users className="h-4 w-4" />}
+                            onClick={() => router.push("/admin/users")}
+                          >
+                            User Management
+                          </DropdownMenu.DropdownItem>
+                          <DropdownMenu.DropdownItem
+                            icon={<BarChart3 className="h-4 w-4" />}
+                            onClick={() => router.push("/admin/analytics")}
+                          >
+                            Analytics
+                          </DropdownMenu.DropdownItem>
+                        </SubframeCore.DropdownMenu.Content>
+                      </SubframeCore.DropdownMenu.Portal>
+                    </SubframeCore.DropdownMenu.Root>
+                  )}
+                </div>
+              </>
+            }
+            rightSlot={
+              <>
+                <IconButton
+                  icon={<Bell className="h-5 w-5" />}
+                  onClick={() => {}}
+                />
+                <SubframeCore.DropdownMenu.Root>
+                  <SubframeCore.DropdownMenu.Trigger asChild={true}>
+                    <button className="cursor-pointer">
+                      <Avatar image={getUserImage() || undefined}>
+                        {getUserInitials()}
+                      </Avatar>
+                    </button>
+                  </SubframeCore.DropdownMenu.Trigger>
+                  <SubframeCore.DropdownMenu.Portal>
+                    <SubframeCore.DropdownMenu.Content
+                      side="bottom"
+                      align="end"
+                      sideOffset={4}
+                    >
+                      <DropdownMenu.DropdownItem
+                        icon={<User className="h-4 w-4" />}
+                        onClick={() => router.push("/settings")}
+                      >
+                        Profile
+                      </DropdownMenu.DropdownItem>
+                      <DropdownMenu.DropdownItem
+                        icon={<Settings className="h-4 w-4" />}
+                        onClick={() => router.push("/settings")}
+                      >
+                        Settings
+                      </DropdownMenu.DropdownItem>
+                      <DropdownMenu.DropdownItem
+                        icon={<LogOut className="h-4 w-4" />}
+                        onClick={handleLogout}
+                      >
+                        Log out
+                      </DropdownMenu.DropdownItem>
+                    </SubframeCore.DropdownMenu.Content>
+                  </SubframeCore.DropdownMenu.Portal>
+                </SubframeCore.DropdownMenu.Root>
+              </>
+            }
+          >
+            <div className="w-full p-6">{children}</div>
+          </TopbarWithLeftNav>
         </ToastProvider>
       </ThemeProvider>
     </Protected>

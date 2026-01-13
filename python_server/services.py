@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import HTTPException
 import secrets
 import string
+import logging
 
 from .database import get_db
 from .models import *
@@ -15,6 +16,9 @@ from PIL import Image, ImageDraw
 import os
 import httpx
 from supabase import create_client
+import qrcode
+
+logger = logging.getLogger(__name__)
 
 class UserService:
     """User management service"""
@@ -145,16 +149,513 @@ class ChapterService:
 class PNMService:
     """PNM management service"""
     
+    async def get_pnm_by_email(self, email: str) -> Optional[PNM]:
+        """Get PNM by email (case-insensitive)"""
+        db = get_db()
+        # Using simple query to find latest PNM with this email
+        # Ideally emails are unique per chapter, but might duplicate across chapters
+        # We'll take the most recently created one
+        query = """
+            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at
+            FROM pnms p
+            WHERE LOWER(p.email) = LOWER($1)
+            ORDER BY p.created_at DESC
+            LIMIT 1
+        """
+        row = await db.execute_one(query, email)
+        
+        if not row:
+            return None
+            
+        return PNM(
+            id=str(row["id"]),
+            chapter_id=str(row["chapter_id"]),
+            name=row["name"],
+            email=row["email"],
+            phone=row["phone"],
+            major=row["major"],
+            hometown=row["hometown"],
+            year=row["year"],
+            photo_url=row["photo_url"],
+            tags=row["tags"] or [],
+            walkout_song=None,
+            weirdest_talent=None,
+            fun_fact=row.get("fun_fact"),
+            chick_fil_a_order=None,
+            created_at=row["created_at"]
+        )
+
+    def get_qr_bytes(self, pnm_id: str) -> bytes:
+        """Generate QR code bytes for PNM"""
+        # Generate QR code with URL
+        qr_url = f"https://kiosk.rushrank.app/checkin?p={pnm_id}"
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data(qr_url)
+        qr.make(fit=True)
+        
+        # Create QR code image
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Convert to bytes
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    async def generate_qr_code(self, pnm_id: str) -> Optional[str]:
+        """Generate QR code for PNM and upload to Supabase Storage"""
+        try:
+            # Generate QR code with URL
+            qr_url = f"https://rushrank.app/checkin?p={pnm_id}"
+            qr = qrcode.QRCode(version=1, box_size=10, border=5)
+            qr.add_data(qr_url)
+            qr.make(fit=True)
+            
+            # Create QR code image
+            img = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convert to bytes
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            
+            # Upload to Supabase Storage
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                logger.warning("Supabase not configured, skipping QR code upload")
+                return None
+            
+            client = create_client(supabase_url, supabase_key)
+            
+            # Ensure bucket exists (create if needed)
+            try:
+                buckets = client.storage.list_buckets()
+                bucket_exists = any(b.get("name") == "qr-codes" for b in buckets or [])
+                
+                if not bucket_exists:
+                    # Try to create bucket (may fail if no permissions, that's ok)
+                    try:
+                        client.storage.create_bucket("qr-codes", {"public": True})
+                        logger.info("Created qr-codes bucket")
+                    except Exception as e:
+                        logger.warning(f"Could not create qr-codes bucket: {e}")
+            except Exception as e:
+                logger.warning(f"Could not check/create bucket: {e}")
+            
+            # Upload QR code
+            file_path = f"{pnm_id}.png"
+            result = client.storage.from_("qr-codes").upload(file_path, buf.read(), file_options={"content-type": "image/png", "upsert": "true"})
+            
+            if result:
+                # Get public URL
+                public_url = f"{supabase_url}/storage/v1/object/public/qr-codes/{file_path}"
+                logger.info(f"QR code uploaded: {public_url}")
+                return public_url
+            else:
+                logger.error("Failed to upload QR code")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error generating QR code: {e}", exc_info=True)
+            return None
+    
+    async def send_qr_email(self, pnm: PNM, qr_code_url: Optional[str]) -> bool:
+        """Send QR code email to PNM via Mailerlite with embedded QR code"""
+        if not pnm.email:
+            logger.warning(f"No email for PNM {pnm.id}, skipping email")
+            return False
+        
+        api_key = os.getenv("MAILERLITE_API_KEY")
+        if not api_key:
+            logger.warning("MAILERLITE_API_KEY not set, skipping email")
+            return False
+        
+        logger.info(f"Attempting to send QR email to {pnm.email} with QR URL: {qr_code_url}")
+        
+        try:
+            # Download QR code image and convert to base64 for embedding
+            qr_image_base64 = None
+            if qr_code_url:
+                try:
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        qr_response = await client.get(qr_code_url)
+                        if qr_response.status_code == 200:
+                            import base64
+                            qr_image_base64 = base64.b64encode(qr_response.content).decode('utf-8')
+                            logger.info(f"✅ QR code downloaded and converted to base64 ({len(qr_image_base64)} chars)")
+                        else:
+                            logger.warning(f"⚠️  Failed to download QR code: HTTP {qr_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"⚠️  Error downloading QR code image: {e}")
+                    # Continue without embedded image - will use URL fallback
+            
+            # Build HTML email template with embedded QR code
+            if qr_image_base64:
+                # Embed QR code as base64 data URI
+                qr_image_html = f'''
+                <div style="padding:12px;background:#f9fafb;border-radius:12px;display:inline-block;margin:20px auto;">
+                    <img src="data:image/png;base64,{qr_image_base64}" 
+                         alt="Your rush QR code" 
+                         width="260" 
+                         height="260" 
+                         style="display:block;border-radius:8px;width:260px;height:260px;max-width:100%;" />
+                </div>
+                '''
+                # Also include URL as fallback
+                qr_fallback_html = f'''
+                <p style="margin:12px 0 0 0;color:#4b5563;font-size:14px;">
+                    If the image doesn't load, you can also open this link:<br />
+                    <a href="{qr_code_url}" style="color:#013068;text-decoration:underline;word-break:break-all;">{qr_code_url}</a>
+                </p>
+                '''
+            elif qr_code_url:
+                # Fallback to URL if base64 embedding failed
+                qr_image_html = f'''
+                <div style="padding:12px;background:#f9fafb;border-radius:12px;display:inline-block;margin:20px auto;">
+                    <img src="{qr_code_url}" 
+                         alt="Your rush QR code" 
+                         width="260" 
+                         height="260" 
+                         style="display:block;border-radius:8px;width:260px;height:260px;max-width:100%;" />
+                </div>
+                '''
+                qr_fallback_html = ""
+            else:
+                qr_image_html = ""
+                qr_fallback_html = ""
+            
+            html_content = f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Your RushRank QR Code</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  </head>
+
+  <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+    <!-- OUTER WRAPPER -->
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+
+          <!-- MAIN CARD -->
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:480px;background-color:#ffffff;border-radius:14px;overflow:hidden;">
+
+            <!-- HEADER -->
+            <tr>
+              <td align="center" style="background-color:#013068;padding:24px 18px;">
+                <h1 style="margin:0;font-size:26px;font-weight:700;color:#ffffff;">
+                  Your RushRank QR Code
+                </h1>
+                <p style="margin:4px 0 0 0;font-size:14px;color:#ffffff;opacity:0.85;">
+                  Beta Theta Pi
+                </p>
+              </td>
+            </tr>
+
+            <!-- WELCOME COPY -->
+            <tr>
+              <td style="padding:20px 22px 12px 22px;color:#111827;font-size:15px;line-height:1.5;">
+                <p style="margin:0 0 8px 0;">
+                  Hi {pnm.name},
+                </p>
+                <p style="margin:0 0 12px 0;color:#4b5563;">
+                  Thanks for coming out to rush! We'll scan this code at each event to check you in quickly.
+                </p>
+              </td>
+            </tr>
+
+            <!-- QR CODE -->
+            <tr>
+              <td align="center" style="padding:10px 22px 4px 22px;">
+                {qr_image_html}
+              </td>
+            </tr>
+
+            <!-- BACKUP LINK -->
+            {qr_fallback_html and f'<tr><td style="padding:16px 22px 4px 22px;">{qr_fallback_html}</td></tr>' or ''}
+
+            <!-- INSTRUCTIONS -->
+            <tr>
+              <td style="padding:6px 22px 18px 22px;color:#111827;font-size:14px;line-height:1.5;">
+                <p style="margin:0 0 8px 0;">
+                  • Save this email or screenshot the QR code.<br />
+                  • Bring it to every rush event for quick check-in.
+                </p>
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="padding:18px 22px 24px 22px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
+                <p style="margin:0 0 4px 0;">
+                  Questions? Contact at <strong>hackman@calpoly.edu</strong> or DM on Instagram
+                  <span style="color:#013068">@betacalpoly</span>.
+                </p>
+                <p style="margin:8px 0 0 0;color:#9ca3af;">
+                  You're receiving this because you signed up as a PNM for Beta Theta Pi.
+                </p>
+              </td>
+            </tr>
+
+          </table>
+          <!-- END MAIN CARD -->
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+</html>
+            """
+            
+            base_url = "https://connect.mailerlite.com/api"
+            
+            # Get group ID from environment (optional - for automation triggers)
+            group_id = os.getenv("MAILERLITE_GROUP_ID")  # Optional: specific group for PNMs (must be numeric ID, not name)
+            
+            # Build subscriber data with custom fields for QR code
+            subscriber_data = {
+                "email": pnm.email,
+                "fields": {
+                    "name": pnm.name,
+                    "pnm_id": pnm.id  # Useful for constructing direct Supabase URLs in template
+                },
+                "status": "active"
+            }
+            
+            logger.info(f"debug_mailerlite_payload: {subscriber_data}")
+
+            # Add QR code URL as a custom field if available
+            # Note: You'll need to create a custom field "qr_code_url" in Mailerlite first
+            if qr_code_url:
+                subscriber_data["fields"]["qr_code_url"] = qr_code_url
+            
+            # Add to group if specified (group_id must be numeric, not name)
+            if group_id:
+                try:
+                    # Try to convert to int (group IDs are numeric)
+                    numeric_group_id = int(group_id)
+                    subscriber_data["groups"] = [numeric_group_id]
+                    logger.info(f"Adding subscriber to group ID: {numeric_group_id}")
+                except ValueError:
+                    logger.warning(f"MAILERLITE_GROUP_ID '{group_id}' is not a valid numeric ID. Skipping group assignment.")
+                    logger.warning(f"To fix: Get the numeric group ID from Mailerlite → Groups → [Your Group] → Check URL or settings")
+                    # Continue without group assignment - subscriber will still be added
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Step 1: Create or update subscriber (without groups first)
+                # We'll add to group separately to ensure automation triggers
+                subscriber_data_no_groups = subscriber_data.copy()
+                subscriber_data_no_groups.pop("groups", None)  # Remove groups for initial create/update
+                
+                subscriber_response = await client.post(
+                    f"{base_url}/subscribers",
+                    json=subscriber_data_no_groups,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    }
+                )
+                
+                subscriber_was_new = subscriber_response.status_code in (200, 201)
+                if not subscriber_was_new:
+                    # Try PUT for update if POST fails (subscriber might already exist)
+                    subscriber_response = await client.put(
+                        f"{base_url}/subscribers",
+                        json=subscriber_data_no_groups,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                            "Authorization": f"Bearer {api_key}"
+                        }
+                    )
+                
+                if subscriber_response.status_code not in (200, 201, 202):
+                    error_text = subscriber_response.text if hasattr(subscriber_response, 'text') else str(subscriber_response.content)
+                    logger.error(f"❌ Failed to create/update subscriber: {subscriber_response.status_code}")
+                    logger.error(f"   Error response: {error_text}")
+                    return False
+                
+                try:
+                    response_data = subscriber_response.json()
+                except:
+                    response_data = {}
+                
+                logger.info(f"✅ Subscriber created/updated for {pnm.email}")
+                logger.info(f"   Response status: {subscriber_response.status_code}")
+                logger.info(f"   Subscriber was {'NEW' if subscriber_was_new else 'EXISTING'}")
+                
+                subscriber_info = response_data.get('data', response_data) if isinstance(response_data, dict) else {}
+                if isinstance(subscriber_info, dict):
+                    logger.info(f"   Subscriber ID: {subscriber_info.get('id', 'N/A')}")
+                    
+                    # Log if QR code URL was set
+                    if qr_code_url:
+                        subscriber_fields = subscriber_info.get('fields', {})
+                        field_keys = list(subscriber_fields.keys()) if isinstance(subscriber_fields, dict) else []
+                        logger.info(f"   Fields in response: {field_keys}")
+                        
+                        if subscriber_fields.get('qr_code_url'):
+                            logger.info(f"   ✅ QR code URL set in Mailerlite: {subscriber_fields.get('qr_code_url')[:50]}...")
+                        else:
+                            logger.warning(f"   ⚠️  QR code URL not found in Mailerlite response!")
+                            logger.warning(f"   ⚠️  This means the custom field 'qr_code_url' may not exist in Mailerlite")
+                            logger.warning(f"   ⚠️  Fix: Go to Mailerlite → Subscribers → Fields → Add field 'qr_code_url' (Text type)")
+                
+                # Step 2: Add subscriber to group (separate API call to ensure automation triggers)
+                # This is critical - adding to group separately triggers "subscriber joins group" automation
+                if group_id:
+                    try:
+                        numeric_group_id = int(group_id)
+                        logger.info(f"📌 Adding subscriber to group ID: {numeric_group_id} (separate API call to trigger automation)")
+                        
+                        # Get subscriber ID from the response if available
+                        subscriber_id = subscriber_info.get('id') if isinstance(subscriber_info, dict) else None
+                        
+                        # Try multiple API endpoint formats for adding subscriber to group
+                        # Mailerlite API might use different formats depending on version
+                        group_add_success = False
+                        error_messages = []
+                        
+                        # Method 1: Using groups endpoint with email
+                        try:
+                            group_add_response = await client.post(
+                                f"{base_url}/groups/{numeric_group_id}/subscribers",
+                                json={"email": pnm.email},
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Authorization": f"Bearer {api_key}"
+                                }
+                            )
+                            
+                            if group_add_response.status_code in (200, 201, 202):
+                                logger.info(f"   ✅ Subscriber successfully added to group {numeric_group_id} (via groups endpoint)")
+                                logger.info(f"   ✅ This should trigger the 'subscriber joins group' automation")
+                                group_add_success = True
+                            elif group_add_response.status_code == 409:  # Conflict - already in group
+                                logger.warning(f"   ⚠️  Subscriber already in group {numeric_group_id}")
+                                logger.warning(f"   ⚠️  Automation may not trigger if subscriber was already in this group")
+                                logger.warning(f"   ⚠️  Try removing subscriber from group in Mailerlite, then add PNM again")
+                                group_add_success = True  # Already in group, so technically "success"
+                            else:
+                                error_text = group_add_response.text if hasattr(group_add_response, 'text') else str(group_add_response.content)
+                                error_messages.append(f"Groups endpoint ({group_add_response.status_code}): {error_text}")
+                        except Exception as e:
+                            error_messages.append(f"Groups endpoint error: {e}")
+                        
+                        # Method 2: Using subscriber endpoint with group (if Method 1 failed and we have subscriber ID)
+                        if not group_add_success and subscriber_id:
+                            try:
+                                logger.info(f"   🔄 Trying alternative method: subscriber endpoint")
+                                subscriber_group_response = await client.post(
+                                    f"{base_url}/subscribers/{subscriber_id}/groups/{numeric_group_id}",
+                                    headers={
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "Authorization": f"Bearer {api_key}"
+                                    }
+                                )
+                                
+                                if subscriber_group_response.status_code in (200, 201, 202):
+                                    logger.info(f"   ✅ Subscriber successfully added to group {numeric_group_id} (via subscriber endpoint)")
+                                    logger.info(f"   ✅ This should trigger the 'subscriber joins group' automation")
+                                    group_add_success = True
+                                elif subscriber_group_response.status_code == 409:
+                                    logger.warning(f"   ⚠️  Subscriber already in group {numeric_group_id}")
+                                    group_add_success = True
+                                else:
+                                    error_text = subscriber_group_response.text if hasattr(subscriber_group_response, 'text') else str(subscriber_group_response.content)
+                                    error_messages.append(f"Subscriber endpoint ({subscriber_group_response.status_code}): {error_text}")
+                            except Exception as e:
+                                error_messages.append(f"Subscriber endpoint error: {e}")
+                        
+                        # Method 3: Update subscriber with groups array (fallback)
+                        if not group_add_success:
+                            try:
+                                logger.info(f"   🔄 Trying fallback method: update subscriber with groups")
+                                update_with_groups = {
+                                    "email": pnm.email,
+                                    "groups": [numeric_group_id]
+                                }
+                                update_response = await client.put(
+                                    f"{base_url}/subscribers",
+                                    json=update_with_groups,
+                                    headers={
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "Authorization": f"Bearer {api_key}"
+                                    }
+                                )
+                                
+                                if update_response.status_code in (200, 201, 202):
+                                    logger.info(f"   ✅ Subscriber updated with group {numeric_group_id} (via PUT update)")
+                                    # Note: This might not trigger automation, but at least subscriber is in group
+                                    group_add_success = True
+                                else:
+                                    error_text = update_response.text if hasattr(update_response, 'text') else str(update_response.content)
+                                    error_messages.append(f"PUT update ({update_response.status_code}): {error_text}")
+                            except Exception as e:
+                                error_messages.append(f"PUT update error: {e}")
+                        
+                        if not group_add_success:
+                            logger.error(f"   ❌ All methods failed to add subscriber to group {numeric_group_id}")
+                            for error_msg in error_messages:
+                                logger.error(f"      - {error_msg}")
+                            logger.error(f"   ❌ Check Mailerlite API documentation for correct endpoint format")
+                            logger.error(f"   ❌ Group ID: {numeric_group_id}, Email: {pnm.email}")
+                            
+                    except ValueError:
+                        logger.warning(f"   ⚠️  Invalid group ID format: {group_id}")
+                    except Exception as e:
+                        logger.error(f"   ❌ Error adding subscriber to group: {e}", exc_info=True)
+                else:
+                    logger.warning(f"   ⚠️  No MAILERLITE_GROUP_ID set - automation will not trigger")
+                    logger.warning(f"   ⚠️  Set MAILERLITE_GROUP_ID in .env to enable automation")
+                
+                # Step 3: Summary and final logging
+                logger.info(f"ℹ️  Subscriber added to Mailerlite successfully")
+                logger.info(f"ℹ️  QR code is embedded in email template (base64) - no external URL needed")
+                if group_id:
+                    logger.info(f"ℹ️  Email should be sent via automation if configured and activated")
+                    logger.info(f"ℹ️  Check Mailerlite → Automation to ensure automation is ACTIVE for this group")
+                    logger.info(f"ℹ️  Automation should use custom field 'qr_code_url' in the email template")
+                else:
+                    logger.warning(f"⚠️  No MAILERLITE_GROUP_ID set - automation will not trigger")
+                    logger.warning(f"⚠️  Set MAILERLITE_GROUP_ID in .env to enable automatic email sending")
+                
+                return True
+                    
+        except Exception as e:
+            logger.error(f"Error sending QR email: {e}", exc_info=True)
+            return False
+    
     async def get_chapter_pnms(self, chapter_id: str) -> List[PNM]:
         """Get all PNMs for a chapter"""
         db = get_db()
         
         query = """
-            SELECT id, chapter_id, name, major, hometown, year, photo_url, tags,
-                   walkout_song, weirdest_talent, chick_fil_a_order, created_at
-            FROM pnms
-            WHERE chapter_id = $1
-            ORDER BY name
+            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at
+            FROM pnms p
+            WHERE p.chapter_id = $1
+            ORDER BY p.name
         """
         
         rows = await db.execute_query(query, chapter_id)
@@ -164,14 +665,16 @@ class PNMService:
                 id=str(row["id"]),
                 chapter_id=str(row["chapter_id"]),
                 name=row["name"],
+                email=row["email"],
+                phone=row["phone"],
                 major=row["major"],
                 hometown=row["hometown"],
                 year=row["year"],
                 photo_url=row["photo_url"],
                 tags=row["tags"] or [],
-                walkout_song=row["walkout_song"],
-                weirdest_talent=row["weirdest_talent"],
-                chick_fil_a_order=row["chick_fil_a_order"],
+                walkout_song=None,
+                weirdest_talent=None,
+                chick_fil_a_order=None,
                 created_at=row["created_at"]
             )
             for row in rows
@@ -182,10 +685,15 @@ class PNMService:
         db = get_db()
         
         query = """
-            SELECT id, chapter_id, name, major, hometown, year, photo_url, tags,
-                   walkout_song, weirdest_talent, chick_fil_a_order, created_at
-            FROM pnms
-            WHERE id = $1
+            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at
+            FROM pnms p
+            WHERE p.id = $1
         """
         
         row = await db.execute_one(query, pnm_id)
@@ -197,14 +705,17 @@ class PNMService:
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
             name=row["name"],
+            email=row["email"],
+            phone=row["phone"],
             major=row["major"],
             hometown=row["hometown"],
             year=row["year"],
             photo_url=row["photo_url"],
             tags=row["tags"] or [],
-            walkout_song=row["walkout_song"],
-            weirdest_talent=row["weirdest_talent"],
-            chick_fil_a_order=row["chick_fil_a_order"],
+            walkout_song=None,
+            weirdest_talent=None,
+            fun_fact=row.get("fun_fact"),
+            chick_fil_a_order=None,
             created_at=row["created_at"]
         )
     
@@ -212,82 +723,171 @@ class PNMService:
         """Create new PNM"""
         db = get_db()
         
+        # Insert into pnms table (only columns that exist in the migration)
         query = """
-            INSERT INTO pnms (chapter_id, name, major, hometown, year, photo_url, tags,
-                              walkout_song, weirdest_talent, chick_fil_a_order)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, chapter_id, name, major, hometown, year, photo_url, tags,
-                      walkout_song, weirdest_talent, chick_fil_a_order, created_at
+            INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at
         """
         
         row = await db.execute_one(
             query,
             chapter_id,
             pnm_data.name,
+            pnm_data.email.strip() if pnm_data.email else None,
+            pnm_data.phone.strip() if pnm_data.phone else None,
             pnm_data.major,
             pnm_data.hometown,
             pnm_data.year,
             pnm_data.photo_url,
-            pnm_data.tags,
-            pnm_data.walkout_song,
-            pnm_data.weirdest_talent,
-            pnm_data.chick_fil_a_order
+            pnm_data.fun_fact
         )
         
-        return PNM(
-            id=str(row["id"]),
+        pnm_id = str(row["id"])
+        
+        # Generate QR code and upload to storage
+        qr_code_url = None
+        try:
+            qr_code_url = await self.generate_qr_code(pnm_id)
+            
+            # Update PNM with QR code URL if we have the column
+            if qr_code_url:
+                try:
+                    update_query = """
+                        UPDATE pnms
+                        SET qr_code_url = $1
+                        WHERE id = $2
+                    """
+                    await db.execute_command(update_query, qr_code_url, pnm_id)
+                except Exception as e:
+                    # Column might not exist yet if migration hasn't run
+                    logger.warning(f"Could not update qr_code_url (column may not exist): {e}")
+        except Exception as e:
+            logger.error(f"Error generating QR code for PNM {pnm_id}: {e}", exc_info=True)
+        
+        # Get tags from junction table if they exist
+        tags_query = """
+            SELECT t.label
+            FROM pnm_tags pt
+            JOIN tags t ON t.id = pt.tag_id
+            WHERE pt.pnm_id = $1
+        """
+        tag_rows = await db.execute_query(tags_query, pnm_id)
+        tag_labels = [t["label"] for t in tag_rows] if tag_rows else []
+        
+        # If tags were provided in pnm_data, use them (tags will be added via separate endpoint)
+        if pnm_data.tags:
+            tag_labels = pnm_data.tags
+        
+        pnm = PNM(
+            id=pnm_id,
             chapter_id=str(row["chapter_id"]),
             name=row["name"],
+            email=row["email"],
+            phone=row["phone"],
             major=row["major"],
             hometown=row["hometown"],
             year=row["year"],
             photo_url=row["photo_url"],
-            tags=row["tags"] or [],
-            walkout_song=row["walkout_song"],
-            weirdest_talent=row["weirdest_talent"],
-            chick_fil_a_order=row["chick_fil_a_order"],
+            tags=tag_labels,
+            walkout_song=None,  # These columns don't exist in the migration schema
+            weirdest_talent=None,
+            fun_fact=row.get("fun_fact"),
+            chick_fil_a_order=None,
             created_at=row["created_at"]
         )
+        
+        # Run email and attendance in background (don't block response)
+        import asyncio
+        
+        async def background_tasks():
+            # Send QR code email (don't block on failure)
+            try:
+                await self.send_qr_email(pnm, qr_code_url)
+            except Exception as e:
+                logger.error(f"Error sending QR email for PNM {pnm_id}: {e}", exc_info=True)
+            
+            # Auto-log attendance for any events happening today in this chapter
+            try:
+                from datetime import date as date_type
+                today = date_type.today()
+                events_today = await db.execute_query("""
+                    SELECT id FROM events 
+                    WHERE chapter_id = $1 AND DATE(date) = $2 AND is_active = true
+                """, chapter_id, today)
+                
+                if events_today:
+                    for event_row in events_today:
+                        try:
+                            await db.execute_command("""
+                                INSERT INTO attendance (event_id, pnm_id, notes)
+                                VALUES ($1, $2, 'Auto-logged on PNM creation')
+                                ON CONFLICT DO NOTHING
+                            """, str(event_row["id"]), pnm_id)
+                            logger.info(f"Auto-logged attendance for PNM {pnm_id} at event {event_row['id']}")
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-log attendance for event {event_row['id']}: {e}")
+            except Exception as e:
+                logger.warning(f"Error checking for same-day events: {e}")
+        
+        # Fire and forget - don't await
+        asyncio.create_task(background_tasks())
+        
+        return pnm
     
     async def update_pnm(self, pnm_id: str, pnm_data: PNMCreate) -> PNM:
         """Update PNM"""
         db = get_db()
         
+        # Update only columns that exist in the migration schema
         query = """
             UPDATE pnms
-            SET name = $2, major = $3, hometown = $4, year = $5, photo_url = $6,
-                tags = $7, walkout_song = $8, weirdest_talent = $9, chick_fil_a_order = $10
+            SET name = $2, email = $3, phone = $4, major = $5, hometown = $6, year = $7, photo_url = $8
             WHERE id = $1
-            RETURNING id, chapter_id, name, major, hometown, year, photo_url, tags,
-                      walkout_song, weirdest_talent, chick_fil_a_order, created_at
+            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, created_at
         """
         
         row = await db.execute_one(
             query,
             pnm_id,
             pnm_data.name,
+            pnm_data.email.strip() if pnm_data.email else None,
+            pnm_data.phone.strip() if pnm_data.phone else None,
             pnm_data.major,
             pnm_data.hometown,
             pnm_data.year,
-            pnm_data.photo_url,
-            pnm_data.tags,
-            pnm_data.walkout_song,
-            pnm_data.weirdest_talent,
-            pnm_data.chick_fil_a_order
+            pnm_data.photo_url
         )
+        
+        # Get tags from junction table
+        tags_query = """
+            SELECT t.label
+            FROM pnm_tags pt
+            JOIN tags t ON t.id = pt.tag_id
+            WHERE pt.pnm_id = $1
+        """
+        tag_rows = await db.execute_query(tags_query, pnm_id)
+        tag_labels = [t["label"] for t in tag_rows] if tag_rows else []
+        
+        # If tags were provided in pnm_data, use them
+        if pnm_data.tags:
+            tag_labels = pnm_data.tags
         
         return PNM(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
             name=row["name"],
+            email=row["email"],
+            phone=row["phone"],
             major=row["major"],
             hometown=row["hometown"],
             year=row["year"],
             photo_url=row["photo_url"],
-            tags=row["tags"] or [],
-            walkout_song=row["walkout_song"],
-            weirdest_talent=row["weirdest_talent"],
-            chick_fil_a_order=row["chick_fil_a_order"],
+            tags=tag_labels,
+            walkout_song=None,  # These columns don't exist in the migration schema
+            weirdest_talent=None,
+            fun_fact=pnm_data.fun_fact if hasattr(pnm_data, 'fun_fact') else None,
+            chick_fil_a_order=None,
             created_at=row["created_at"]
         )
     
@@ -295,10 +895,35 @@ class PNMService:
         """Delete PNM"""
         db = get_db()
         
+        # First delete related records (cascade might not be set up)
+        try:
+            # Delete tags
+            await db.execute_command("DELETE FROM pnm_tags WHERE pnm_id = $1", pnm_id)
+            # Delete notes
+            await db.execute_command("DELETE FROM pnm_notes WHERE pnm_id = $1", pnm_id)
+            # Delete votes
+            await db.execute_command("DELETE FROM votes WHERE pnm_id = $1", pnm_id)
+            # Delete round_pnms
+            await db.execute_command("DELETE FROM round_pnms WHERE pnm_id = $1", pnm_id)
+            # Delete event_attendances
+            await db.execute_command("DELETE FROM event_attendances WHERE pnm_id = $1", pnm_id)
+        except Exception as e:
+            logger.warning(f"Error deleting related records for PNM {pnm_id}: {e}")
+        
+        # Delete the PNM
         query = "DELETE FROM pnms WHERE id = $1"
         result = await db.execute_command(query, pnm_id)
         
-        return "DELETE 1" in result
+        # Check if deletion was successful
+        # asyncpg.execute returns a string like "DELETE 1" or "DELETE 0"
+        if isinstance(result, str):
+            # Extract the number from "DELETE N"
+            import re
+            match = re.search(r'DELETE (\d+)', result)
+            if match:
+                count = int(match.group(1))
+                return count > 0
+        return False
 
 class VotingService:
     """Voting management service"""
@@ -321,20 +946,40 @@ class VotingService:
         
         rows = await db.execute_query(query, chapter_id)
         
-        return [
-            VotingRound(
-                id=str(row["id"]),
-                chapter_id=str(row["chapter_id"]),
-                type=RoundType(row["type"]),
-                status=RoundStatus(row["status"]),
-                room_code=row["room_code"],
-                selected_pnm_ids=row["selected_pnm_ids"] or [],
-                started_at=row["started_at"],
-                ended_at=row["ended_at"],
-                created_at=row["created_at"]
+        result = []
+        for row in rows:
+            # Handle enum conversion with fallback
+            try:
+                round_type = RoundType(row["type"])
+            except ValueError:
+                # Fallback for legacy values
+                round_type = RoundType.GENERAL
+            
+            try:
+                round_status = RoundStatus(row["status"])
+            except ValueError:
+                # Fallback for legacy values - try to match common patterns
+                status_str = str(row["status"]).upper()
+                if status_str in ["ACTIVE", "DRAFT", "LOCKED", "ENDED"]:
+                    round_status = RoundStatus(status_str)
+                else:
+                    round_status = RoundStatus.DRAFT
+            
+            result.append(
+                VotingRound(
+                    id=str(row["id"]),
+                    chapter_id=str(row["chapter_id"]),
+                    type=round_type,
+                    status=round_status,
+                    room_code=row["room_code"],
+                    selected_pnm_ids=row["selected_pnm_ids"] or [],
+                    started_at=row["started_at"],
+                    ended_at=row["ended_at"],
+                    created_at=row["created_at"]
+                )
             )
-            for row in rows
-        ]
+        
+        return result
     
     async def get_active_round(self, chapter_id: str) -> Optional[VotingRoundWithDetails]:
         """Get active voting round for a chapter"""
@@ -344,10 +989,10 @@ class VotingService:
             SELECT vr.id, vr.chapter_id, vr.type, vr.status, vr.room_code, vr.selected_pnm_ids,
                    vr.started_at, vr.ended_at, vr.created_at,
                    COALESCE(array_length(vr.selected_pnm_ids, 1), 0) as total_pnms,
-                   COUNT(DISTINCT v.voter_id) as voter_count
+                   COUNT(DISTINCT v.voter_user_id) as voter_count
             FROM voting_rounds vr
             LEFT JOIN votes v ON v.round_id = vr.id
-            WHERE vr.chapter_id = $1 AND vr.status = 'active'
+            WHERE vr.chapter_id = $1 AND (vr.status = 'ACTIVE' OR vr.status = 'active')
             GROUP BY vr.id
         """
         
@@ -356,11 +1001,42 @@ class VotingService:
         if not row:
             return None
         
+        # Handle enum conversion with fallback (case-insensitive)
+        try:
+            round_type = RoundType(row["type"])
+        except ValueError:
+            # Try case-insensitive match
+            type_str = str(row["type"]).upper()
+            try:
+                round_type = RoundType(type_str)
+            except ValueError:
+                round_type = RoundType.GENERAL
+        
+        try:
+            round_status = RoundStatus(row["status"])
+        except ValueError:
+            # Try case-insensitive match
+            status_str = str(row["status"]).upper()
+            try:
+                round_status = RoundStatus(status_str)
+            except ValueError:
+                # Map common variations
+                if status_str == "ACTIVE":
+                    round_status = RoundStatus.ACTIVE
+                elif status_str == "DRAFT":
+                    round_status = RoundStatus.DRAFT
+                elif status_str == "LOCKED":
+                    round_status = RoundStatus.LOCKED
+                elif status_str in ["ENDED", "COMPLETED"]:
+                    round_status = RoundStatus.ENDED
+                else:
+                    round_status = RoundStatus.DRAFT
+        
         return VotingRoundWithDetails(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
-            type=RoundType(row["type"]),
-            status=RoundStatus(row["status"]),
+            type=round_type,
+            status=round_status,
             room_code=row["room_code"],
             selected_pnm_ids=row["selected_pnm_ids"] or [],
             started_at=row["started_at"],
@@ -386,11 +1062,26 @@ class VotingService:
         if not row:
             return None
         
+        # Handle enum conversion with fallback
+        try:
+            round_type = RoundType(row["type"])
+        except ValueError:
+            round_type = RoundType.GENERAL
+        
+        try:
+            round_status = RoundStatus(row["status"])
+        except ValueError:
+            status_str = str(row["status"]).upper()
+            if status_str in ["ACTIVE", "DRAFT", "LOCKED", "ENDED"]:
+                round_status = RoundStatus(status_str)
+            else:
+                round_status = RoundStatus.DRAFT
+        
         return VotingRound(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
-            type=RoundType(row["type"]),
-            status=RoundStatus(row["status"]),
+            type=round_type,
+            status=round_status,
             room_code=row["room_code"],
             selected_pnm_ids=row["selected_pnm_ids"] or [],
             started_at=row["started_at"],
@@ -407,13 +1098,13 @@ class VotingService:
         
         # End any existing active rounds
         await db.execute_command(
-            "UPDATE voting_rounds SET status = 'completed', ended_at = NOW() WHERE chapter_id = $1 AND status = 'active'",
+            "UPDATE voting_rounds SET status = 'ENDED', ended_at = NOW() WHERE chapter_id = $1 AND status = 'ACTIVE'",
             chapter_id
         )
         
         query = """
             INSERT INTO voting_rounds (chapter_id, type, room_code, selected_pnm_ids, status, started_at)
-            VALUES ($1, $2, $3, $4, 'active', NOW())
+            VALUES ($1, $2, $3, $4, 'ACTIVE', NOW())
             RETURNING id, chapter_id, type, status, room_code, selected_pnm_ids,
                       started_at, ended_at, created_at
         """
@@ -444,7 +1135,7 @@ class VotingService:
         
         query = """
             UPDATE voting_rounds
-            SET status = 'completed', ended_at = NOW()
+            SET status = 'ENDED', ended_at = NOW()
             WHERE id = $1
         """
         
@@ -488,26 +1179,28 @@ class VotingService:
         db = get_db()
         
         query = """
-            SELECT p.id, p.chapter_id, p.name, p.major, p.hometown, p.year, p.photo_url, p.tags,
-                   p.walkout_song, p.weirdest_talent, p.chick_fil_a_order, p.created_at,
+            SELECT p.id, p.chapter_id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at,
                    COUNT(v.id) as vote_count,
-                   COUNT(CASE WHEN v.score >= 7 THEN 1 END) as yes_count,
-                   COUNT(CASE WHEN v.score <= 4 THEN 1 END) as no_count,
-                   COUNT(CASE WHEN v.score BETWEEN 5 AND 6 THEN 1 END) as dont_know_count,
-                   COUNT(CASE WHEN v.is_favorite THEN 1 END) as favorite_count,
+                   COUNT(CASE WHEN v.value = 'YES' THEN 1 END) as yes_count,
+                   COUNT(CASE WHEN v.value = 'NO' THEN 1 END) as no_count,
+                   COUNT(CASE WHEN v.value = 'UNKNOWN' THEN 1 END) as dont_know_count,
+                   COUNT(CASE WHEN v.favorite THEN 1 END) as favorite_count,
                    CASE WHEN COUNT(v.id) > 0 THEN
-                       ROUND(COUNT(CASE WHEN v.score >= 7 THEN 1 END) * 100.0 / COUNT(v.id), 2)
+                       ROUND(COUNT(CASE WHEN v.value = 'YES' THEN 1 END) * 100.0 / COUNT(v.id), 2)
                    ELSE 0 END as yes_percentage,
-                   CASE WHEN COUNT(v.id) > 0 THEN
-                       ROUND(STDDEV(v.score::float), 2)
-                   ELSE 0 END as controversy_score
+                   0 as controversy_score
             FROM pnms p
             LEFT JOIN votes v ON v.pnm_id = p.id AND v.round_id = $1
             WHERE p.id IN (
-                SELECT UNNEST(selected_pnm_ids) FROM voting_rounds WHERE id = $1
+                SELECT pnm_id FROM round_pnms WHERE round_id = $1
             )
-            GROUP BY p.id, p.chapter_id, p.name, p.major, p.hometown, p.year, p.photo_url, p.tags,
-                     p.walkout_song, p.weirdest_talent, p.chick_fil_a_order, p.created_at
+            GROUP BY p.id, p.chapter_id, p.name, p.major, p.hometown, p.year, p.photo_url, p.created_at
             ORDER BY yes_percentage DESC, vote_count DESC
         """
         
@@ -523,9 +1216,9 @@ class VotingService:
                 year=row["year"],
                 photo_url=row["photo_url"],
                 tags=row["tags"] or [],
-                walkout_song=row["walkout_song"],
-                weirdest_talent=row["weirdest_talent"],
-                chick_fil_a_order=row["chick_fil_a_order"],
+                walkout_song=None,
+                weirdest_talent=None,
+                chick_fil_a_order=None,
                 created_at=row["created_at"],
                 vote_count=row["vote_count"] or 0,
                 yes_count=row["yes_count"] or 0,
@@ -635,6 +1328,73 @@ class EventService:
             created_at=row["created_at"]
         )
     
+    async def export_attendance_csv(self, chapter_id: str) -> str:
+        """Export all event attendance as CSV"""
+        db = get_db()
+        
+        query = """
+            SELECT 
+                e.name as event_name,
+                e.date as event_date,
+                e.location,
+                p.name as pnm_name,
+                p.email as pnm_email,
+                p.major,
+                a.checked_in_at,
+                u.email as checked_in_by_email
+            FROM event_attendance a
+            JOIN events e ON e.id = a.event_id
+            JOIN pnms p ON p.id = a.pnm_id
+            LEFT JOIN users u ON u.id = a.checked_in_by_user_id
+            WHERE e.chapter_id = $1
+            ORDER BY e.date DESC, a.checked_in_at DESC
+        """
+        
+        rows = await db.execute_query(query, chapter_id)
+        
+        # Generate CSV
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Header
+        writer.writerow([
+            "Event Name", "Event Date", "Location", 
+            "PNM Name", "PNM Email", "Major",
+            "Checked In At", "Checked In By"
+        ])
+        
+        # Rows
+        for row in rows:
+            writer.writerow([
+                row["event_name"] or "",
+                row["event_date"].isoformat() if row["event_date"] else "",
+                row["location"] or "",
+                row["pnm_name"] or "",
+                row["pnm_email"] or "",
+                row["major"] or "",
+                row["checked_in_at"].isoformat() if row["checked_in_at"] else "",
+                row["checked_in_by_email"] or "",
+            ])
+        
+        return output.getvalue()
+    
+    async def delete_event(self, event_id: str) -> bool:
+        """Delete an event (soft delete by setting is_active = false)"""
+        db = get_db()
+        
+        query = """
+            UPDATE events
+            SET is_active = false
+            WHERE id = $1
+            RETURNING id
+        """
+        
+        row = await db.execute_one(query, event_id)
+        return row is not None
+    
     async def mark_attendance(self, attendance_data: AttendanceCreate, checker_id: str) -> Attendance:
         """Mark PNM attendance at event"""
         db = get_db()
@@ -670,10 +1430,10 @@ class ExportService:
     """CSV exports and PNM card generation"""
     
     async def export_pnms_csv(self, chapter_id: str) -> str:
-        """Return CSV text for PNMs in a chapter"""
+        """Export all PNMs as CSV with email and phone"""
         db = get_db()
         query = """
-            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+            SELECT p.id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
                    COALESCE((
                        SELECT string_agg(t.label, ',')
                        FROM pnm_tags pt
@@ -693,10 +1453,10 @@ class ExportService:
         rows = await db.execute_query(query, chapter_id)
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(["id","name","major","hometown","year","photo_url","tags","attendance_count","created_at"])
+        writer.writerow(["id","name","email","phone","major","hometown","year","photo_url","tags","attendance_count","created_at"])
         for r in rows:
             writer.writerow([
-                str(r["id"]), r["name"], r["major"], r["hometown"], r["year"],
+                str(r["id"]), r["name"], r.get("email") or "", r.get("phone") or "", r["major"], r["hometown"], r["year"],
                 r["photo_url"] or "", r["tags"] or "", r["attendance_count"] or 0, r["created_at"]
             ])
         return output.getvalue()
@@ -705,19 +1465,25 @@ class ExportService:
         """Return CSV text for a round summary"""
         db = get_db()
         query = """
-            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.tags,
+            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                   COALESCE((
+                       SELECT string_agg(t.label, ',')
+                       FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), '') AS tags,
                    COUNT(v.id) as vote_count,
-                   COUNT(CASE WHEN v.score >= 7 THEN 1 END) as yes_count,
-                   COUNT(CASE WHEN v.score <= 4 THEN 1 END) as no_count,
-                   COUNT(CASE WHEN v.score BETWEEN 5 AND 6 THEN 1 END) as dont_know_count,
-                   COUNT(CASE WHEN v.is_favorite THEN 1 END) as favorite_count,
+                   COUNT(CASE WHEN v.value = 'YES' THEN 1 END) as yes_count,
+                   COUNT(CASE WHEN v.value = 'NO' THEN 1 END) as no_count,
+                   COUNT(CASE WHEN v.value = 'UNKNOWN' THEN 1 END) as dont_know_count,
+                   COUNT(CASE WHEN v.favorite THEN 1 END) as favorite_count,
                    CASE WHEN COUNT(v.id) > 0 THEN
-                       ROUND(COUNT(CASE WHEN v.score >= 7 THEN 1 END) * 100.0 / COUNT(v.id), 2)
+                       ROUND(COUNT(CASE WHEN v.value = 'YES' THEN 1 END) * 100.0 / COUNT(v.id), 2)
                    ELSE 0 END as yes_percentage
             FROM pnms p
             LEFT JOIN votes v ON v.pnm_id = p.id AND v.round_id = $1
-            WHERE p.id IN (SELECT UNNEST(selected_pnm_ids) FROM voting_rounds WHERE id = $1)
-            GROUP BY p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.tags
+            WHERE p.id IN (SELECT pnm_id FROM round_pnms WHERE round_id = $1)
+            GROUP BY p.id, p.name, p.major, p.hometown, p.year, p.photo_url
             ORDER BY yes_percentage DESC, vote_count DESC
         """
         rows = await db.execute_query(query, round_id)
@@ -730,7 +1496,7 @@ class ExportService:
         for r in rows:
             writer.writerow([
                 str(r["id"]), r["name"], r["major"], r["hometown"], r["year"],
-                r["photo_url"] or "", ",".join(r["tags"] or []) if isinstance(r["tags"], list) else (r["tags"] or ""),
+                r["photo_url"] or "", r["tags"] or "",
                 r["vote_count"] or 0, r["yes_count"] or 0, r["no_count"] or 0, r["dont_know_count"] or 0, r["favorite_count"] or 0,
                 float(r["yes_percentage"] or 0.0)
             ])
@@ -738,64 +1504,166 @@ class ExportService:
     
     async def generate_pnm_card(self, pnm_id: str) -> str:
         """Generate a PNM share card image and upload to Supabase Storage. Returns a URL."""
+        from .graphics import compose_pnm_card
+        
         db = get_db()
         row = await db.execute_one("""
-            SELECT p.id, p.name, p.major, p.hometown, p.photo_url, p.created_at
+            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags
             FROM pnms p WHERE p.id = $1
         """, pnm_id)
         if not row:
             raise HTTPException(status_code=404, detail="PNM not found")
         
-        width, height = 900, 1200
-        img = Image.new("RGB", (width, height), color=(255,255,255))
-        draw = ImageDraw.Draw(img)
-        # Header
-        draw.rectangle([(0,0),(width,160)], fill=(58,118,255))
-        draw.text((40,50), "RushRank", fill=(255,255,255))
-        # Photo area
-        photo_box = (100, 200, width-100, 700)
-        if row["photo_url"]:
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.get(row["photo_url"])
-                    resp.raise_for_status()
-                    pimg = Image.open(BytesIO(resp.content)).convert("RGB")
-                    pimg = pimg.resize((photo_box[2]-photo_box[0], photo_box[3]-photo_box[1]))
-                    img.paste(pimg, (photo_box[0], photo_box[1]))
-            except Exception:
-                draw.rectangle(photo_box, fill=(230,230,230))
-                draw.text((photo_box[0]+20, photo_box[1]+20), "Photo unavailable", fill=(120,120,120))
-        else:
-            draw.rectangle(photo_box, fill=(230,230,230))
-            draw.text((photo_box[0]+20, photo_box[1]+20), "No photo", fill=(120,120,120))
-        # Text fields
-        draw.text((100, 760), f"Name: {row['name']}", fill=(0,0,0))
-        draw.text((100, 820), f"Major: {row['major'] or '-'}", fill=(0,0,0))
-        draw.text((100, 880), f"Hometown: {row['hometown'] or '-'}", fill=(0,0,0))
-        # Footer
-        draw.text((100, 1120), "Generated by RushRank", fill=(100,100,100))
+        # Generate image using graphics service
+        image_bytes = await compose_pnm_card(
+            name=row["name"],
+            hometown=row.get("hometown"),
+            major=row.get("major"),
+            year=row.get("year"),
+            fun_fact=row.get("fun_fact"),
+            photo_url=row.get("photo_url"),
+            tags=list(row.get("tags") or [])
+        )
         
         # Upload to Supabase Storage if configured
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         bucket = os.getenv("SUPABASE_EXPORTS_BUCKET", "exports")
-        filename = f"cards/{pnm_id}.png"
-        buf = BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
+        filename = f"cards/{pnm_id}.jpg"
         
         if supabase_url and supabase_key:
+            # Use PUT method for Supabase Storage uploads
             upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{filename}"
-            headers = {"Authorization": f"Bearer {supabase_key}", "Content-Type": "image/png"}
+            headers = {
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "image/jpeg",
+                "x-upsert": "true"  # Allow overwriting if file exists
+            }
             async with httpx.AsyncClient(timeout=20) as client:
-                r = await client.post(upload_url, headers=headers, content=buf.read())
+                r = await client.put(upload_url, headers=headers, content=image_bytes)
                 if r.status_code in (200, 201):
                     public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{filename}"
                     return public_url
                 else:
-                    raise HTTPException(status_code=500, detail=f"Upload failed: {r.status_code}")
+                    error_detail = r.text if hasattr(r, 'text') else str(r.status_code)
+                    logger.error(f"Supabase upload failed: {r.status_code} - {error_detail}")
+                    raise HTTPException(status_code=500, detail=f"Upload failed: {r.status_code} - {error_detail[:200]}")
         else:
             return f"/exports/{filename}"
+    
+    async def generate_pnm_cards_bulk(self, chapter_id: Optional[str] = None, pnm_ids: Optional[List[str]] = None) -> str:
+        """Generate images for multiple PNMs and return ZIP file URL.
+        
+        Args:
+            chapter_id: Generate for all PNMs in chapter
+            pnm_ids: Generate for specific PNM IDs (takes precedence over chapter_id)
+        
+        Returns:
+            Public URL to ZIP file in Supabase Storage
+        """
+        import zipfile
+        from datetime import datetime
+        from .graphics import compose_pnm_card
+        
+        db = get_db()
+        
+        # Build query based on parameters
+        if pnm_ids:
+            query = """
+                SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags
+                FROM pnms p
+                WHERE p.id = ANY($1::uuid[])
+                ORDER BY p.name
+            """
+            rows = await db.execute_query(query, pnm_ids)
+        elif chapter_id:
+            query = """
+                SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags
+                FROM pnms p
+                WHERE p.chapter_id = $1
+                ORDER BY p.name
+            """
+            rows = await db.execute_query(query, chapter_id)
+        else:
+            raise HTTPException(status_code=400, detail="Either chapter_id or pnm_ids required")
+        
+        if not rows:
+            raise HTTPException(status_code=404, detail="No PNMs found")
+        
+        # Create ZIP file in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for row in rows:
+                try:
+                    # Generate image
+                    image_bytes = await compose_pnm_card(
+                        name=row["name"],
+                        hometown=row.get("hometown"),
+                        major=row.get("major"),
+                        year=row.get("year"),
+                        fun_fact=row.get("fun_fact"),
+                        photo_url=row.get("photo_url"),
+                        tags=list(row.get("tags") or [])
+                    )
+                    
+                    # Sanitize filename
+                    safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in row["name"])
+                    filename = f"{safe_name}_{row['id']}.jpg"
+                    
+                    # Add to ZIP
+                    zip_file.writestr(filename, image_bytes)
+                except Exception as e:
+                    logger.warning(f"Failed to generate image for PNM {row['id']}: {e}")
+                    continue
+        
+        zip_buffer.seek(0)
+        
+        # Upload ZIP to Supabase Storage
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        bucket = os.getenv("SUPABASE_EXPORTS_BUCKET", "exports")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if chapter_id:
+            zip_filename = f"pnms_{chapter_id}_{timestamp}.zip"
+        else:
+            zip_filename = f"pnms_bulk_{timestamp}.zip"
+        
+        if supabase_url and supabase_key:
+            # Use PUT method for Supabase Storage uploads
+            upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{zip_filename}"
+            headers = {
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "application/zip",
+                "x-upsert": "true"  # Allow overwriting if file exists
+            }
+            zip_data = zip_buffer.read()
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.put(upload_url, headers=headers, content=zip_data)
+                if r.status_code in (200, 201):
+                    public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{zip_filename}"
+                    return public_url
+                else:
+                    error_detail = r.text if hasattr(r, 'text') else str(r.status_code)
+                    logger.error(f"Supabase upload failed: {r.status_code} - {error_detail}")
+                    raise HTTPException(status_code=500, detail=f"Upload failed: {r.status_code} - {error_detail[:200]}")
+        else:
+            raise HTTPException(status_code=500, detail="Supabase storage not configured")
 
 class NoteService:
     """Notes/comments on PNMs"""
@@ -803,7 +1671,7 @@ class NoteService:
     async def list_notes(self, pnm_id: str) -> List[Note]:
         db = get_db()
         rows = await db.execute_query("""
-            SELECT id, pnm_id, author_user_id, body, tags, created_at
+            SELECT id, pnm_id, author_user_id, body, anonymous, likes_count, created_at
             FROM pnm_notes
             WHERE pnm_id = $1
             ORDER BY created_at DESC
@@ -812,9 +1680,10 @@ class NoteService:
             Note(
                 id=str(r["id"]),
                 pnm_id=str(r["pnm_id"]),
-                author_id=str(r["author_user_id"]),
+                author_id=str(r["author_user_id"]) if r["author_user_id"] else None,
                 body=r["body"],
-                tags=r["tags"] or [],
+                anonymous=r["anonymous"],
+                likes_count=r["likes_count"] or 0,
                 created_at=r["created_at"],
             )
             for r in rows
@@ -823,16 +1692,17 @@ class NoteService:
     async def create_note(self, note: NoteCreate, author_id: str) -> Note:
         db = get_db()
         row = await db.execute_one("""
-            INSERT INTO pnm_notes (pnm_id, author_user_id, body, tags)
+            INSERT INTO pnm_notes (pnm_id, author_user_id, body, anonymous)
             VALUES ($1, $2, $3, $4)
-            RETURNING id, pnm_id, author_user_id, body, tags, created_at
-        """, note.pnm_id, author_id, note.body, note.tags)
+            RETURNING id, pnm_id, author_user_id, body, anonymous, likes_count, created_at
+        """, note.pnm_id, author_id, note.body, note.anonymous)
         return Note(
             id=str(row["id"]),
             pnm_id=str(row["pnm_id"]),
-            author_id=str(row["author_user_id"]),
+            author_id=str(row["author_user_id"]) if row["author_user_id"] else None,
             body=row["body"],
-            tags=row["tags"] or [],
+            anonymous=row["anonymous"],
+            likes_count=row["likes_count"] or 0,
             created_at=row["created_at"],
         )
     
@@ -847,10 +1717,17 @@ class TagService:
     async def list_tags(self, chapter_id: str) -> List[Dict[str, Any]]:
         db = get_db()
         rows = await db.execute_query("""
-            SELECT id, label, color, chapter_id
-            FROM tags
-            WHERE chapter_id = $1
-            ORDER BY label
+            SELECT 
+                t.id, 
+                t.label, 
+                t.color, 
+                t.chapter_id,
+                COUNT(DISTINCT pt.pnm_id) as pnm_count
+            FROM tags t
+            LEFT JOIN pnm_tags pt ON pt.tag_id = t.id
+            WHERE t.chapter_id = $1
+            GROUP BY t.id, t.label, t.color, t.chapter_id
+            ORDER BY t.label
         """, chapter_id)
         return [
             {
@@ -858,6 +1735,7 @@ class TagService:
                 "label": r["label"],
                 "color": r["color"],
                 "chapter_id": str(r["chapter_id"]),
+                "pnm_count": r["pnm_count"] or 0,
             }
             for r in rows
         ]
@@ -869,6 +1747,21 @@ class TagService:
             VALUES ($1, $2, $3)
             RETURNING id, label, color, chapter_id
         """, chapter_id, label, color)
+        return {
+            "id": str(row["id"]),
+            "label": row["label"],
+            "color": row["color"],
+            "chapter_id": str(row["chapter_id"]),
+        }
+    
+    async def update_tag(self, tag_id: str, label: str, color: Optional[str]) -> Dict[str, Any]:
+        db = get_db()
+        row = await db.execute_one("""
+            UPDATE tags
+            SET label = $2, color = $3
+            WHERE id = $1
+            RETURNING id, label, color, chapter_id
+        """, tag_id, label, color)
         return {
             "id": str(row["id"]),
             "label": row["label"],
@@ -895,6 +1788,50 @@ class TagService:
             DELETE FROM pnm_tags WHERE pnm_id = $1 AND tag_id = $2
         """, pnm_id, tag_id)
         return "DELETE 1" in res
+    
+    async def get_tag_statistics(self, chapter_id: str) -> Dict[str, Any]:
+        """Get tag usage statistics for a chapter"""
+        db = get_db()
+        
+        # Get total tags count
+        total_tags_row = await db.execute_one("""
+            SELECT COUNT(*) as count FROM tags WHERE chapter_id = $1
+        """, chapter_id)
+        total_tags = total_tags_row["count"] if total_tags_row else 0
+        
+        # Get most used tag
+        most_used_row = await db.execute_one("""
+            SELECT t.id, t.label, COUNT(pt.pnm_id) as usage_count
+            FROM tags t
+            LEFT JOIN pnm_tags pt ON pt.tag_id = t.id
+            WHERE t.chapter_id = $1
+            GROUP BY t.id, t.label
+            ORDER BY usage_count DESC, t.label
+            LIMIT 1
+        """, chapter_id)
+        
+        most_used_tag = None
+        if most_used_row and most_used_row["usage_count"] > 0:
+            most_used_tag = {
+                "id": str(most_used_row["id"]),
+                "label": most_used_row["label"],
+                "usage_count": most_used_row["usage_count"]
+            }
+        
+        # Get count of tagged PNMs (PNMs with at least one tag)
+        tagged_pnms_row = await db.execute_one("""
+            SELECT COUNT(DISTINCT pt.pnm_id) as count
+            FROM pnm_tags pt
+            JOIN tags t ON t.id = pt.tag_id
+            WHERE t.chapter_id = $1
+        """, chapter_id)
+        tagged_pnms = tagged_pnms_row["count"] if tagged_pnms_row else 0
+        
+        return {
+            "total_tags": total_tags,
+            "most_used_tag": most_used_tag,
+            "tagged_pnms_count": tagged_pnms
+        }
 
 class SessionService:
     """Voting session state (advance/lock)"""
@@ -953,6 +1890,549 @@ class UploadService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Signed upload error: {e}")
 
+    async def upload_pnm_photo(self, pnm_id: str, file_bytes: bytes, content_type: str, filename: str) -> str:
+        """Upload PNM photo directly via backend (bypasses client CORS)"""
+        supabase_url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not key:
+            raise HTTPException(status_code=500, detail="Supabase not configured")
+        
+        client = create_client(supabase_url, key)
+        path = f"pnm/{pnm_id}/{filename}"
+        
+        try:
+            # Upsert file
+            res = client.storage.from_("pnm-photos").upload(
+                path, 
+                file_bytes, 
+                file_options={"content-type": content_type, "upsert": "true"}
+            )
+            
+            # Construct public URL
+            public_url = f"{supabase_url}/storage/v1/object/public/pnm-photos/{path}"
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Backend upload error: {e}")
+            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+class InvitationService:
+    """User invitation service - creates users and sends invitation emails"""
+    
+    def _generate_password(self, length: int = 16) -> str:
+        """Generate a secure random password"""
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
+    async def invite_user(self, email: str, chapter_id: str, role: str, invited_by_id: str) -> Dict[str, Any]:
+        """Invite a user by creating account in Supabase and sending invitation email"""
+        db = get_db()
+        
+        # Normalize email
+        email = email.strip().lower()
+        
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not supabase_service_key:
+            raise HTTPException(status_code=500, detail="Supabase not configured")
+        
+        # Generate random password
+        password = self._generate_password()
+        
+        user_id = None
+        user_created = False
+        
+        # First, check if user exists in Supabase Auth
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Check if user already exists in Supabase Auth
+            get_user_response = await client.get(
+                f"{supabase_url}/auth/v1/admin/users",
+                params={"email": email},
+                headers={
+                    "Authorization": f"Bearer {supabase_service_key}",
+                    "apikey": supabase_service_key
+                }
+            )
+            
+            if get_user_response.status_code == 200:
+                users_data = get_user_response.json()
+                if users_data.get("users") and len(users_data["users"]) > 0:
+                    # User exists in Supabase Auth
+                    user_id = users_data["users"][0]["id"]
+                    logger.info(f"User already exists in Supabase Auth: {user_id}")
+                    
+                    # Check if they're already a member - if so, this is a re-invitation (update password)
+                    # If not, just use existing user without changing password
+                    existing_membership_check = await db.execute_one("""
+                        SELECT id FROM memberships WHERE user_id = $1 AND chapter_id = $2
+                    """, user_id, chapter_id)
+                    
+                    if existing_membership_check:
+                        # Re-inviting existing member - update their password
+                        logger.info(f"Re-inviting existing member, updating password for: {user_id}")
+                    else:
+                        # User exists in Supabase but not a member yet - still set the password
+                        # because we're sending it in the invitation email
+                        logger.info(f"User exists in Supabase Auth but not a member yet - setting invitation password")
+                    
+                    # Update password for both cases (re-inviting or new invitation to existing user)
+                    update_response = await client.put(
+                        f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                        json={
+                            "password": password,
+                            "email_confirm": True
+                        },
+                        headers={
+                            "Authorization": f"Bearer {supabase_service_key}",
+                            "Content-Type": "application/json",
+                            "apikey": supabase_service_key
+                        }
+                    )
+                    
+                    if update_response.status_code not in (200, 201):
+                        error_text = update_response.text
+                        logger.error(f"Failed to update password for user: {update_response.status_code} - {error_text}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to update user password: {error_text}"
+                        )
+                    
+                    logger.info(f"Password set for user {email}: {user_id}")
+                else:
+                    # User doesn't exist in Supabase Auth - create them
+                    logger.info(f"Creating new user in Supabase Auth: {email}")
+                    logger.info(f"Password length: {len(password)}, starts with: {password[:2]}...")
+                    
+                    # Supabase Admin API format
+                    create_payload = {
+                        "email": email,
+                        "password": password,
+                        "email_confirm": True,  # Auto-confirm email so they can log in immediately
+                        "user_metadata": {
+                            "chapter_id": chapter_id,
+                            "role": role
+                        }
+                    }
+                    
+                    logger.info(f"Creating user with payload: email={email}, email_confirm=True")
+                    
+                    create_user_response = await client.post(
+                        f"{supabase_url}/auth/v1/admin/users",
+                        json=create_payload,
+                        headers={
+                            "Authorization": f"Bearer {supabase_service_key}",
+                            "Content-Type": "application/json",
+                            "apikey": supabase_service_key
+                        }
+                    )
+                    
+                    response_text = create_user_response.text
+                    logger.info(f"Supabase create user response: {create_user_response.status_code}")
+                    logger.info(f"Response preview: {response_text[:300]}...")
+                    
+                    if create_user_response.status_code not in (200, 201):
+                        error_text = response_text
+                        logger.error(f"❌ Failed to create user in Supabase: {create_user_response.status_code}")
+                        logger.error(f"   Error details: {error_text}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to create user in Supabase: {error_text}"
+                        )
+                    
+                    try:
+                        user_data = create_user_response.json()
+                    except Exception as e:
+                        logger.error(f"❌ Failed to parse response as JSON: {e}")
+                        logger.error(f"   Response text: {response_text}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Invalid response from Supabase: {response_text[:200]}"
+                        )
+                    
+                    # Supabase Admin API can return user data in different formats
+                    user_id = user_data.get("id") or user_data.get("user", {}).get("id")
+                    
+                    if not user_id:
+                        logger.error(f"❌ No user_id in response. Full response: {user_data}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to get user_id from Supabase response. Response: {user_data}"
+                        )
+                    
+                    user_created = True
+                    logger.info(f"✅ Created new user in Supabase: {user_id} for {email}")
+                    logger.info(f"   User email: {user_data.get('email')}, confirmed: {user_data.get('email_confirmed_at') is not None}")
+                    
+                    # Verify the user was created and can be retrieved
+                    verify_response = await client.get(
+                        f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                        headers={
+                            "Authorization": f"Bearer {supabase_service_key}",
+                            "apikey": supabase_service_key
+                        }
+                    )
+                    
+                    if verify_response.status_code == 200:
+                        verify_data = verify_response.json()
+                        logger.info(f"✅ Verified user exists in Supabase: {verify_data.get('email')}")
+                        logger.info(f"   Email confirmed: {verify_data.get('email_confirmed_at') is not None}")
+                        logger.info(f"   User can log in: {verify_data.get('email_confirmed_at') is not None and verify_data.get('banned_until') is None}")
+                    else:
+                        logger.warning(f"⚠️ Could not verify user creation: {verify_response.status_code} - {verify_response.text[:200]}")
+            else:
+                # Error checking for user - try to create anyway
+                logger.warning(f"Error checking for existing user: {get_user_response.status_code}, attempting to create")
+                create_user_response = await client.post(
+                    f"{supabase_url}/auth/v1/admin/users",
+                    json={
+                        "email": email,
+                        "password": password,
+                        "email_confirm": True,
+                        "user_metadata": {
+                            "chapter_id": chapter_id,
+                            "role": role
+                        }
+                    },
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "Content-Type": "application/json",
+                        "apikey": supabase_service_key
+                    }
+                )
+                
+                response_text = create_user_response.text
+                logger.info(f"Supabase create user response (fallback): {create_user_response.status_code}")
+                
+                if create_user_response.status_code not in (200, 201):
+                    error_text = response_text
+                    logger.error(f"❌ Failed to create user in Supabase (fallback): {create_user_response.status_code}")
+                    logger.error(f"   Error details: {error_text}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to create user in Supabase: {error_text}"
+                    )
+                
+                try:
+                    user_data = create_user_response.json()
+                except Exception as e:
+                    logger.error(f"❌ Failed to parse response as JSON (fallback): {e}")
+                    logger.error(f"   Response text: {response_text}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Invalid response from Supabase: {response_text[:200]}"
+                    )
+                
+                user_id = user_data.get("id") or user_data.get("user", {}).get("id")
+                
+                if not user_id:
+                    logger.error(f"❌ No user_id in response (fallback). Full response: {user_data}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to get user_id from Supabase response. Response: {user_data}"
+                    )
+                
+                user_created = True
+                logger.info(f"✅ Created new user in Supabase (fallback): {user_id} for {email}")
+        
+        if not user_id:
+            raise HTTPException(status_code=500, detail="Failed to get or create user in Supabase Auth")
+        
+        # Create or update user record in our database
+        try:
+            await db.execute_command("""
+                INSERT INTO users (id, email)
+                VALUES ($1, $2)
+                ON CONFLICT (id) DO UPDATE SET email = $2
+            """, user_id, email)
+            logger.info(f"User record created/updated in database: {user_id}")
+        except Exception as e:
+            logger.error(f"Error creating user record in database: {e}", exc_info=True)
+            # Continue anyway - user exists in Supabase Auth
+        
+        if not user_id:
+            raise HTTPException(status_code=500, detail="Failed to get user ID")
+        
+        # Memberships table uses lowercase text values: 'admin', 'member', 'observer'
+        # No need to map - use the role directly as it comes from frontend
+        db_role = role.lower()  # Ensure lowercase: 'admin', 'member', 'observer'
+        
+        # Validate role
+        valid_roles = ["admin", "member", "observer"]
+        if db_role not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"Invalid role: {role}. Must be one of: {', '.join(valid_roles)}")
+        
+        # Check if membership already exists
+        existing_membership = await db.execute_one("""
+            SELECT id, role FROM memberships WHERE user_id = $1 AND chapter_id = $2
+        """, user_id, chapter_id)
+        
+        # Create or update membership (allow re-inviting to update password and resend email)
+        try:
+            if existing_membership:
+                # Update role if needed, but allow re-invitation
+                membership_id = await db.execute_one("""
+                    UPDATE memberships
+                    SET role = $3
+                    WHERE user_id = $1 AND chapter_id = $2
+                    RETURNING id
+                """, user_id, chapter_id, db_role)
+                logger.info(f"Updated existing membership for user {email} in chapter {chapter_id}")
+            else:
+                # Create new membership
+                membership_id = await db.execute_one("""
+                    INSERT INTO memberships (user_id, chapter_id, role)
+                    VALUES ($1, $2, $3)
+                    RETURNING id
+                """, user_id, chapter_id, db_role)
+                logger.info(f"Created new membership for user {email} in chapter {chapter_id}")
+        except Exception as e:
+            logger.error(f"Error creating membership: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to create membership: {str(e)}")
+        
+        # Get chapter name for email
+        chapter = await db.execute_one("""
+            SELECT name FROM chapters WHERE id = $1
+        """, chapter_id)
+        chapter_name = chapter["name"] if chapter else "your chapter"
+        
+        # Send invitation email
+        email_sent = await self._send_invitation_email(email, password, chapter_name, role, user_created)
+        
+        # Final verification: try to get the user from Supabase to confirm they exist
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as verify_client:
+                verify_user = await verify_client.get(
+                    f"{supabase_url}/auth/v1/admin/users/{user_id}",
+                    headers={
+                        "Authorization": f"Bearer {supabase_service_key}",
+                        "apikey": supabase_service_key
+                    }
+                )
+                if verify_user.status_code == 200:
+                    verify_data = verify_user.json()
+                    logger.info(f"✅ Final verification: User {email} exists in Supabase Auth with ID {user_id}")
+                    logger.info(f"   User email confirmed: {verify_data.get('email_confirmed_at') is not None}")
+                else:
+                    logger.warning(f"⚠️ Could not verify user after creation: {verify_user.status_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ Verification check failed (non-critical): {e}")
+        
+        return {
+            "email": email,
+            "user_id": user_id,
+            "role": role,
+            "password": password,  # Only returned for logging/debugging
+            "email_sent": email_sent,
+            "user_created": user_created
+        }
+    
+    async def _send_invitation_email(self, email: str, password: str, chapter_name: str, role: str, is_new_user: bool) -> bool:
+        """Send invitation email with password via MailerLite"""
+        api_key = os.getenv("MAILERLITE_API_KEY")
+        if not api_key:
+            logger.warning("MAILERLITE_API_KEY not set, skipping invitation email")
+            return False
+        
+        try:
+            # Build HTML email template matching QR code email style
+            html_content = f"""
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Welcome to RushRank</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  </head>
+
+  <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+    <!-- OUTER WRAPPER -->
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+
+          <!-- MAIN CARD -->
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:480px;background-color:#ffffff;border-radius:14px;overflow:hidden;">
+
+            <!-- HEADER -->
+            <tr>
+              <td align="center" style="background-color:#013068;padding:24px 18px;">
+                <h1 style="margin:0;font-size:26px;font-weight:700;color:#ffffff;">
+                  Welcome to RushRank
+                </h1>
+                <p style="margin:4px 0 0 0;font-size:14px;color:#ffffff;opacity:0.85;">
+                  {chapter_name}
+                </p>
+              </td>
+            </tr>
+
+            <!-- WELCOME COPY -->
+            <tr>
+              <td style="padding:20px 22px 12px 22px;color:#111827;font-size:15px;line-height:1.5;">
+                <p style="margin:0 0 8px 0;">
+                  You've been invited to join <strong>{chapter_name}</strong> on RushRank as a <strong>{role}</strong>.
+                </p>
+                <p style="margin:0 0 12px 0;color:#4b5563;">
+                  Your account has been created. Use the credentials below to log in.
+                </p>
+              </td>
+            </tr>
+
+            <!-- CREDENTIALS BOX -->
+            <tr>
+              <td style="padding:10px 22px 4px 22px;">
+                <div style="padding:18px;background:#f9fafb;border-radius:12px;border:1px solid #e5e7eb;">
+                  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                    <tr>
+                      <td style="padding-bottom:12px;color:#111827;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#6b7280;">
+                        Your Login Credentials
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom:8px;color:#111827;font-size:14px;line-height:1.5;">
+                        <span style="color:#4b5563;display:inline-block;width:70px;">Email:</span>
+                        <span style="font-weight:500;color:#111827;">{email}</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom:0;color:#111827;font-size:14px;line-height:1.5;">
+                        <span style="color:#4b5563;display:inline-block;width:70px;">Password:</span>
+                        <span style="font-family:monospace;font-weight:600;color:#013068;font-size:15px;letter-spacing:1px;">{password}</span>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+              </td>
+            </tr>
+
+            <!-- LOGIN BUTTON -->
+            <tr>
+              <td align="center" style="padding:20px 22px 12px 22px;">
+                <a href="https://rushrank.app/login" style="display:inline-block;padding:12px 28px;background-color:#013068;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">
+                  Log In to RushRank
+                </a>
+              </td>
+            </tr>
+
+            <!-- IMPORTANT NOTE -->
+            <tr>
+              <td style="padding:6px 22px 18px 22px;color:#111827;font-size:14px;line-height:1.5;">
+                <div style="padding:12px;background-color:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;">
+                  <p style="margin:0;color:#92400e;font-weight:500;">
+                    ⚠️ Important: Please change your password after logging in for the first time.
+                  </p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- INSTRUCTIONS -->
+            <tr>
+              <td style="padding:6px 22px 18px 22px;color:#111827;font-size:14px;line-height:1.5;">
+                <p style="margin:0 0 8px 0;">
+                  • Use the button above or visit <a href="https://rushrank.app/login" style="color:#013068;text-decoration:underline;">rushrank.app/login</a><br />
+                  • Enter your email and the password shown above<br />
+                  • Update your password in account settings after logging in
+                </p>
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="padding:18px 22px 24px 22px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5;">
+                <p style="margin:0 0 4px 0;">
+                  Questions? Contact your chapter administrator or email <strong>hackman@calpoly.edu</strong>.
+                </p>
+                <p style="margin:8px 0 0 0;color:#9ca3af;">
+                  You're receiving this because you were invited to join {chapter_name} on RushRank.
+                </p>
+              </td>
+            </tr>
+
+          </table>
+          <!-- END MAIN CARD -->
+
+        </td>
+      </tr>
+    </table>
+
+  </body>
+</html>
+            """
+            
+            base_url = "https://connect.mailerlite.com/api"
+            
+            # Use MailerLite Transactional API (if available) or send via campaign
+            # For now, we'll create a subscriber with custom fields and use automation
+            # Group ID for invited members (triggers automation)
+            invitation_group_id = os.getenv("MAILERLITE_INVITATION_GROUP_ID", "172172793341806200")
+            
+            subscriber_data = {
+                "email": email,
+                "fields": {
+                    "password": password,
+                    "chapter_name": chapter_name,
+                    "role": role,
+                    "login_url": "https://rushrank.app/login"
+                },
+                "status": "active"
+            }
+            
+            # Log credentials for manual verification/debugging
+            logger.info(f"📧 Sending invitation to {email}")
+            logger.info(f"🔑 Credentials -> Email: {email} | Password: {password}")
+            logger.info(f"👉 Login URL: https://rushrank.app/login")
+            
+            # Add group ID if provided (triggers automation)
+            try:
+                numeric_group_id = int(invitation_group_id)
+                subscriber_data["groups"] = [numeric_group_id]
+                logger.info(f"Adding invitation subscriber to group ID: {numeric_group_id}")
+            except ValueError:
+                logger.warning(f"MAILERLITE_INVITATION_GROUP_ID '{invitation_group_id}' is not a valid numeric ID. Skipping group assignment.")
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Create or update subscriber with invitation data
+                subscriber_response = await client.post(
+                    f"{base_url}/subscribers",
+                    json=subscriber_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    }
+                )
+                
+                if subscriber_response.status_code not in (200, 201, 202):
+                    # Try PUT for update
+                    subscriber_response = await client.put(
+                        f"{base_url}/subscribers",
+                        json=subscriber_data,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                            "Authorization": f"Bearer {api_key}"
+                        }
+                    )
+                
+                if subscriber_response.status_code in (200, 201, 202):
+                    logger.info(f"✅ Subscriber created/updated for invitation: {email}")
+                    if "groups" in subscriber_data:
+                        logger.info(f"   Added to group: {invitation_group_id} (automation should trigger)")
+                    
+                    # The automation will send the email when subscriber is added to the group
+                    return True
+                else:
+                    error_text = subscriber_response.text
+                    logger.error(f"❌ Failed to create subscriber for invitation: {subscriber_response.status_code} - {error_text}")
+                    # Still return True - user is created, email sending can be retried
+                    return False
+            
+        except Exception as e:
+            logger.error(f"Error sending invitation email: {e}", exc_info=True)
+            # Don't fail the whole invitation if email fails
+            return False
+
 class QuestionnaireService:
     """Questionnaires and PNM answers"""
     
@@ -982,6 +2462,28 @@ class QuestionnaireService:
             VALUES ($1, $2, $3, $4)
             RETURNING id, chapter_id, name, schema, active, created_at
         """, chapter_id, q.name, q.schema, q.active)
+        return Questionnaire(
+            id=str(row["id"]),
+            chapter_id=str(row["chapter_id"]),
+            name=row["name"],
+            schema=row["schema"] or {},
+            active=bool(row["active"]),
+            created_at=row["created_at"],
+        )
+    
+    async def update_questionnaire(self, questionnaire_id: str, q: QuestionnaireCreate) -> Questionnaire:
+        """Update questionnaire schema"""
+        db = get_db()
+        row = await db.execute_one("""
+            UPDATE questionnaires
+            SET name = $2, schema = $3, active = $4
+            WHERE id = $1
+            RETURNING id, chapter_id, name, schema, active, created_at
+        """, questionnaire_id, q.name, q.schema, q.active)
+        
+        if not row:
+            return None
+        
         return Questionnaire(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),

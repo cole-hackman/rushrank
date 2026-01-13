@@ -54,6 +54,15 @@ CREATE TABLE IF NOT EXISTS email_allowlist (
   invited_by uuid REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS memberships (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chapter_id uuid NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('admin', 'member', 'observer')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, chapter_id)
+);
+
 CREATE TABLE IF NOT EXISTS pnms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   chapter_id uuid NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
@@ -182,6 +191,6 @@ COMMIT;
 -- DROP VIEW IF EXISTS v_round_rankings;
 -- DROP VIEW IF EXISTS v_votes_public;
 -- DROP MATERIALIZED VIEW IF EXISTS mv_pnms_search;
--- DROP TABLE IF EXISTS exports, sessions, pnm_notes, votes, round_pnms, voting_rounds, event_attendance, events, pnm_answers, questionnaires, pnm_tags, tags, pnms, email_allowlist, users, chapters CASCADE;
+-- DROP TABLE IF EXISTS exports, sessions, pnm_notes, votes, round_pnms, voting_rounds, event_attendance, events, pnm_answers, questionnaires, pnm_tags, tags, pnms, memberships, email_allowlist, users, chapters CASCADE;
 -- DROP TYPE IF EXISTS export_type, attendance_method, vote_value, round_status, round_type, role_type;
 

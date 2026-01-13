@@ -45,6 +45,8 @@ class Membership(BaseModel):
 # PNM Models
 class PNMCreate(BaseModel):
     name: str
+    email: str
+    phone: str
     major: str
     hometown: Optional[str] = None
     year: Optional[str] = None
@@ -52,12 +54,15 @@ class PNMCreate(BaseModel):
     tags: List[str] = []
     walkout_song: Optional[str] = None
     weirdest_talent: Optional[str] = None
+    fun_fact: Optional[str] = None
     chick_fil_a_order: Optional[str] = None
 
 class PNM(BaseModel):
     id: str
     chapter_id: str
     name: str
+    email: Optional[str]
+    phone: Optional[str]
     major: str
     hometown: Optional[str]
     year: Optional[str]
@@ -65,6 +70,7 @@ class PNM(BaseModel):
     tags: List[str]
     walkout_song: Optional[str]
     weirdest_talent: Optional[str]
+    fun_fact: Optional[str]
     chick_fil_a_order: Optional[str]
     created_at: datetime
 
@@ -79,14 +85,22 @@ class PNMWithVotes(PNM):
 
 # Voting Models
 class RoundType(str, Enum):
+    GENERAL = "GENERAL"
+    INVITE = "INVITE"
+    BID = "BID"
+    # Legacy values for backwards compatibility
     RUSH = "rush"
     DINNER = "dinner"
     INTERVIEW = "interview"
     FINAL = "final"
 
 class RoundStatus(str, Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    LOCKED = "LOCKED"
+    ENDED = "ENDED"
+    # Legacy values for backwards compatibility
     PENDING = "pending"
-    ACTIVE = "active"
     COMPLETED = "completed"
 
 class RoundCreate(BaseModel):
@@ -165,14 +179,15 @@ class Attendance(BaseModel):
 class NoteCreate(BaseModel):
     pnm_id: str
     body: str
-    tags: List[str] = []
+    anonymous: bool = True
 
 class Note(BaseModel):
     id: str
     pnm_id: str
-    author_id: str
+    author_id: Optional[str] = None
     body: str
-    tags: List[str]
+    anonymous: bool = True
+    likes_count: int = 0
     created_at: datetime
 
 # Questionnaire Models

@@ -1,34 +1,36 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
-import { useToast } from "@/components/ToastProvider";
-import {
-  Download,
-  Users,
-  TrendingUp,
-  Star,
-  AlertTriangle,
-  ThumbsUp,
-  ThumbsDown,
-  HelpCircle,
-  CheckCircle,
-  Search,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Avatar } from "@/components/subframe/Avatar";
-import { Badge } from "@/components/subframe/Badge";
-import { Button } from "@/components/subframe/Button";
-import { IconWithBackground } from "@/components/subframe/IconWithBackground";
-import { Progress } from "@/components/subframe/Progress";
-import { Table } from "@/components/subframe/Table";
-import { TextField } from "@/components/subframe/TextField";
-import { Checkbox } from "@/components/subframe/Checkbox";
 
-type Round = { id: string; created_at: string; type?: string };
+import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FeatherAlertTriangle } from "@subframe/core";
+import { FeatherArrowUpDown } from "@subframe/core";
+import { FeatherDownload } from "@subframe/core";
+import { FeatherHelpCircle } from "@subframe/core";
+import { FeatherSearch } from "@subframe/core";
+import { FeatherStar } from "@subframe/core";
+import { FeatherThumbsDown } from "@subframe/core";
+import { FeatherThumbsUp } from "@subframe/core";
+import { FeatherTrendingUp } from "@subframe/core";
+import { FeatherUsers } from "@subframe/core";
+import { api, API_BASE } from "@/lib/api";
+import { useToast } from "@/components/ToastProvider";
+import { useRouter } from "next/navigation";
+import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
+import { Button } from "@/ui/components/Button";
+import { IconWithBackground } from "@/ui/components/IconWithBackground";
+import { Badge } from "@/ui/components/Badge";
+import { Progress } from "@/ui/components/Progress";
+import { Table } from "@/ui/components/Table";
+import { TextField } from "@/ui/components/TextField";
+import { Checkbox } from "@/ui/components/Checkbox";
+import { Avatar } from "@/ui/components/Avatar";
+import { cn } from "@/lib/utils";
+
+type Round = { id: string; created_at: string; name?: string };
 type PNMResult = {
   id: string;
   name: string;
-  major?: string;
+  major?: string | null;
   yes_percentage: number;
   vote_count: number;
   yes_count?: number;
@@ -38,322 +40,335 @@ type PNMResult = {
   photo_url?: string | null;
 };
 
-type Stats = {
-  total_pnms: number;
-  avg_yes_percentage: number;
-  favorites: number;
-  controversial: number;
-};
+type SortKey = "rank" | "name" | "yes_percentage" | "favorites";
 
 export default function ResultsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
+  
+  // Redirect if voting is disabled
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_ENABLE_VOTING !== "true") {
+      router.push("/");
+      toast({ 
+        title: "Results page disabled", 
+        description: "The results feature is currently disabled. See docs/VOTING_PAGE_REIMPLEMENTATION.md for details." 
+      });
+    }
+  }, [router, toast]);
+  
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [rounds, setRounds] = useState<Round[]>([]);
-  const [roundId, setRoundId] = useState<string>("");
+  const [selectedRound, setSelectedRound] = useState<string>("");
   const [results, setResults] = useState<PNMResult[]>([]);
   const [search, setSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [minYesPercent, setMinYesPercent] = useState(false); // ≥ 70%
-  const [stats, setStats] = useState<Stats>({ total_pnms: 0, avg_yes_percentage: 0, favorites: 0, controversial: 0 });
+  const [highYesOnly, setHighYesOnly] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     (async () => {
       try {
         const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        const cid = chapters[0]?.id || null;
-        setChapterId(cid);
-        if (cid) {
-          const r = await api<any[]>(`/rounds?chapter_id=${cid}`);
-          setRounds(r.map((x) => ({ id: x.id, created_at: x.created_at, type: x.type })));
-        }
+        setChapterId(chapters[0]?.id || null);
       } catch (e: any) {
-        toast({ title: "Failed to load rounds", description: e.message });
+        toast({ title: "Failed to load chapter", description: e?.message });
       }
     })();
   }, [toast]);
 
-  async function loadResults(id: string) {
-    setRoundId(id);
-    try {
-      const res = await api<PNMResult[]>(`/rounds/${id}/results`);
-      setResults(res);
-      
-      const total = res.length;
-      const avgYes = total > 0 ? res.reduce((sum, r) => sum + r.yes_percentage, 0) / total : 0;
-      const favs = res.filter((r) => r.favorite_count && r.favorite_count > 0).length;
-      const controversial = res.filter(
-        (r) => r.yes_percentage >= 40 && r.yes_percentage <= 60 && r.vote_count >= 5
-      ).length;
-      
-      setStats({
-        total_pnms: total,
-        avg_yes_percentage: Math.round(avgYes),
-        favorites: favs,
-        controversial,
-      });
-    } catch (e: any) {
-      toast({ title: "Failed to load results", description: e.message });
+  useEffect(() => {
+    if (chapterId) {
+      (async () => {
+        try {
+          const roundData = await api<Round[]>(`/rounds?chapter_id=${chapterId}`);
+          setRounds(roundData);
+
+          // Check if roundId is in URL query params
+          const roundIdFromUrl = searchParams.get("roundId");
+          if (roundIdFromUrl && roundData.some(r => r.id === roundIdFromUrl)) {
+            // Auto-select the round from URL
+            setSelectedRound(roundIdFromUrl);
+            fetchResults(roundIdFromUrl);
+          }
+        } catch (e: any) {
+          toast({ title: "Unable to load rounds", description: e?.message });
+        }
+      })();
     }
-  }
+  }, [chapterId, toast, searchParams]);
+
+  const fetchResults = async (roundId: string) => {
+    setSelectedRound(roundId);
+    if (!roundId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api<PNMResult[]>(`/rounds/${roundId}/results`);
+      setResults(data);
+    } catch (e: any) {
+      const message = e?.message || "Failed to load results";
+      setError(message);
+      toast({ title: "Failed to load results", description: message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const stats = useMemo(() => {
+    const total = results.length;
+    const avgYes =
+      total > 0
+        ? Math.round(results.reduce((sum, r) => sum + (r.yes_percentage || 0), 0) / total)
+        : 0;
+    const favorites = results.filter((r) => (r.favorite_count || 0) > 0).length;
+    const controversial = results.filter(
+      (r) => r.yes_percentage >= 40 && r.yes_percentage <= 60 && (r.vote_count || 0) >= 5
+    ).length;
+    return { total, avgYes, favorites, controversial };
+  }, [results]);
 
   const filteredResults = useMemo(() => {
-    let result = results;
-    
-    if (search.trim()) {
-      const s = search.toLowerCase();
-      result = result.filter((r) =>
-        r.name.toLowerCase().includes(s) || r.major?.toLowerCase().includes(s)
+    let data = [...results];
+    const term = search.trim().toLowerCase();
+    if (term) {
+      data = data.filter(
+        (r) => r.name.toLowerCase().includes(term) || r.major?.toLowerCase().includes(term)
       );
     }
-    
-    if (favoritesOnly) {
-      result = result.filter((r) => r.favorite_count > 0);
+    if (favoritesOnly) data = data.filter((r) => r.favorite_count > 0);
+    if (highYesOnly) data = data.filter((r) => r.yes_percentage >= 70);
+
+    data.sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
+      if (sortKey === "yes_percentage")
+        return ((a.yes_percentage || 0) - (b.yes_percentage || 0)) * dir;
+      if (sortKey === "favorites")
+        return ((a.favorite_count || 0) - (b.favorite_count || 0)) * dir;
+      return dir; // rank is just array order
+    });
+    return data;
+  }, [results, search, favoritesOnly, highYesOnly, sortKey, sortDir]);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
     }
-    
-    if (minYesPercent) {
-      result = result.filter((r) => r.yes_percentage >= 70);
-    }
-    
-    return result;
-  }, [results, search, favoritesOnly, minYesPercent]);
+  };
+
+  const handleExport = () => {
+    if (!selectedRound) return;
+    router.push(`/exports?roundId=${selectedRound}`);
+  };
 
   return (
-    <div className="flex h-full w-full flex-col gap-8">
-      {/* Header */}
-      <div className="flex w-full items-center justify-between">
-        <h1 className="text-3xl font-bold text-beta-navy dark:text-white">Round Results</h1>
-        {roundId && (
-          <Button
-            icon={<Download className="w-4 h-4" />}
-            onClick={() => {
-              window.open(
-                `${process.env.NEXT_PUBLIC_API_BASE_URL}/export/csv?entity=results&roundId=${roundId}`,
-                "_blank"
-              );
-            }}
-          >
-            Export CSV
-          </Button>
-        )}
+    <div className="container max-w-none flex h-full w-full flex-col items-start gap-6 bg-default-background py-6">
+      <div className="flex w-full flex-col items-start gap-1">
+        <span className="text-heading-1 font-heading-1 text-default-font">
+          Results
+        </span>
+        <span className="text-body font-body text-subtext-color">
+          View voting results and analytics for each round
+        </span>
       </div>
 
-      {/* Statistics Cards */}
-      {roundId && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="flex flex-col gap-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 px-6 py-6">
-            <div className="flex items-center gap-2">
-              <IconWithBackground variant="neutral" size="small" icon={<Users className="w-4 h-4" />} />
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Total PNMs
-              </span>
-            </div>
-            <span className="text-3xl font-bold text-beta-navy dark:text-white">{stats.total_pnms}</span>
-          </div>
+      <div className="flex w-full items-center justify-between">
+        <Button icon={<FeatherDownload />} onClick={handleExport} disabled={!selectedRound}>
+          Export CSV
+        </Button>
+      </div>
 
-          <div className="flex flex-col gap-2 rounded-xl bg-green-100 dark:bg-green-900/30 px-6 py-6">
-            <div className="flex items-center gap-2">
-              <IconWithBackground
-                variant="success"
-                size="small"
-                icon={<TrendingUp className="w-4 h-4" />}
-              />
-              <span className="text-xs font-semibold text-green-700 dark:text-green-300 uppercase tracking-wide">
-                Avg Yes %
-              </span>
-            </div>
-            <span className="text-3xl font-bold text-green-700 dark:text-green-300">
-              {stats.avg_yes_percentage}%
-            </span>
-          </div>
+      <div className="w-full items-start gap-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total PNMs" value={stats.total} icon={<FeatherUsers />} tone="neutral" />
+        <StatCard label="Avg Yes %" value={`${stats.avgYes}%`} icon={<FeatherTrendingUp />} tone="success" />
+        <StatCard label="Favorites" value={stats.favorites} icon={<FeatherStar />} tone="brand" />
+        <StatCard label="Controversial" value={stats.controversial} icon={<FeatherAlertTriangle />} tone="warning" />
+      </div>
 
-          <div className="flex flex-col gap-2 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 px-6 py-6">
-            <div className="flex items-center gap-2">
-              <IconWithBackground size="small" icon={<Star className="w-4 h-4" />} />
-              <span className="text-xs font-semibold text-beta-navy dark:text-blue-300 uppercase tracking-wide">
-                Favorites
-              </span>
-            </div>
-            <span className="text-3xl font-bold text-beta-navy dark:text-blue-300">{stats.favorites}</span>
-          </div>
-
-          <div className="flex flex-col gap-2 rounded-xl bg-yellow-100 dark:bg-yellow-900/30 px-6 py-6">
-            <div className="flex items-center gap-2">
-              <IconWithBackground
-                variant="warning"
-                size="small"
-                icon={<AlertTriangle className="w-4 h-4" />}
-              />
-              <span className="text-xs font-semibold text-yellow-700 dark:text-yellow-300 uppercase tracking-wide">
-                Controversial
-              </span>
-            </div>
-            <span className="text-3xl font-bold text-yellow-700 dark:text-yellow-300">
-              {stats.controversial}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex w-full flex-col gap-4">
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filters</span>
-        </div>
-        <div className="flex w-full items-center gap-4 flex-wrap">
-          <div className="flex-1 min-w-[300px]">
+      <div className="flex flex-col gap-3 rounded-lg border border-solid border-neutral-border bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[240px] flex-1">
             <select
-              className="h-10 w-full rounded-lg border border-beta-gray/50 bg-white dark:bg-neutral-900 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-beta-navy"
-              value={roundId}
-              onChange={(e) => loadResults(e.target.value)}
+              className="h-10 w-full rounded-lg border border-solid border-neutral-border bg-white px-3 text-body font-body text-default-font focus:outline-none focus:ring-2 focus:ring-brand-600"
+              value={selectedRound}
+              onChange={(e) => fetchResults(e.target.value)}
             >
               <option value="">Select a round...</option>
-              {rounds.map((r) => (
-                <option key={r.id} value={r.id}>
-                  Round {r.type || r.id.slice(0, 8)} · {new Date(r.created_at).toLocaleDateString()}
+              {rounds.map((round) => (
+                <option key={round.id} value={round.id}>
+                  {round.name || `Round ${round.id.slice(0, 6)}`} ·{" "}
+                  {new Date(round.created_at).toLocaleDateString()}
                 </option>
               ))}
             </select>
           </div>
-          {roundId && (
+          {selectedRound && (
             <>
-              <TextField icon={<Search className="w-4 h-4" />} className="flex-1 min-w-[200px]">
-                <TextField.Input
-                  placeholder="Search PNMs..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </TextField>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  label="Favorites only"
-                  checked={favoritesOnly}
-                  onCheckedChange={setFavoritesOnly}
-                />
-                <Checkbox
-                  label="Yes % ≥ 70%"
-                  checked={minYesPercent}
-                  onCheckedChange={setMinYesPercent}
-                />
+              <div className="min-w-[220px] flex-1">
+                <TextField icon={<FeatherSearch />}>
+                  <TextField.Input
+                    placeholder="Search PNMs..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </TextField>
+              </div>
+              <div className="flex items-center gap-3">
+                <Checkbox label="Favorites only" checked={favoritesOnly} onCheckedChange={setFavoritesOnly} />
+                <Checkbox label="Yes % ≥ 70%" checked={highYesOnly} onCheckedChange={setHighYesOnly} />
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Results Table */}
-      <div className="flex w-full flex-col rounded-xl border border-beta-gray/30 bg-white dark:bg-neutral-900 shadow-sm overflow-auto">
-        <Table
-          header={
-            <thead>
-              <Table.HeaderRow>
-                <Table.HeaderCell>Rank</Table.HeaderCell>
-                <Table.HeaderCell>PNM</Table.HeaderCell>
-                <Table.HeaderCell>Score</Table.HeaderCell>
-                <Table.HeaderCell>Yes</Table.HeaderCell>
-                <Table.HeaderCell>No</Table.HeaderCell>
-                <Table.HeaderCell>Unknown</Table.HeaderCell>
-                <Table.HeaderCell>Favorites</Table.HeaderCell>
-                <Table.HeaderCell>Status</Table.HeaderCell>
-              </Table.HeaderRow>
-            </thead>
-          }
-        >
-          {filteredResults.map((pnm, index) => {
-            const isTopChoice = pnm.yes_percentage >= 85;
-            const isStrong = pnm.yes_percentage >= 70 && pnm.yes_percentage < 85;
-            const isControversial = pnm.yes_percentage >= 40 && pnm.yes_percentage <= 60;
-
-            return (
-              <Table.Row key={pnm.id}>
-                <Table.Cell>
-                  <span className="font-bold text-beta-navy dark:text-white">{index + 1}</span>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-2">
-                    <Avatar size="small" image={pnm.photo_url || undefined}>
-                      {pnm.name.slice(0, 2).toUpperCase()}
-                    </Avatar>
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-beta-navy dark:text-white whitespace-nowrap">
-                        {pnm.name}
-                      </span>
-                      {pnm.major && (
-                        <span className="text-xs text-muted-foreground">{pnm.major}</span>
-                      )}
+      <div className="flex w-full flex-col rounded-lg border border-solid border-neutral-border bg-white shadow-sm">
+        {loading && (
+          <div className="flex h-48 items-center justify-center text-subtext-color">
+            <span className="text-body font-body">Loading results...</span>
+          </div>
+        )}
+        {error && !loading && (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-subtext-color">
+            <span className="text-body font-body">{error}</span>
+            <Button variant="neutral-secondary" onClick={() => fetchResults(selectedRound)}>
+              Retry
+            </Button>
+          </div>
+        )}
+        {!loading && !error && (
+          <Table
+            header={
+              <thead>
+                <Table.HeaderRow>
+                  <Table.HeaderCell onClick={() => toggleSort("rank")} className="cursor-pointer">
+                    Rank <FeatherArrowUpDown className="ml-1 inline h-3 w-3" />
+                  </Table.HeaderCell>
+                  <Table.HeaderCell onClick={() => toggleSort("name")} className="cursor-pointer">
+                    PNM
+                  </Table.HeaderCell>
+                  <Table.HeaderCell onClick={() => toggleSort("yes_percentage")} className="cursor-pointer">
+                    Score
+                  </Table.HeaderCell>
+                  <Table.HeaderCell>Yes</Table.HeaderCell>
+                  <Table.HeaderCell>No</Table.HeaderCell>
+                  <Table.HeaderCell>Unknown</Table.HeaderCell>
+                  <Table.HeaderCell onClick={() => toggleSort("favorites")} className="cursor-pointer">
+                    Favorites
+                  </Table.HeaderCell>
+                  <Table.HeaderCell>Status</Table.HeaderCell>
+                </Table.HeaderRow>
+              </thead>
+            }
+          >
+            {filteredResults.map((pnm, index) => {
+              const yes = pnm.yes_percentage || 0;
+              const isTop = yes >= 85;
+              const isStrong = yes >= 70 && yes < 85;
+              const isControversial = yes >= 40 && yes <= 60;
+              return (
+                <Table.Row key={pnm.id}>
+                  <Table.Cell className="text-body-bold font-body-bold text-default-font">{index + 1}</Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-2">
+                      <Avatar size="small" image={pnm.photo_url || undefined}>
+                        {pnm.name.slice(0, 2).toUpperCase()}
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <span className="text-body-bold font-body-bold text-default-font">{pnm.name}</span>
+                        {pnm.major && <span className="text-caption font-caption text-subtext-color">{pnm.major}</span>}
+                      </div>
                     </div>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-2">
-                    <Progress value={pnm.yes_percentage} className="w-16" />
-                    <span
-                      className={cn(
-                        "font-semibold whitespace-nowrap",
-                        pnm.yes_percentage >= 80
-                          ? "text-green-600"
-                          : pnm.yes_percentage >= 60
-                          ? "text-beta-navy"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {Math.round(pnm.yes_percentage)}%
-                    </span>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-1">
-                    <ThumbsUp className="w-4 h-4 text-green-600" />
-                    <span>{pnm.yes_count || 0}</span>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-1">
-                    <ThumbsDown className="w-4 h-4 text-red-600" />
-                    <span>{pnm.no_count || 0}</span>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-1">
-                    <HelpCircle className="w-4 h-4 text-neutral-400" />
-                    <span>{pnm.dont_know_count || 0}</span>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 text-beta-navy" />
-                    <span className="font-semibold text-beta-navy dark:text-blue-300">
-                      {pnm.favorite_count || 0}
-                    </span>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  {isTopChoice && (
-                    <Badge variant="success" icon={<CheckCircle className="w-3 h-3" />}>
-                      Top Choice
-                    </Badge>
-                  )}
-                  {isStrong && <Badge variant="success">Strong</Badge>}
-                  {isControversial && (
-                    <Badge variant="warning" icon={<AlertTriangle className="w-3 h-3" />}>
-                      Controversial
-                    </Badge>
-                  )}
-                  {!isTopChoice && !isStrong && !isControversial && (
-                    <Badge variant="neutral">Moderate</Badge>
-                  )}
-                </Table.Cell>
-              </Table.Row>
-            );
-          })}
-          {filteredResults.length === 0 && (
-            <tr>
-              <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
-                {roundId ? "No PNMs match your filters." : "Select a round to view results."}
-              </td>
-            </tr>
-          )}
-        </Table>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-2">
+                      <Progress value={yes} className="w-16" />
+                      <span
+                        className={cn(
+                          "text-caption-bold font-caption-bold",
+                          yes >= 80 ? "text-success-600" : yes >= 60 ? "text-default-font" : "text-subtext-color"
+                        )}
+                      >
+                        {Math.round(yes)}%
+                      </span>
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-1 text-success-700">
+                      <FeatherThumbsUp className="h-4 w-4" />
+                      <span className="text-body font-body">{pnm.yes_count || 0}</span>
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-1 text-error-600">
+                      <FeatherThumbsDown className="h-4 w-4" />
+                      <span className="text-body font-body">{pnm.no_count || 0}</span>
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-1 text-subtext-color">
+                      <FeatherHelpCircle className="h-4 w-4" />
+                      <span className="text-body font-body">{pnm.dont_know_count || 0}</span>
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell className="text-body-bold font-body-bold text-default-font">
+                    {pnm.favorite_count || 0}
+                  </Table.Cell>
+                  <Table.Cell>
+                    {isTop && <Badge variant="success">Top Choice</Badge>}
+                    {isStrong && !isTop && <Badge variant="success">Strong</Badge>}
+                    {isControversial && <Badge variant="warning">Controversial</Badge>}
+                    {!isTop && !isStrong && !isControversial && <Badge variant="neutral">Moderate</Badge>}
+                  </Table.Cell>
+                </Table.Row>
+              );
+            })}
+            {filteredResults.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-4 py-10 text-center text-subtext-color">
+                  <span className="text-body font-body">
+                    {selectedRound ? "No PNMs match your filters." : "Select a round to view results."}
+                  </span>
+                </td>
+              </tr>
+            )}
+          </Table>
+        )}
       </div>
+    </div>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  tone: "neutral" | "success" | "brand" | "warning";
+}) {
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-lg border border-solid border-neutral-border bg-white px-6 py-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <IconWithBackground
+          size="medium"
+          variant={tone === "success" ? "success" : tone === "warning" ? "warning" : tone === "brand" ? "brand" : "neutral"}
+          icon={icon}
+        />
+        <span className="text-caption-bold font-caption-bold text-subtext-color">{label}</span>
+      </div>
+      <span className="text-heading-1 font-heading-1 text-default-font">{value}</span>
     </div>
   );
 }

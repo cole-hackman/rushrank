@@ -1,7 +1,7 @@
 """
 RushRank FastAPI Server with Supabase Authentication
 """
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import asyncpg
@@ -9,16 +9,44 @@ import httpx
 import os
 from typing import Optional, Dict, Any
 import logging
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 import time
+from datetime import datetime
 
 from .auth import get_current_user, verify_token
 from .database import get_db_pool, close_db_pool, set_db_manager
 from .routes import router
+from .exceptions import AppException, register_exception_handlers
+from .rate_limit import setup_rate_limiting
+from .websocket import manager as ws_manager
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure structured JSON logging for production
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if hasattr(record, "request_id"):
+            log_entry["request_id"] = record.request_id
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry)
+
+# Use JSON logging in production, standard in development
+log_format = os.getenv("LOG_FORMAT", "text")
+if log_format == "json":
+    handler = logging.StreamHandler()
+    handler.setFormatter(JSONFormatter())
+    logging.root.handlers = [handler]
+    logging.root.setLevel(logging.INFO)
+else:
+    logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 # Global database pool
@@ -53,9 +81,8 @@ def _load_env_from_files():
 
 _load_env_from_files()
 
-# Debug: confirm DATABASE_URL is set after loading
-import os as _os_check
-logger.info(f"[ENV DEBUG] DATABASE_URL present: {bool(_os_check.getenv('DATABASE_URL'))}, first 40 chars: {(_os_check.getenv('DATABASE_URL') or '')[:40]}")
+# Confirm environment is configured (without exposing sensitive values)
+logger.debug(f"Environment configured: DATABASE_URL={'present' if os.getenv('DATABASE_URL') else 'missing'}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,17 +110,59 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Allowed CORS origins (from environment variable or defaults)
+_default_origins = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# Include API routes
-app.include_router(router, prefix="/api")
+# Setup rate limiting
+setup_rate_limiting(app)
+
+# Register custom exception handlers
+register_exception_handlers(app)
+
+# Global exception handler to ensure CORS headers on unhandled errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Ensure CORS headers are set even on unhandled errors"""
+    from fastapi.responses import JSONResponse
+    from fastapi import status
+    
+    # Don't handle HTTPException - let FastAPI handle it (it already has CORS)
+    if isinstance(exc, HTTPException):
+        raise exc
+    
+    # Log the error
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    # Validate origin against allowed origins (security fix)
+    request_origin = request.headers.get("origin", "")
+    origin = request_origin if request_origin in ALLOWED_ORIGINS else "http://localhost:3000"
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": str(exc) if str(exc) else "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+# Include API routes with versioning
+# /api/v1 is the canonical path, /api is kept for backwards compatibility
+app.include_router(router, prefix="/api/v1")
+app.include_router(router, prefix="/api")  # Backwards compatibility
 
 @app.get("/")
 async def root():
@@ -173,12 +242,39 @@ async def health_storage():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Storage error: {e}")
 
+@app.websocket("/ws/session/{session_id}")
+async def websocket_session(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for real-time session updates.
+    
+    Client connects to /ws/session/{session_id} and receives:
+    - pnm_advance: When chair advances to next PNM
+    - lock_change: When session is locked/unlocked
+    - vote_cast: When a vote is cast (with updated tallies)
+    - session_ended: When the session ends
+    """
+    await ws_manager.connect(websocket, session_id)
+    try:
+        while True:
+            # Keep connection alive, waiting for messages
+            # We don't expect messages from client, but need to handle them
+            data = await websocket.receive_text()
+            # Client can send ping messages to keep connection alive
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket, session_id)
+    except Exception as e:
+        logger.warning(f"WebSocket error: {e}")
+        await ws_manager.disconnect(websocket, session_id)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=int(os.getenv("PORT", 5000)),
+        port=int(os.getenv("PORT", 8000)),
         reload=True,
         log_level="info"
     )

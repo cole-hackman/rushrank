@@ -1,24 +1,34 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
+import {
+  Book,
+  Calendar,
+  Download,
+  EyeOff,
+  MapPin,
+  MessageSquare,
+  Users,
+  Loader2,
+} from "lucide-react";
+import { api, API_BASE } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
-import { MapPin, Book, Calendar, Download, Edit, EyeOff, Trash2, CheckCircle, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Avatar } from "@/components/subframe/Avatar";
-import { Badge } from "@/components/subframe/Badge";
-import { Button } from "@/components/subframe/Button";
-import { IconButton } from "@/components/subframe/IconButton";
-import { Tabs } from "@/components/subframe/Tabs";
-import { TextArea } from "@/components/subframe/TextArea";
-import { IconWithBackground } from "@/components/subframe/IconWithBackground";
+import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
+import { Button } from "@/ui/components/Button";
+import { Badge } from "@/ui/components/Badge";
+import { Avatar } from "@/ui/components/Avatar";
+import { IconButton } from "@/ui/components/IconButton";
+import { IconWithBackground } from "@/ui/components/IconWithBackground";
+import { Tabs } from "@/ui/components/Tabs";
+import { TextArea } from "@/ui/components/TextArea";
 
 type PNM = {
   id: string;
   name: string;
-  major?: string;
-  hometown?: string;
-  year?: string;
+  major?: string | null;
+  hometown?: string | null;
+  year?: string | null;
   tags?: string[];
   photo_url?: string | null;
   yes_percentage?: number;
@@ -27,425 +37,342 @@ type PNM = {
   favorite_count?: number;
 };
 
-type Comment = {
-  id: string;
-  text: string;
-  created_at: string;
-  user_id?: string;
-  anonymous: boolean;
-};
-
 type AttendanceEvent = {
   id: string;
-  event_id: string;
   event_name: string;
   event_date: string;
-  checked_in_at: string;
-  attended: boolean;
+  checked_in_at?: string;
+  status?: string;
 };
 
-type QuestionnaireResponse = {
-  question: string;
-  answer: string;
+type Comment = {
+  id: string;
+  author?: string;
+  created_at: string;
+  text: string;
+  anonymous?: boolean;
 };
 
-type Tab = "comments" | "attendance" | "questionnaire";
+type TabKey = "comments" | "attendance";
 
 export default function PNMProfilePage() {
-  const params = useParams();
+  const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [pnm, setPnm] = useState<PNM | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("comments");
-  const [comments, setComments] = useState<Comment[]>([]);
   const [attendance, setAttendance] = useState<AttendanceEvent[]>([]);
-  const [questionnaire, setQuestionnaire] = useState<QuestionnaireResponse[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
-  const [anonymousComment, setAnonymousComment] = useState(false);
+  const [anonymous, setAnonymous] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>("comments");
+  const [loading, setLoading] = useState(true);
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const pnmId = params?.id as string;
-    if (!pnmId) return;
+    if (!id) return;
+    loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-    (async () => {
-      try {
-        const data = await api<PNM>(`/pnms/${pnmId}`);
-        setPnm(data);
-        
-        // Load comments (notes) from backend
-        try {
-          const notesData = await api<any[]>(`/pnms/${pnmId}/notes`);
-          setComments(
-            notesData.map((note) => ({
-              id: note.id,
-              text: note.text,
-              created_at: note.created_at,
-              user_id: note.user_id,
-              anonymous: note.anonymous || false
-            }))
-          );
-        } catch (e) {
-          // Notes might not exist yet
-          setComments([]);
-        }
-        
-        // Load attendance history
-        try {
-          const attendanceData = await api<any[]>(`/pnms/${pnmId}/attendance`);
-          setAttendance(
-            attendanceData.map((a) => ({
-              id: a.id,
-              event_id: a.event_id,
-              event_name: a.event_name || "Unknown Event",
-              event_date: a.event_date || a.created_at,
-              checked_in_at: a.checked_in_at,
-              attended: true
-            }))
-          );
-        } catch (e) {
-          setAttendance([]);
-        }
-        
-        // Load questionnaire responses
-        try {
-          const questionnaireData = await api<any>(`/pnms/${pnmId}/questionnaire`);
-          if (questionnaireData?.answers) {
-            const responses: QuestionnaireResponse[] = Object.entries(questionnaireData.answers).map(
-              ([q, a]) => ({
-                question: q,
-                answer: String(a)
-              })
-            );
-            setQuestionnaire(responses);
-          }
-        } catch (e) {
-          setQuestionnaire([]);
-        }
-      } catch (e: any) {
-        toast({ title: "Failed to load PNM", description: e.message });
-      }
-    })();
-  }, [params?.id, toast]);
-
-  const handlePostComment = async () => {
-    if (!newComment.trim() || !pnm) return;
-    
+  const loadProfile = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await api<Comment>(`/pnms/${pnm.id}/notes`, {
+      const [pnmData, attendanceData, commentsData] = await Promise.all([
+        api<PNM>(`/pnms/${id}`),
+        api<AttendanceEvent[]>(`/pnms/${id}/attendance`).catch(() => [] as AttendanceEvent[]),
+        api<Comment[]>(`/pnms/${id}/comments`).catch(() => [] as Comment[]),
+      ]);
+
+      setPnm(pnmData);
+      setAttendance(attendanceData || []);
+      setComments(commentsData || []);
+    } catch (e: any) {
+      const message = e?.message || "Unable to load PNM profile";
+      setError(message);
+      toast({ title: "Failed to load PNM", description: message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportGraphic = async () => {
+    if (!id) return;
+    try {
+      const response = await api<{ url: string }>(`/exports/pnm-card/${id}`, {
         method: "POST",
-        body: {
-          pnm_id: pnm.id,
-          text: newComment,
-          anonymous: anonymousComment,
-          tags: []
-        }
       });
       
-      setComments([
+      if (response.url) {
+        // Open the image URL in a new tab for viewing/downloading
+        window.open(response.url, "_blank");
+        toast({ 
+          title: "Image generated", 
+          description: "PNM card image is ready. Opening in new tab..." 
+        });
+      } else {
+        toast({ title: "Export failed", description: "No image URL returned" });
+      }
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e?.message || "Unable to generate image" });
+    }
+  };
+
+  const handlePostComment = async () => {
+    if (!newComment.trim() || !id) return;
+    setPosting(true);
+    try {
+      const created = await api<Comment>(`/pnms/${id}/comments`, {
+        method: "POST",
+        body: { text: newComment.trim(), anonymous },
+      });
+      setComments((prev) => [
         {
-          id: response.id,
-          text: newComment,
-          created_at: new Date().toISOString(),
-          anonymous: anonymousComment
+          ...created,
+          text: newComment.trim(),
+          created_at: created.created_at || new Date().toISOString(),
+          anonymous,
         },
-        ...comments
+        ...prev,
       ]);
       setNewComment("");
-      setAnonymousComment(false);
+      setAnonymous(false);
       toast({ title: "Comment posted" });
     } catch (e: any) {
-      toast({ title: "Failed to post comment", description: e.message });
+      toast({ title: "Failed to post comment", description: e?.message || "Please try again" });
+    } finally {
+      setPosting(false);
     }
   };
 
-  const handleDeleteComment = async (commentId: string) => {
-    if (!confirm("Delete this comment?")) return;
-    
-    try {
-      await api(`/notes/${commentId}`, { method: "DELETE" });
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-      toast({ title: "Comment deleted" });
-    } catch (e: any) {
-      toast({ title: "Failed to delete comment", description: e.message });
-    }
-  };
+  const yesRate = useMemo(
+    () => (pnm?.yes_percentage !== undefined ? `${pnm.yes_percentage}%` : "—"),
+    [pnm?.yes_percentage]
+  );
 
-  if (!pnm) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-neutral-500">Loading...</p>
+      <div className="flex h-[70vh] items-center justify-center text-beta-gray">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Loading profile...
       </div>
     );
   }
 
-  const timeAgo = (date: string) => {
-    const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} hours ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
-    return `${Math.floor(seconds / 86400)} days ago`;
-  };
-
-  const handleExportGraphic = async () => {
-    if (!pnm) return;
-    try {
-      const result = await api<{ url: string }>(`/pnms/${pnm.id}/share-card`, { method: "GET" });
-      if (result.url) {
-        window.open(result.url, "_blank");
-      }
-    } catch (e: any) {
-      toast({ title: "Export failed", description: e.message });
-    }
-  };
+  if (error || !pnm) {
+    return (
+      <div className="flex h-[70vh] flex-col items-center justify-center gap-3 text-beta-gray">
+        <span>{error || "PNM not found"}</span>
+        <Button variant="neutral-secondary" onClick={loadProfile}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex w-full gap-8 mobile:flex-col">
-      {/* Left Sidebar - Profile Info */}
-      <div className="w-96 flex-none space-y-6 mobile:w-full">
-        {/* Profile Card */}
-        <div className="rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-4">
-          <div className="aspect-square w-full rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800">
-            {pnm.photo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={pnm.photo_url} alt={pnm.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-6xl font-bold text-neutral-300">
-                {pnm.name.slice(0, 2).toUpperCase()}
-              </div>
-            )}
-          </div>
-
-            <div className="space-y-4">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-beta-navy dark:text-white">
-                {pnm.name}
-              </h2>
-              <div className="space-y-1">
-                {pnm.hometown && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <MapPin className="w-4 h-4 text-beta-navy/60" />
-                    {pnm.hometown}
-                  </div>
-                )}
-                {pnm.major && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Book className="w-4 h-4 text-beta-navy/60" />
-                    {pnm.major}
-                  </div>
-                )}
-                {pnm.year && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="w-4 h-4 text-beta-navy/60" />
-                    {pnm.year}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {pnm.tags && pnm.tags.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {pnm.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2 py-1 rounded-full bg-beta-navy/10 text-beta-navy dark:bg-beta-navy/20 dark:text-blue-300 text-xs font-medium"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-2">
-          <h3 className="font-semibold text-beta-navy dark:text-white">Quick Stats</h3>
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-neutral-600 dark:text-neutral-400">Yes Rate</span>
-              <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                {pnm.yes_percentage !== undefined ? `${pnm.yes_percentage}%` : "—"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-neutral-600 dark:text-neutral-400">Events Attended</span>
-              <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                {pnm.attendance_count || 0} of {pnm.total_events || 6}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-neutral-600 dark:text-neutral-400">Favorites</span>
-              <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                {pnm.favorite_count || 0}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <Button variant="neutral-secondary" icon={<Edit className="w-4 h-4" />} className="flex-1">
-            Edit
-          </Button>
-          <Button icon={<Download className="w-4 h-4" />} className="flex-1" onClick={handleExportGraphic}>
-            Export
+    <div className="flex h-full w-full flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <Breadcrumbs>
+          <Breadcrumbs.Item>PNMs</Breadcrumbs.Item>
+          <Breadcrumbs.Divider />
+          <Breadcrumbs.Item active>{pnm.name}</Breadcrumbs.Item>
+        </Breadcrumbs>
+        <div className="flex items-center gap-2">
+          <Button variant="neutral-secondary" icon={<Download className="w-4 h-4" />} onClick={handleExportGraphic}>
+            Export Image
           </Button>
         </div>
       </div>
 
-      {/* Right Content - Tabs */}
-      <div className="flex-1 space-y-6">
-        {/* Tabs */}
-        <Tabs>
-          <Tabs.Item active={activeTab === "comments"} onClick={() => setActiveTab("comments")}>
-            Notes & Comments
-          </Tabs.Item>
-          <Tabs.Item active={activeTab === "attendance"} onClick={() => setActiveTab("attendance")}>
-            Attendance
-          </Tabs.Item>
-          <Tabs.Item active={activeTab === "questionnaire"} onClick={() => setActiveTab("questionnaire")}>
-            Questionnaire
-          </Tabs.Item>
-        </Tabs>
+      <div className="flex w-full gap-6 lg:flex-row flex-col">
+        <div className="w-full max-w-md space-y-4">
+          <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+            <div className="aspect-square w-full overflow-hidden rounded-lg bg-neutral-100">
+              {pnm.photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={pnm.photo_url}
+                  alt={pnm.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-5xl font-bold text-beta-gray">
+                  {pnm.name.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div className="mt-4 space-y-2">
+              <h2 className="text-2xl font-bold text-beta-navy">{pnm.name}</h2>
+              <div className="space-y-1 text-sm text-beta-gray">
+                {pnm.hometown && (
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    <span>{pnm.hometown}</span>
+                  </div>
+                )}
+                {pnm.major && (
+                  <div className="flex items-center gap-2">
+                    <Book className="h-4 w-4" />
+                    <span>{pnm.major}</span>
+                  </div>
+                )}
+                {pnm.year && (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>{pnm.year}</span>
+                  </div>
+                )}
+              </div>
+              {pnm.tags && pnm.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {pnm.tags.map((tag) => (
+                    <Badge key={tag}>{tag}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
-        {/* Comments Tab */}
-        {activeTab === "comments" && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-4">
+          <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+            <span className="text-sm font-semibold text-beta-navy">Quick Stats</span>
+            <div className="mt-4 space-y-3 text-sm text-beta-gray">
+              <StatRow label="Yes Rate" value={yesRate} />
+              <StatRow
+                label="Events Attended"
+                value={`${pnm.attendance_count || 0} of ${pnm.total_events || 0}`}
+              />
+              <StatRow label="Favorites" value={(pnm.favorite_count || 0).toString()} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 space-y-4">
+          <Tabs>
+            <Tabs.Item active={activeTab === "comments"} onClick={() => setActiveTab("comments")}>
+              Notes & Comments
+            </Tabs.Item>
+            <Tabs.Item active={activeTab === "attendance"} onClick={() => setActiveTab("attendance")}>
+              Attendance
+            </Tabs.Item>
+          </Tabs>
+
+          {activeTab === "comments" && (
+            <div className="flex flex-col gap-4 rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-beta-navy dark:text-white">Comments</h3>
-                <div className="flex items-center gap-2 text-xs text-neutral-500">
-                  <EyeOff className="w-4 h-4" />
-                  Anonymous mode
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-beta-navy" />
+                  <span className="text-lg font-semibold text-beta-navy">Comments</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-beta-gray">
+                  <EyeOff className="h-4 w-4" />
+                  <span>Anonymous mode</span>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="flex flex-col gap-3">
+                {comments.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-beta-gray/50 p-6 text-center text-beta-gray">
+                    No comments yet.
+                  </div>
+                )}
                 {comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="border-b border-neutral-200 dark:border-neutral-800 pb-4 last:border-0"
+                    className="flex flex-col gap-2 border-b border-beta-gray/20 pb-3 last:border-none"
                   >
-                    <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Avatar size="small">BR</Avatar>
-                        <div>
-                          <div className="text-sm font-semibold text-beta-navy dark:text-white">
-                            {comment.anonymous ? "Brother (Anonymous)" : "Brother Name"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">{timeAgo(comment.created_at)}</div>
+                        <Avatar size="small">{(comment.author || "BR").slice(0, 2)}</Avatar>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-beta-navy">
+                            {comment.anonymous ? "Anonymous" : comment.author || "Brother"}
+                          </span>
+                          <span className="text-xs text-beta-gray">
+                            {new Date(comment.created_at).toLocaleString()}
+                          </span>
                         </div>
                       </div>
-                      <IconButton
-                        size="small"
-                        icon={<Trash2 className="w-4 h-4" />}
-                        onClick={() => handleDeleteComment(comment.id)}
-                      />
                     </div>
-                    <p className="text-sm text-neutral-700 dark:text-neutral-300">{comment.text}</p>
+                    <p className="text-sm text-beta-navy">{comment.text}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="space-y-2 pt-4">
-                <TextArea>
+              <div className="flex flex-col gap-2">
+                <TextArea label="" helpText="">
                   <TextArea.Input
                     value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Add a comment..."
+                    onChange={(e) => setNewComment(e.target.value)}
                   />
                 </TextArea>
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <div className="flex items-center justify-between text-sm text-beta-gray">
+                  <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={anonymousComment}
-                      onChange={(e) => setAnonymousComment(e.target.checked)}
-                      className="rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy"
+                      checked={anonymous}
+                      onChange={(e) => setAnonymous(e.target.checked)}
+                      className="h-4 w-4 rounded border-beta-gray/60 text-beta-navy focus:ring-beta-navy"
                     />
-                    <EyeOff className="w-3 h-3" />
                     Post anonymously
                   </label>
-                  <Button size="small" onClick={handlePostComment}>
+                  <Button size="small" onClick={handlePostComment} disabled={posting}>
+                    {posting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Post Comment
                   </Button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Attendance Tab */}
-        {activeTab === "attendance" && (
-          <div className="rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6">
-            <h3 className="text-lg font-semibold text-beta-navy dark:text-white mb-4">
-              Attendance History
-            </h3>
-            <div className="space-y-0">
-              {attendance.length === 0 && (
-                <p className="text-sm text-neutral-500 py-8 text-center">
-                  No attendance records yet.
-                </p>
-              )}
-              {attendance.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-center justify-between border-b border-beta-gray/20 dark:border-neutral-800 py-4 last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <IconWithBackground
-                      variant="success"
-                      size="small"
-                      icon={<CheckCircle className="w-4 h-4" />}
-                    />
-                    <div>
-                      <div className="text-sm font-semibold text-neutral-900 dark:text-white">
-                        {event.event_name}
-                      </div>
-                      <div className="text-xs text-neutral-500">
-                        {new Date(event.event_date).toLocaleDateString()}
+          {activeTab === "attendance" && (
+            <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-beta-navy" />
+                <span className="text-lg font-semibold text-beta-navy">Attendance History</span>
+              </div>
+              <div className="mt-4 divide-y divide-beta-gray/20">
+                {attendance.length === 0 && (
+                  <div className="py-8 text-center text-beta-gray">No attendance recorded.</div>
+                )}
+                {attendance.map((event) => (
+                  <div key={event.id} className="flex items-center justify-between py-4">
+                    <div className="flex items-center gap-3">
+                      <IconWithBackground size="small" variant="success" />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-beta-navy">
+                          {event.event_name}
+                        </span>
+                        <span className="text-xs text-beta-gray">
+                          {new Date(event.event_date).toLocaleDateString()}
+                        </span>
                       </div>
                     </div>
+                    <span className="text-sm text-beta-gray">
+                      {event.checked_in_at
+                        ? new Date(event.checked_in_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                        : event.status || "—"}
+                    </span>
                   </div>
-                  <span className="text-sm text-neutral-600 dark:text-neutral-400">
-                    {new Date(event.checked_in_at).toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Questionnaire Tab */}
-        {activeTab === "questionnaire" && (
-          <div className="rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6">
-            <h3 className="text-lg font-semibold text-beta-navy dark:text-white mb-4">
-              Questionnaire Responses
-            </h3>
-            <div className="space-y-4">
-              {questionnaire.length === 0 && (
-                <p className="text-sm text-neutral-500 py-8 text-center">
-                  No questionnaire responses yet.
-                </p>
-              )}
-              {questionnaire.map((item, i) => (
-                <div
-                  key={i}
-                  className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 p-4 space-y-2"
-                >
-                  <div className="text-sm font-semibold text-neutral-900 dark:text-white">
-                    {item.question}
-                  </div>
-                  <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                    {item.answer}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-md bg-neutral-50 px-3 py-2">
+      <span className="text-sm text-beta-gray">{label}</span>
+      <span className="text-sm font-semibold text-beta-navy">{value}</span>
     </div>
   );
 }

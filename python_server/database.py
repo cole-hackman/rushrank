@@ -14,8 +14,8 @@ async def get_db_pool() -> asyncpg.Pool:
     if not database_url:
         raise RuntimeError("DATABASE_URL environment variable not set")
     
-    # Debug: log the exact URL asyncpg sees
-    logger.info(f"[DB DEBUG] DATABASE_URL length: {len(database_url)}, repr: {repr(database_url[:80])}")
+    # Log that we have a database URL configured (without exposing the actual value)
+    logger.debug("DATABASE_URL configured, creating connection pool...")
     
     try:
         pool = await asyncpg.create_pool(
