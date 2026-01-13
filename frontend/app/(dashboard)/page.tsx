@@ -1,206 +1,245 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FeatherCalendar } from "@subframe/core";
+import { FeatherDownload } from "@subframe/core";
+import { FeatherUserPlus } from "@subframe/core";
+import { FeatherUsers } from "@subframe/core";
+import { FeatherMapPin } from "@subframe/core";
+import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
-import Link from "next/link";
-import { Users, Vote, Calendar, TrendingUp, UserPlus, CheckSquare, CalendarPlus, BarChart3, Download, FileText } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { IconButton } from "@/components/subframe/IconButton";
 
-type Stats = {
-  total_pnms: number;
-  active_rounds: number;
-  upcoming_events: number;
-  total_votes: number;
-};
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { toast } = useToast();
-  const [stats, setStats] = useState<Stats>({
-    total_pnms: 0,
-    active_rounds: 0,
-    upcoming_events: 0,
-    total_votes: 0,
-  });
   const [loading, setLoading] = useState(true);
+  const [chapterId, setChapterId] = useState<string | null>(null);
+  const [totalPnms, setTotalPnms] = useState(0);
+  const [totalEvents, setTotalEvents] = useState(0);
+  const [upcomingEvents, setUpcomingEvents] = useState(0);
 
   useEffect(() => {
-    (async () => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // Get chapter
+      let cid: string | null = null;
       try {
-        const chapters = await api<{ id: string }[]>("/chapters");
-        const cid = chapters[0]?.id;
-        
-        if (cid) {
-          const pnms = await api<any[]>(`/pnms?chapter_id=${cid}`);
-          const rounds = await api<any[]>(`/rounds?chapter_id=${cid}`);
-          const events = await api<any[]>(`/events?chapter_id=${cid}`);
-          
-          const activeRounds = rounds.filter((r) => r.status === "ACTIVE").length;
-          const upcomingEvents = events.filter((e) => e.is_active).length;
-          
-          setStats({
-            total_pnms: pnms.length,
-            active_rounds: activeRounds,
-            upcoming_events: upcomingEvents,
-            total_votes: 0, // TODO: aggregate from rounds
-          });
+        const chapters = await api<{ id: string }[]>("/chapters", { timeout: 5000 });
+        cid = chapters[0]?.id || null;
+        if (!cid) {
+          toast({ title: "No chapter found", description: "Please create a chapter first" });
+          setLoading(false);
+          return;
         }
+        setChapterId(cid);
       } catch (e: any) {
-        toast({ title: "Failed to load dashboard", description: e.message });
-      } finally {
+        console.error("Failed to load chapters:", e);
+        const errorMsg = e?.message || "Unable to fetch chapters";
+        if (errorMsg.includes("timed out") || errorMsg.includes("timeout")) {
+          toast({
+            title: "Backend server not responding",
+            description: "Please make sure the backend server is running on port 8000"
+          });
+        } else {
+          toast({ title: "Failed to load chapter", description: errorMsg });
+        }
         setLoading(false);
+        return;
       }
-    })();
-  }, [toast]);
 
-  const cards = [
-    {
-      title: "Total PNMs",
-      value: stats.total_pnms,
-      icon: Users,
-      color: "blue",
-      href: "/pnms",
-    },
-    {
-      title: "Active Rounds",
-      value: stats.active_rounds,
-      icon: Vote,
-      color: "green",
-      href: "/voting",
-    },
-    {
-      title: "Upcoming Events",
-      value: stats.upcoming_events,
-      icon: Calendar,
-      color: "purple",
-      href: "/events",
-    },
-    {
-      title: "Total Votes",
-      value: stats.total_votes,
-      icon: TrendingUp,
-      color: "orange",
-      href: "/results",
-    },
-  ];
+      // Load all data in parallel with error handling
+      let pnmsData: any[] = [];
+      let eventsData: any[] = [];
 
-  const colorClasses = {
-    blue: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
-    green: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400",
-    purple: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400",
-    orange: "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400",
+      try {
+        [pnmsData, eventsData] = await Promise.all([
+          api<any[]>(`/pnms?chapter_id=${cid}`).catch(() => []),
+          api<any[]>(`/events?chapter_id=${cid}`).catch(() => []),
+        ]);
+      } catch (e: any) {
+        console.error("Failed to load dashboard data:", e);
+        toast({ title: "Failed to load some data", description: e?.message || "Some data may be incomplete" });
+      }
+
+      // Set total PNMs - ensure it's an array
+      setTotalPnms(Array.isArray(pnmsData) ? pnmsData.length : 0);
+
+      // Set total events
+      setTotalEvents(Array.isArray(eventsData) ? eventsData.length : 0);
+
+      // Calculate upcoming events (events in the future)
+      if (Array.isArray(eventsData)) {
+        const now = new Date();
+        const upcoming = eventsData.filter((e: any) => {
+          if (!e.date) return false;
+          try {
+            return new Date(e.date) >= now;
+          } catch {
+            return false;
+          }
+        }).length;
+        setUpcomingEvents(upcoming);
+      } else {
+        setUpcomingEvents(0);
+      }
+    } catch (e: any) {
+      console.error("Failed to load dashboard:", e);
+      const errorMessage = e?.message || e?.toString() || "Unknown error occurred";
+      toast({ title: "Failed to load dashboard", description: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case "add-pnm":
+        router.push("/rush");
+        break;
+      case "new-event":
+        router.push("/events?action=add");
+        break;
+      case "all-pnms":
+        router.push("/pnms");
+        break;
+      case "export":
+        router.push("/exports");
+        break;
+      default:
+        break;
+    }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-neutral-500">Loading...</p>
+      <div className="container max-w-none flex h-full w-full flex-col items-center justify-center gap-6 bg-default-background py-6">
+        <p className="text-body font-body text-subtext-color">Loading dashboard...</p>
+        <p className="text-caption font-caption text-subtext-color">
+          If this takes too long, check if the backend server is running
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-beta-navy dark:text-white">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
+    <div className="container max-w-none flex h-full w-full flex-col items-start gap-6 bg-default-background px-4 py-6 sm:px-6">
+      {/* Header */}
+      <div className="flex w-full flex-col items-start gap-1">
+        <h1 className="text-heading-1 font-heading-1 text-default-font">
+          Dashboard
+        </h1>
+        <p className="text-body font-body text-subtext-color">
           Overview of your chapter's rush activities
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <Link
-              key={card.title}
-              href={card.href as any}
-              className="block group"
-            >
-              <div className="rounded-2xl bg-white dark:bg-neutral-900 border border-beta-gray/30 dark:border-neutral-800 p-6 hover:shadow-lg hover:border-beta-navy/30 transition-all hover:scale-105">
-                <div className="flex items-center justify-between mb-4">
-                  <div
-                    className={cn(
-                      "w-12 h-12 rounded-xl flex items-center justify-center",
-                      colorClasses[card.color as keyof typeof colorClasses]
-                    )}
-                  >
-                    <Icon className="w-6 h-6" />
-                  </div>
-                </div>
-                <div className="text-3xl font-bold text-beta-navy dark:text-white mb-1">
-                  {card.value}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {card.title}
-                </div>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-beta-gray/30 dark:border-neutral-800 p-6">
-          <h2 className="text-xl font-semibold text-beta-navy dark:text-white mb-6">
-            Quick Actions
-          </h2>
-          <div className="grid grid-cols-3 gap-4">
-            <Link href="/intake" className="flex flex-col items-center gap-3 p-4 rounded-lg hover:bg-beta-navy/5 dark:hover:bg-neutral-800 transition-all group">
-              <div className="w-14 h-14 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 flex items-center justify-center group-hover:bg-beta-navy group-hover:scale-110 transition-all">
-                <UserPlus className="w-7 h-7 text-beta-navy dark:text-blue-300 group-hover:text-white" />
-              </div>
-              <span className="text-sm font-medium text-beta-navy dark:text-white text-center">Add PNM</span>
-            </Link>
-            
-            <Link href="/voting" className="flex flex-col items-center gap-3 p-4 rounded-lg hover:bg-beta-navy/5 dark:hover:bg-neutral-800 transition-all group">
-              <div className="w-14 h-14 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 flex items-center justify-center group-hover:bg-beta-navy group-hover:scale-110 transition-all">
-                <CheckSquare className="w-7 h-7 text-beta-navy dark:text-blue-300 group-hover:text-white" />
-              </div>
-              <span className="text-sm font-medium text-beta-navy dark:text-white text-center">Vote</span>
-            </Link>
-            
-            <Link href="/events" className="flex flex-col items-center gap-3 p-4 rounded-lg hover:bg-beta-navy/5 dark:hover:bg-neutral-800 transition-all group">
-              <div className="w-14 h-14 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 flex items-center justify-center group-hover:bg-beta-navy group-hover:scale-110 transition-all">
-                <CalendarPlus className="w-7 h-7 text-beta-navy dark:text-blue-300 group-hover:text-white" />
-              </div>
-              <span className="text-sm font-medium text-beta-navy dark:text-white text-center">New Event</span>
-            </Link>
-            
-            <Link href="/results" className="flex flex-col items-center gap-3 p-4 rounded-lg hover:bg-beta-navy/5 dark:hover:bg-neutral-800 transition-all group">
-              <div className="w-14 h-14 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 flex items-center justify-center group-hover:bg-beta-navy group-hover:scale-110 transition-all">
-                <BarChart3 className="w-7 h-7 text-beta-navy dark:text-blue-300 group-hover:text-white" />
-              </div>
-              <span className="text-sm font-medium text-beta-navy dark:text-white text-center">Results</span>
-            </Link>
-            
-            <Link href="/pnms" className="flex flex-col items-center gap-3 p-4 rounded-lg hover:bg-beta-navy/5 dark:hover:bg-neutral-800 transition-all group">
-              <div className="w-14 h-14 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 flex items-center justify-center group-hover:bg-beta-navy group-hover:scale-110 transition-all">
-                <Users className="w-7 h-7 text-beta-navy dark:text-blue-300 group-hover:text-white" />
-              </div>
-              <span className="text-sm font-medium text-beta-navy dark:text-white text-center">All PNMs</span>
-            </Link>
-            
-            <button className="flex flex-col items-center gap-3 p-4 rounded-lg hover:bg-beta-navy/5 dark:hover:bg-neutral-800 transition-all group">
-              <div className="w-14 h-14 rounded-xl bg-beta-navy/10 dark:bg-beta-navy/20 flex items-center justify-center group-hover:bg-beta-navy group-hover:scale-110 transition-all">
-                <Download className="w-7 h-7 text-beta-navy dark:text-blue-300 group-hover:text-white" />
-              </div>
-              <span className="text-sm font-medium text-beta-navy dark:text-white text-center">Export</span>
-            </button>
+      {/* Stats Grid - Mobile First */}
+      <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <IconWithBackground size="medium" variant="neutral" icon={<FeatherUsers />} />
+            <span className="text-caption-bold font-caption-bold text-subtext-color">
+              Total PNMs
+            </span>
           </div>
+          <span className="text-heading-1 font-heading-1 text-default-font">
+            {totalPnms}
+          </span>
         </div>
 
-        <div className="rounded-xl bg-white dark:bg-neutral-900 border border-beta-gray/30 dark:border-neutral-800 p-6">
-          <h2 className="text-xl font-semibold text-beta-navy dark:text-white mb-4">
-            Recent Activity
-          </h2>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>No recent activity to display.</p>
-            <p className="text-xs">Activity will appear here as members interact with the system.</p>
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <IconWithBackground size="medium" variant="success" icon={<FeatherCalendar />} />
+            <span className="text-caption-bold font-caption-bold text-subtext-color">
+              Total Events
+            </span>
           </div>
+          <span className="text-heading-1 font-heading-1 text-default-font">
+            {totalEvents}
+          </span>
+        </div>
+
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border bg-white p-5 shadow-sm sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center gap-2.5">
+            <IconWithBackground size="medium" variant="warning" icon={<FeatherMapPin />} />
+            <span className="text-caption-bold font-caption-bold text-subtext-color">
+              Upcoming Events
+            </span>
+          </div>
+          <span className="text-heading-1 font-heading-1 text-default-font">
+            {upcomingEvents}
+          </span>
+        </div>
+      </div>
+
+      {/* Quick Actions - Mobile Optimized */}
+      <div className="flex w-full flex-col items-start gap-4">
+        <div className="flex flex-col items-start gap-1">
+          <h2 className="text-heading-2 font-heading-2 text-default-font">
+            Quick Actions
+          </h2>
+          <p className="text-body font-body text-subtext-color">
+            Common tasks and shortcuts
+          </p>
+        </div>
+        <div className="w-full grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <button
+            onClick={() => handleQuickAction("add-pnm")}
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+          >
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-brand-100">
+              <FeatherUserPlus className="h-6 w-6 text-brand-600" />
+            </div>
+            <span className="text-body-bold font-body-bold text-default-font text-center">
+              Add PNM
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleQuickAction("new-event")}
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+          >
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-orange-100">
+              <FeatherCalendar className="h-6 w-6 text-orange-600" />
+            </div>
+            <span className="text-body-bold font-body-bold text-default-font text-center">
+              New Event
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleQuickAction("all-pnms")}
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+          >
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-neutral-100">
+              <FeatherUsers className="h-6 w-6 text-neutral-600" />
+            </div>
+            <span className="text-body-bold font-body-bold text-default-font text-center">
+              All PNMs
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleQuickAction("export")}
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+          >
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-neutral-100">
+              <FeatherDownload className="h-6 w-6 text-neutral-600" />
+            </div>
+            <span className="text-body-bold font-body-bold text-default-font text-center">
+              Export
+            </span>
+          </button>
         </div>
       </div>
     </div>
   );
 }
-

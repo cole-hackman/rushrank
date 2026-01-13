@@ -1,103 +1,337 @@
+// PLAN: 1) Normalize table layout & spacing, 2) Fix showEmail/showPhone toggles & PNM.email/phone plumbing end-to-end, 3) Add basic responsiveness + empty state.
+
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
-import { useToast } from "@/components/ToastProvider";
+
 import Link from "next/link";
-import { Download, Plus, Search, Star, Eye, MoreHorizontal, Edit, Tag as TagIcon, Trash } from "lucide-react";
+import React from "react";
+import { useEffect, useMemo, useState } from "react";
+import { FeatherAlertTriangle } from "@subframe/core";
+import { FeatherDownload } from "@subframe/core";
+import { FeatherEye } from "@subframe/core";
+import { FeatherFilter } from "@subframe/core";
+import { FeatherSearch } from "@subframe/core";
+import { FeatherTag } from "@subframe/core";
+import { FeatherUsers } from "@subframe/core";
+import { FeatherArrowLeftRight } from "@subframe/core";
+import { FeatherTrash2 } from "@subframe/core";
+import { FeatherImage } from "@subframe/core";
+import { api, API_BASE } from "@/lib/api";
+import { useToast } from "@/components/ToastProvider";
+import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
+import { Button } from "@/ui/components/Button";
+import { IconButton } from "@/ui/components/IconButton";
+import { IconWithBackground } from "@/ui/components/IconWithBackground";
+import { Table } from "@/ui/components/Table";
+import { TextField } from "@/ui/components/TextField";
+import { Checkbox } from "@/ui/components/Checkbox";
+import { Badge } from "@/ui/components/Badge";
+import { Avatar } from "@/ui/components/Avatar";
+import { BulkTagModal } from "@/components/admin/BulkTagModal";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Avatar } from "@/components/subframe/Avatar";
-import { Badge } from "@/components/subframe/Badge";
-import { Button } from "@/components/subframe/Button";
-import { IconButton } from "@/components/subframe/IconButton";
-import { TextField } from "@/components/subframe/TextField";
-import { Table } from "@/components/subframe/Table";
-import { Checkbox } from "@/components/subframe/Checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/ui/dropdown-menu";
 
 type PNM = {
   id: string;
   name: string;
-  email?: string;
-  phone?: string;
-  major?: string;
-  hometown?: string;
-  year?: string;
+  email?: string | null;
+  phone?: string | null;
+  major?: string | null;
+  hometown?: string | null;
+  year?: string | null;
   tags?: string[];
   photo_url?: string | null;
   attendance_count?: number;
   total_events?: number;
   yes_percentage?: number;
+  favorite_count?: number;
   is_favorite?: boolean;
 };
 
+
 export default function PNMsPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [chapterId, setChapterId] = useState<string | null>(null);
   const [pnms, setPnms] = useState<PNM[]>([]);
   const [search, setSearch] = useState("");
-  const [chapterId, setChapterId] = useState<string | null>(null);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [showEmailColumn, setShowEmailColumn] = useState(false);
-  const [showPhoneColumn, setShowPhoneColumn] = useState(false);
-  const { toast } = useToast();
+  const [showEmail, setShowEmail] = useState(true);
+  const [showPhone, setShowPhone] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPnmIds, setSelectedPnmIds] = useState<string[]>([]);
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
         const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        const cid = chapters[0]?.id;
-        setChapterId(cid || null);
-        if (cid) {
-          const data = await api<PNM[]>(`/pnms?chapter_id=${cid}`);
-          setPnms(data);
-          
-          const tags = new Set<string>();
-          data.forEach((pnm) => {
-            (pnm.tags || []).forEach((tag) => tags.add(tag));
-          });
-          setAllTags(Array.from(tags).sort());
+        const cid = chapters[0]?.id || null;
+        setChapterId(cid);
+
+        // Check admin status
+        try {
+          const profile = await api<{ memberships: Array<{ role: string }> }>("/me");
+          const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
+          setIsAdmin(hasAdminRole || false);
+        } catch (e) {
+          console.error("Failed to check admin status:", e);
+          setIsAdmin(false);
         }
       } catch (e: any) {
-        toast({ title: "Failed to load PNMs", description: e.message });
+        toast({ title: "Failed to load chapter", description: e?.message || "Unable to fetch chapters" });
       }
     })();
   }, [toast]);
 
-  const filtered = useMemo(() => {
-    let result = pnms;
-    
-    const s = search.trim().toLowerCase();
-    if (s) {
-      result = result.filter((p) =>
-        [p.name, p.major || "", p.hometown || "", p.email || "", p.phone || ""].some((f) =>
-          f.toLowerCase().includes(s)
+  useEffect(() => {
+    if (chapterId) {
+      loadPnms();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterId, search, selectedTags]);
+
+  const loadPnms = async () => {
+    if (!chapterId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const query = new URLSearchParams();
+      query.set("chapter_id", chapterId);
+      if (search.trim()) query.set("search", search.trim());
+      if (selectedTags.length > 0) query.set("tags", selectedTags.join(","));
+      const data = await api<PNM[]>(`/pnms?${query.toString()}`);
+      setPnms(data);
+
+      const tags = new Set<string>();
+      data.forEach((p) => (p.tags || []).forEach((t) => tags.add(t)));
+      setAllTags(Array.from(tags).sort());
+    } catch (e: any) {
+      const message = e?.message || "Unable to load PNMs";
+      setError(message);
+      toast({ title: "Failed to load PNMs", description: message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredPnms = useMemo(() => {
+    let data = pnms;
+    const term = search.trim().toLowerCase();
+    if (term) {
+      data = data.filter((p) =>
+        [p.name, p.major || "", p.hometown || "", p.email || "", p.phone || ""].some((value) =>
+          value.toLowerCase().includes(term)
         )
       );
     }
-    
-    if (selectedTags.length > 0) {
-      result = result.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
+    if (selectedTags.length) {
+      data = data.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
     }
-    
-    return result;
+    return data;
   }, [pnms, search, selectedTags]);
 
+  const stats = useMemo(() => {
+    const total = pnms.length;
+    return { total };
+  }, [pnms]);
+
   const toggleTag = (tag: string) => {
-    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const handleExport = () => {
+    const params = new URLSearchParams();
+    if (selectedTags.length > 0) {
+      params.set("tags", selectedTags.join(","));
+    }
+    if (search.trim()) {
+      params.set("search", search.trim());
+    }
+    router.push(`/exports?${params.toString()}`);
+  };
+
+  const togglePnmSelection = (pnmId: string) => {
+    setSelectedPnmIds((prev) =>
+      prev.includes(pnmId) ? prev.filter((id) => id !== pnmId) : [...prev, pnmId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPnmIds.length === filteredPnms.length) {
+      setSelectedPnmIds([]);
+    } else {
+      setSelectedPnmIds(filteredPnms.map((p) => p.id));
+    }
+  };
+
+  const handleBulkTagComplete = () => {
+    loadPnms();
+    setSelectedPnmIds([]);
+  };
+
+  const handleCompare = () => {
+    if (selectedPnmIds.length < 2 || selectedPnmIds.length > 5) {
+      toast({ title: "Invalid selection", description: "Please select 2-5 PNMs to compare" });
+      return;
+    }
+    router.push(`/compare?ids=${selectedPnmIds.join(",")}`);
+  };
+
+  const handleDeletePnm = async (pnmId: string, pnmName: string) => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Admin access required to delete PNMs" });
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${pnmName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api(`/pnms/${pnmId}`, { method: "DELETE" });
+      toast({ title: "PNM deleted", description: `${pnmName} has been deleted` });
+      await loadPnms();
+      // Remove from selection if selected
+      setSelectedPnmIds((prev) => prev.filter((id) => id !== pnmId));
+    } catch (e: any) {
+      toast({ title: "Failed to delete PNM", description: e?.message || "Unable to delete PNM" });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Admin access required to delete PNMs" });
+      return;
+    }
+
+    if (selectedPnmIds.length === 0) {
+      toast({ title: "No selection", description: "Please select PNMs to delete" });
+      return;
+    }
+
+    const count = selectedPnmIds.length;
+    if (!confirm(`Are you sure you want to delete ${count} PNM${count !== 1 ? "s" : ""}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const pnmId of selectedPnmIds) {
+        try {
+          await api(`/pnms/${pnmId}`, { method: "DELETE" });
+          successCount++;
+        } catch (e: any) {
+          console.error(`Failed to delete PNM ${pnmId}:`, e);
+          errorCount++;
+        }
+      }
+
+      if (errorCount === 0) {
+        toast({ title: "Success", description: `${successCount} PNM${successCount !== 1 ? "s" : ""} deleted` });
+      } else {
+        toast({ title: "Partial success", description: `${successCount} deleted, ${errorCount} failed` });
+      }
+
+      await loadPnms();
+      setSelectedPnmIds([]);
+    } catch (e: any) {
+      toast({ title: "Bulk delete failed", description: e?.message || "Unable to delete PNMs" });
+    }
+  };
+
+  const handleExportGraphic = async (pnmId: string, pnmName: string) => {
+    try {
+      toast({ title: "Generating graphic...", description: `Creating graphic for ${pnmName}` });
+      const result = await api<{ url: string; message: string }>(
+        `/exports/pnm-card/${pnmId}`,
+        { method: "POST" }
+      );
+      if (result.url) {
+        // Open the image URL in a new tab for download
+        window.open(result.url, "_blank");
+        toast({ title: "Graphic ready!", description: "Image opened in new tab" });
+      }
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e?.message || "Unable to generate graphic" });
+    }
   };
 
   return (
-    <div className="flex h-full w-full flex-col gap-6">
-      {/* Header & Filters */}
-      <div className="flex w-full flex-col gap-4">
-        <div className="flex w-full items-center gap-4 flex-wrap">
-          <div className="flex-1 min-w-[300px]">
-            <TextField icon={<Search className="w-4 h-4" />}>
+    <div className="container max-w-none flex h-full w-full flex-col items-start gap-6 bg-default-background py-6">
+      <div className="flex w-full flex-col items-start gap-1">
+        <span className="text-heading-1 font-heading-1 text-default-font">
+          PNMs
+        </span>
+        <span className="text-body font-body text-subtext-color">
+          Manage and view all potential new members
+        </span>
+      </div>
+
+      <div className="flex w-full items-center justify-between">
+        <div className="flex items-center gap-2">
+          {selectedPnmIds.length >= 2 && selectedPnmIds.length <= 5 && (
+            <Button
+              variant="neutral-secondary"
+              icon={<FeatherArrowLeftRight />}
+              onClick={handleCompare}
+            >
+              Compare ({selectedPnmIds.length})
+            </Button>
+          )}
+          {selectedPnmIds.length > 0 && (
+            <>
+              <Button
+                variant="neutral-secondary"
+                icon={<FeatherTag />}
+                onClick={() => setShowBulkTagModal(true)}
+              >
+                Bulk Tag ({selectedPnmIds.length})
+              </Button>
+              {isAdmin && (
+                <Button
+                  variant="destructive-secondary"
+                  icon={<FeatherTrash2 />}
+                  onClick={handleBulkDelete}
+                >
+                  Delete ({selectedPnmIds.length})
+                </Button>
+              )}
+            </>
+          )}
+          <Button variant="neutral-secondary" icon={<FeatherDownload />} onClick={handleExport}>
+            Export CSV
+          </Button>
+          <Link href="/exports">
+            <Button variant="neutral-secondary" icon={<FeatherDownload />}>
+              Export Graphics
+            </Button>
+          </Link>
+          <Link href="/intake">
+            <Button variant="brand-primary">New PNM</Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="w-full items-start gap-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={<FeatherUsers />}
+          label="Total PNMs"
+          value={stats.total.toString()}
+          tone="neutral"
+        />
+      </div>
+
+      <div className="flex w-full flex-col gap-4 rounded-lg border border-solid border-neutral-border bg-white p-6 shadow-sm mt-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="min-w-[260px] flex-1">
+            <TextField variant="filled" icon={<FeatherSearch />}>
               <TextField.Input
                 placeholder="Search PNMs..."
                 value={search}
@@ -105,54 +339,27 @@ export default function PNMsPage() {
               />
             </TextField>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="neutral-secondary"
-              icon={<Download className="w-4 h-4" />}
-              onClick={() => {
-                if (chapterId) {
-                  window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL}/export/csv?entity=pnms&chapter_id=${chapterId}`, "_blank");
-                }
-              }}
-            >
-              Export CSV
-            </Button>
-            <Link href="/intake">
-              <Button icon={<Plus className="w-4 h-4" />}>Add PNM</Button>
-            </Link>
+          <div className="flex items-center gap-3">
+            <Checkbox label="Show email" checked={showEmail} onCheckedChange={setShowEmail} />
+            <Checkbox label="Show phone" checked={showPhone} onCheckedChange={setShowPhone} />
+          </div>
+          <div className="flex items-center gap-2 text-subtext-color">
+            <FeatherFilter className="w-4 h-4" />
+            <span className="text-caption-bold font-caption-bold">Filters</span>
           </div>
         </div>
-
-        {/* Column Visibility Toggles */}
-        <div className="flex items-center gap-4">
-          <Checkbox
-            checked={showEmailColumn}
-            onCheckedChange={setShowEmailColumn}
-            label="Show Email"
-          />
-          <Checkbox
-            checked={showPhoneColumn}
-            onCheckedChange={setShowPhoneColumn}
-            label="Show Phone"
-          />
-        </div>
-
-        {/* Tag Filters */}
         {allTags.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Filter by tags:
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
             {allTags.map((tag) => (
               <button
                 key={tag}
                 onClick={() => toggleTag(tag)}
                 className={cn(
+                  "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
                   selectedTags.includes(tag)
-                    ? "bg-beta-navy text-white"
-                    : "bg-beta-navy/10 text-beta-navy hover:bg-beta-navy/20"
+                    ? "border-brand-600 bg-brand-600 text-white"
+                    : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
                 )}
-                style={{ padding: "4px 12px", borderRadius: "9999px", fontSize: "12px", fontWeight: 500 }}
               >
                 {tag}
               </button>
@@ -161,7 +368,6 @@ export default function PNMsPage() {
               <Button
                 variant="neutral-tertiary"
                 size="small"
-                icon={<span>×</span>}
                 onClick={() => setSelectedTags([])}
               >
                 Clear filters
@@ -171,141 +377,194 @@ export default function PNMsPage() {
         )}
       </div>
 
-      {/* Table */}
-      <div className="flex w-full flex-col rounded-xl border border-beta-gray/30 bg-white dark:bg-neutral-900 shadow-sm overflow-auto">
-        <Table
-          header={
-            <thead>
-              <Table.HeaderRow>
-                <Table.HeaderCell>Photo</Table.HeaderCell>
-                <Table.HeaderCell>Name</Table.HeaderCell>
-                <Table.HeaderCell>Major</Table.HeaderCell>
-                <Table.HeaderCell>Hometown</Table.HeaderCell>
-                {showEmailColumn && <Table.HeaderCell>Email</Table.HeaderCell>}
-                {showPhoneColumn && <Table.HeaderCell>Phone</Table.HeaderCell>}
-                <Table.HeaderCell>Tags</Table.HeaderCell>
-                <Table.HeaderCell>Attendance</Table.HeaderCell>
-                <Table.HeaderCell>Yes %</Table.HeaderCell>
-                <Table.HeaderCell>Favorites</Table.HeaderCell>
-                <Table.HeaderCell>Actions</Table.HeaderCell>
-              </Table.HeaderRow>
-            </thead>
-          }
-        >
-          {filtered.map((pnm) => (
-            <Table.Row key={pnm.id} clickable>
-              <Table.Cell>
-                <Avatar size="large" image={pnm.photo_url || undefined}>
-                  {pnm.name.slice(0, 2).toUpperCase()}
-                </Avatar>
-              </Table.Cell>
-              <Table.Cell>
-                <span className="font-semibold text-beta-navy dark:text-white whitespace-nowrap">
-                  {pnm.name}
-                </span>
-              </Table.Cell>
-              <Table.Cell>
-                <span className="text-muted-foreground whitespace-nowrap">{pnm.major || "—"}</span>
-              </Table.Cell>
-              <Table.Cell>
-                <span className="text-muted-foreground whitespace-nowrap">{pnm.hometown || "—"}</span>
-              </Table.Cell>
-              {showEmailColumn && (
-                <Table.Cell>
-                  <span className="text-muted-foreground text-xs">{pnm.email || "—"}</span>
-                </Table.Cell>
-              )}
-              {showPhoneColumn && (
-                <Table.Cell>
-                  <span className="text-muted-foreground text-xs">{pnm.phone || "—"}</span>
-                </Table.Cell>
-              )}
-              <Table.Cell>
-                <div className="flex items-center gap-1">
-                  {(pnm.tags || []).slice(0, 2).map((tag) => (
-                    <Badge key={tag}>{tag}</Badge>
-                  ))}
-                  {(pnm.tags || []).length > 2 && (
-                    <Badge variant="neutral">+{(pnm.tags || []).length - 2}</Badge>
+      <div className="mt-4 w-full rounded-xl border border-solid border-neutral-border bg-white shadow-sm overflow-hidden">
+        {loading && (
+          <div className="flex h-48 items-center justify-center text-subtext-color">
+            <span className="text-body font-body">Loading PNMs...</span>
+          </div>
+        )}
+        {error && !loading && (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-subtext-color">
+            <span className="text-body font-body">{error}</span>
+            <Button variant="neutral-secondary" onClick={loadPnms}>
+              Retry
+            </Button>
+          </div>
+        )}
+        {!loading && !error && (
+          <div className="overflow-x-auto -mx-6 px-6">
+            <Table
+              className="min-w-[1200px] w-full"
+              header={
+                <Table.HeaderRow>
+                  <Table.HeaderCell className="w-[40px] min-w-[40px] text-center">
+                    <input
+                      type="checkbox"
+                      checked={filteredPnms.length > 0 && selectedPnmIds.length === filteredPnms.length}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
+                    />
+                  </Table.HeaderCell>
+                  <Table.HeaderCell className="w-[200px] min-w-[200px]">PNM</Table.HeaderCell>
+                  <Table.HeaderCell className="w-[140px] min-w-[140px]">Major</Table.HeaderCell>
+                  <Table.HeaderCell className="w-[140px] min-w-[140px]">Hometown</Table.HeaderCell>
+                  {showEmail && <Table.HeaderCell className="w-[180px] min-w-[180px]">Email</Table.HeaderCell>}
+                  {showPhone && <Table.HeaderCell className="w-[160px] min-w-[160px]">Phone</Table.HeaderCell>}
+                  <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
+                  <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
+                  <Table.HeaderCell className="w-[100px] min-w-[100px] text-right">Actions</Table.HeaderCell>
+                </Table.HeaderRow>
+              }
+            >
+              {filteredPnms.map((pnm) => (
+                <Table.Row key={pnm.id} className="h-14">
+                  <Table.Cell className="w-[40px] min-w-[40px] text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedPnmIds.includes(pnm.id)}
+                      onChange={() => togglePnmSelection(pnm.id)}
+                      className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
+                    />
+                  </Table.Cell>
+                  <Table.Cell className="w-[200px] min-w-[200px] !whitespace-normal">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar image={pnm.photo_url || undefined} size="small">
+                        {pnm.name.slice(0, 2).toUpperCase()}
+                      </Avatar>
+                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                        <span className="text-body-bold font-body-bold text-default-font leading-tight truncate">{pnm.name}</span>
+                        {pnm.year && (
+                          <span className="text-caption font-caption text-subtext-color leading-tight">{pnm.year}</span>
+                        )}
+                      </div>
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell className="w-[140px] min-w-[140px] text-subtext-color whitespace-nowrap truncate" title={pnm.major || undefined}>
+                    {pnm.major || "—"}
+                  </Table.Cell>
+                  <Table.Cell className="w-[140px] min-w-[140px] text-subtext-color whitespace-nowrap truncate" title={pnm.hometown || undefined}>
+                    {pnm.hometown || "—"}
+                  </Table.Cell>
+                  {showEmail && (
+                    <Table.Cell className="w-[180px] min-w-[180px] text-subtext-color whitespace-nowrap truncate" title={pnm.email || undefined}>
+                      {pnm.email || "—"}
+                    </Table.Cell>
                   )}
-                </div>
-              </Table.Cell>
-              <Table.Cell>
-                <span className="text-muted-foreground whitespace-nowrap">
-                  {pnm.attendance_count || 0}/{pnm.total_events || 6} events
-                </span>
-              </Table.Cell>
-              <Table.Cell>
-                {pnm.yes_percentage !== undefined ? (
-                  <span
-                    className={cn(
-                      "font-semibold whitespace-nowrap",
-                      pnm.yes_percentage >= 85 ? "text-green-600" : pnm.yes_percentage >= 70 ? "text-beta-navy" : "text-muted-foreground"
-                    )}
+                  {showPhone && (
+                    <Table.Cell className="w-[160px] min-w-[160px] text-subtext-color whitespace-nowrap truncate" title={pnm.phone || undefined}>
+                      {pnm.phone || "—"}
+                    </Table.Cell>
+                  )}
+                  <Table.Cell className="w-[180px] min-w-[180px] !whitespace-normal">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(pnm.tags || []).slice(0, 3).map((tag) => (
+                        <Badge key={tag}>{tag}</Badge>
+                      ))}
+                      {(pnm.tags?.length || 0) > 3 && (
+                        <Badge variant="neutral">+{(pnm.tags?.length || 0) - 3}</Badge>
+                      )}
+                      {(!pnm.tags || pnm.tags.length === 0) && (
+                        <span className="text-caption font-caption text-subtext-color">—</span>
+                      )}
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell className="w-[120px] min-w-[120px] text-subtext-color whitespace-nowrap">
+                    {pnm.attendance_count || 0} / {pnm.total_events || 0}
+                  </Table.Cell>
+                  <Table.Cell className="w-[100px] min-w-[100px] text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <IconButton
+                        size="small"
+                        icon={<FeatherImage />}
+                        onClick={() => handleExportGraphic(pnm.id, pnm.name)}
+                        aria-label={`Export graphic for ${pnm.name}`}
+                      />
+                      <Link href={`/pnms/${pnm.id}`}>
+                        <IconButton
+                          size="small"
+                          icon={<FeatherEye />}
+                          aria-label={`View ${pnm.name}`}
+                        />
+                      </Link>
+                      {isAdmin && (
+                        <IconButton
+                          size="small"
+                          variant="destructive-secondary"
+                          icon={<FeatherTrash2 />}
+                          onClick={() => handleDeletePnm(pnm.id, pnm.name)}
+                          aria-label={`Delete ${pnm.name}`}
+                        />
+                      )}
+                    </div>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+              {filteredPnms.length === 0 && (
+                <Table.Row>
+                  <Table.Cell
+                    colSpan={7 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
+                    className="py-10 text-center text-subtext-color"
                   >
-                    {pnm.yes_percentage}%
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </Table.Cell>
-              <Table.Cell>
-                <Star
-                  className={cn(
-                    "w-4 h-4",
-                    pnm.is_favorite ? "text-yellow-500 fill-yellow-500" : "text-neutral-300"
-                  )}
-                />
-              </Table.Cell>
-              <Table.Cell>
-                <div className="flex items-center justify-end gap-1">
-                  <Link href={`/pnms/${pnm.id}`}>
-                    <IconButton size="small" icon={<Eye className="w-4 h-4" />} />
-                  </Link>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="w-8 h-8 rounded-full hover:bg-beta-navy/5 flex items-center justify-center">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <TagIcon className="w-4 h-4 mr-2" />
-                        Manage Tags
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Download className="w-4 h-4 mr-2" />
-                        Export Graphic
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-red-600">
-                        <Trash className="w-4 h-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-          {filtered.length === 0 && (
-            <tr>
-              <td colSpan={showEmailColumn && showPhoneColumn ? 12 : showEmailColumn || showPhoneColumn ? 11 : 10} className="px-4 py-12 text-center text-muted-foreground">
-                {search || selectedTags.length > 0 ? "No PNMs match your filters." : "No PNMs yet. Add one to get started!"}
-              </td>
-            </tr>
-          )}
-        </Table>
+                    <span className="text-body font-body">
+                      {search || selectedTags.length
+                        ? "No PNMs match your filters."
+                        : "No PNMs yet. Add one to get started."}
+                    </span>
+                  </Table.Cell>
+                </Table.Row>
+              )}
+            </Table>
+          </div>
+        )}
       </div>
 
-      {/* Pagination Placeholder */}
-      <div className="flex w-full items-center justify-between text-sm text-muted-foreground">
-        <span>Showing {filtered.length} of {pnms.length} PNMs</span>
+      <div className="text-caption font-caption text-subtext-color">
+        Showing {filteredPnms.length} of {pnms.length} PNMs
       </div>
+
+      <BulkTagModal
+        open={showBulkTagModal}
+        onClose={() => setShowBulkTagModal(false)}
+        selectedPnmIds={selectedPnmIds}
+        chapterId={chapterId}
+        onComplete={handleBulkTagComplete}
+      />
+    </div>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone: "neutral" | "success" | "brand" | "warning";
+}) {
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-lg border border-solid border-neutral-border bg-white px-6 py-4 shadow-sm">
+      <div className="flex items-center gap-2">
+        <IconWithBackground
+          size="medium"
+          variant={
+            tone === "success"
+              ? "success"
+              : tone === "warning"
+                ? "warning"
+                : tone === "brand"
+                  ? "brand"
+                  : "neutral"
+          }
+          icon={icon}
+        />
+        <span className="text-caption-bold font-caption-bold text-subtext-color">
+          {label}
+        </span>
+      </div>
+      <span className="text-heading-1 font-heading-1 text-default-font">{value}</span>
     </div>
   );
 }

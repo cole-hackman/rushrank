@@ -2,49 +2,49 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  Users, 
-  Vote, 
-  BarChart3, 
-  Calendar, 
+import {
+  Users,
+  Vote,
+  BarChart3,
+  Calendar,
   Settings,
   LayoutDashboard
 } from "lucide-react";
-import { 
-  Sidebar as AceternitySidebar, 
-  SidebarBody, 
-  SidebarLink 
+import {
+  Sidebar as AceternitySidebar,
+  SidebarBody,
+  SidebarLink
 } from "@/components/ui/ui/aceternity-sidebar";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { 
-    href: "/", 
+  {
+    href: "/",
     label: "Dashboard",
     icon: <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
   },
-  { 
-    href: "/pnms", 
+  {
+    href: "/pnms",
     label: "PNMs",
     icon: <Users className="h-5 w-5 flex-shrink-0" />
   },
-  { 
-    href: "/voting", 
+  {
+    href: "/voting",
     label: "Voting",
     icon: <Vote className="h-5 w-5 flex-shrink-0" />
   },
-  { 
-    href: "/results", 
+  {
+    href: "/results",
     label: "Results",
     icon: <BarChart3 className="h-5 w-5 flex-shrink-0" />
   },
-  { 
-    href: "/events", 
+  {
+    href: "/events",
     label: "Events",
     icon: <Calendar className="h-5 w-5 flex-shrink-0" />
   },
-  { 
-    href: "/settings", 
+  {
+    href: "/settings",
     label: "Settings",
     icon: <Settings className="h-5 w-5 flex-shrink-0" />
   }
@@ -67,8 +67,8 @@ export default function Sidebar() {
             {links.map((link) => {
               const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
               return (
-                <SidebarLink 
-                  key={link.href} 
+                <SidebarLink
+                  key={link.href}
                   link={link}
                   className={cn(
                     "text-neutral-700 dark:text-neutral-300",

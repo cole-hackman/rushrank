@@ -2,7 +2,7 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ['class', '[data-theme="dark"]'],
-  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}", './frontend/ui/**/*.{tsx,ts,js,jsx}'],
   theme: {
     extend: {
       fontFamily: {
@@ -25,7 +25,7 @@ export default {
           accentFaint: 'rgba(255,122,24,.15)',
         },
         brand: {
-          50:  '#eef6ff',
+          50: '#eef6ff',
           100: '#d9ebff',
           200: '#b6d5ff',
           300: '#8fbaff',
@@ -103,7 +103,7 @@ export default {
       },
       borderRadius: {
         md: '12px',
-        lg: '18px', 
+        lg: '18px',
         xl: '22px'
       },
       boxShadow: {
@@ -135,4 +135,5 @@ export default {
     },
   },
   plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  presets: [require("./frontend/ui/tailwind.config.js")]
 } satisfies Config;

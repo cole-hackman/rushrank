@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: rushrank-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r python_server/requirements.txt
+    startCommand: uvicorn python_server.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false

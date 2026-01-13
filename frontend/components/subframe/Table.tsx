@@ -22,6 +22,7 @@ interface TableCellProps {
 interface TableHeaderCellProps {
   children: ReactNode;
   className?: string;
+  onClick?: () => void;
 }
 
 export function Table({ header, children, className }: TableProps) {
@@ -37,9 +38,12 @@ Table.HeaderRow = function TableHeaderRow({ children, className }: { children: R
   return <tr className={cn("border-b border-beta-gray/30", className)}>{children}</tr>;
 };
 
-Table.HeaderCell = function TableHeaderCell({ children, className }: TableHeaderCellProps) {
+Table.HeaderCell = function TableHeaderCell({ children, className, onClick }: TableHeaderCellProps) {
   return (
-    <th className={cn("px-4 py-3 text-left text-xs font-semibold text-beta-navy dark:text-white uppercase tracking-wide", className)}>
+    <th
+      onClick={onClick}
+      className={cn("px-4 py-3 text-left text-xs font-semibold text-beta-navy dark:text-white uppercase tracking-wide align-middle", className)}
+    >
       {children}
     </th>
   );
@@ -61,6 +65,6 @@ Table.Row = function TableRow({ children, clickable, onClick, className }: Table
 };
 
 Table.Cell = function TableCell({ children, className }: TableCellProps) {
-  return <td className={cn("px-4 py-3 text-sm", className)}>{children}</td>;
+  return <td className={cn("px-4 py-3 text-sm align-middle whitespace-nowrap", className)}>{children}</td>;
 };
 

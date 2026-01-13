@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/ui/components/Button";
 import { useToast } from "@/components/ToastProvider";
 
 type PNMItem = { id: string; name: string };
@@ -108,9 +108,9 @@ export default function VotingAdminPage() {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          <Button variant="outline" onClick={advance} disabled={!roundId || !currentPNM}>Advance</Button>
-          <Button variant="outline" onClick={() => toggleLock(true)} disabled={!roundId}>Lock</Button>
-          <Button variant="outline" onClick={() => toggleLock(false)} disabled={!roundId}>Unlock</Button>
+          <Button variant="neutral-secondary" onClick={advance} disabled={!roundId || !currentPNM}>Advance</Button>
+          <Button variant="neutral-secondary" onClick={() => toggleLock(true)} disabled={!roundId}>Lock</Button>
+          <Button variant="neutral-secondary" onClick={() => toggleLock(false)} disabled={!roundId}>Unlock</Button>
         </div>
       </div>
     </div>

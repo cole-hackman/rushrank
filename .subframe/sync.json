@@ -1,0 +1,6 @@
+{
+  "directory": "./frontend/ui",
+  "importAlias": "subframe/*",
+  "projectId": "3122e3d36a51",
+  "cssType": "tailwind"
+}

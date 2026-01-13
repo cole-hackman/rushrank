@@ -74,21 +74,40 @@ async def create_demo_data():
         ]
         
         pnm_query = """
-            INSERT INTO pnms (chapter_id, name, major, hometown, year, tags)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO pnms (chapter_id, name, major, hometown, year)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING
             RETURNING id, name
         """
         
-        for name, major, hometown, year, tags in pnms_data:
-            pnm = await db.execute_one(pnm_query, chapter_id, name, major, hometown, year, tags)
+        for name, major, hometown, year, tag_labels in pnms_data:
+            pnm = await db.execute_one(pnm_query, chapter_id, name, major, hometown, year)
             if pnm:
                 print(f"✅ Created PNM: {pnm['name']} ({pnm['id']})")
+                
+                # Create tags and link to PNM via junction table
+                for tag_label in tag_labels:
+                    # Create tag if it doesn't exist
+                    tag_query = """
+                        INSERT INTO tags (chapter_id, label, color)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (chapter_id, label) DO UPDATE SET label = EXCLUDED.label
+                        RETURNING id
+                    """
+                    tag = await db.execute_one(tag_query, chapter_id, tag_label, "#6366f1")
+                    if tag:
+                        # Link tag to PNM
+                        link_query = """
+                            INSERT INTO pnm_tags (pnm_id, tag_id)
+                            VALUES ($1, $2)
+                            ON CONFLICT DO NOTHING
+                        """
+                        await db.execute_command(link_query, pnm['id'], tag['id'])
         
         # Create demo event
         event_query = """
-            INSERT INTO events (chapter_id, name, description, date, type, location)
-            VALUES ($1, $2, $3, NOW() + INTERVAL '1 day', $4, $5)
+            INSERT INTO events (chapter_id, name, starts_at, location, notes)
+            VALUES ($1, $2, NOW() + INTERVAL '1 day', $3, $4)
             ON CONFLICT DO NOTHING
             RETURNING id, name
         """
@@ -97,9 +116,8 @@ async def create_demo_data():
             event_query,
             chapter_id,
             "Demo Rush Mixer",
-            "Meet the brothers and learn about our chapter",
-            "optional",
-            "Chapter House"
+            "Chapter House",
+            "Meet the brothers and learn about our chapter"
         )
         
         if event:

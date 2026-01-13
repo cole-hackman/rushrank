@@ -1,114 +1,104 @@
 "use client";
+/*
+ * Documentation:
+ * Avatar — https://app.subframe.com/3122e3d36a51/library?component=Avatar_bec25ae6-5010-4485-b46b-cf79e3943ab2
+ * Default Page Layout — https://app.subframe.com/3122e3d36a51/library?component=Default+Page+Layout_a57b1c43-310a-493f-b807-8cc88e2452cf
+ * Dropdown Menu — https://app.subframe.com/3122e3d36a51/library?component=Dropdown+Menu_99951515-459b-4286-919e-a89e7549b43b
+ * Icon Button — https://app.subframe.com/3122e3d36a51/library?component=Icon+Button_af9405b1-8c54-4e01-9786-5aad308224f6
+ * Topbar with left nav — https://app.subframe.com/3122e3d36a51/library?component=Topbar+with+left+nav_3cac908f-e20b-4c42-a91e-8736a54e8799
+ */
 
 import React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Vote } from "lucide-react";
-import ProfileDropdown from "@/components/ProfileDropdown";
-import { cn } from "@/lib/utils";
+import { FeatherBell } from "@subframe/core";
+import { FeatherLogOut } from "@subframe/core";
+import { FeatherSettings } from "@subframe/core";
+import { FeatherUser } from "@subframe/core";
+import * as SubframeCore from "@subframe/core";
+import { Avatar } from "../components/Avatar";
+import { DropdownMenu } from "../components/DropdownMenu";
+import { IconButton } from "../components/IconButton";
+import { TopbarWithLeftNav } from "../components/TopbarWithLeftNav";
+import * as SubframeUtils from "../utils";
 
-interface DefaultPageLayoutProps {
-  children: React.ReactNode;
+interface DefaultPageLayoutRootProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  children?: React.ReactNode;
+  className?: string;
 }
 
-const navItems = [
-  {
-    href: "/" as const,
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/pnms" as const,
-    label: "PNMs",
-    icon: Users,
-  },
-  {
-    href: "/voting" as const,
-    label: "Voting",
-    icon: Vote,
-  },
-];
-
-export function DefaultPageLayout({ children }: DefaultPageLayoutProps) {
-  const pathname = usePathname();
-
+const DefaultPageLayoutRoot = React.forwardRef<
+  HTMLDivElement,
+  DefaultPageLayoutRootProps
+>(function DefaultPageLayoutRoot(
+  { children, className, ...otherProps }: DefaultPageLayoutRootProps,
+  ref
+) {
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-900">
-      {/* Topbar */}
-      <header className="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex h-16 items-center px-6">
-          {/* Logo/Brand */}
-          <div className="flex items-center gap-8">
-            <Link
-              href="/"
-              className="text-xl font-bold text-[#162238] dark:text-white"
-            >
-              RushRank
-            </Link>
-
-            {/* Navigation Items */}
-            <nav className="hidden md:flex items-center gap-1">
-              {navItems.map((item) => {
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== "/" && pathname?.startsWith(item.href));
-                const Icon = item.icon;
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-[#162238] text-white dark:bg-white dark:text-[#162238]"
-                        : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Right side - Profile */}
-          <div className="ml-auto flex items-center gap-4">
-            <ProfileDropdown />
-          </div>
+    <div
+      className={SubframeUtils.twClassNames(
+        "flex h-screen w-full flex-col items-center",
+        className
+      )}
+      ref={ref}
+      {...otherProps}
+    >
+      <TopbarWithLeftNav
+        leftSlot={
+          <>
+            <img
+              className="h-6 flex-none object-cover"
+              src="https://res.cloudinary.com/subframe/image/upload/v1711417507/shared/y2rsnhq3mex4auk54aye.png"
+            />
+            <div className="flex items-center gap-2">
+              <TopbarWithLeftNav.NavItem selected={true}>
+                Home
+              </TopbarWithLeftNav.NavItem>
+              <TopbarWithLeftNav.NavItem>Inbox</TopbarWithLeftNav.NavItem>
+              <TopbarWithLeftNav.NavItem>Reports</TopbarWithLeftNav.NavItem>
+            </div>
+          </>
+        }
+        rightSlot={
+          <>
+            <IconButton />
+            <IconButton icon={<FeatherBell />} />
+            <SubframeCore.DropdownMenu.Root>
+              <SubframeCore.DropdownMenu.Trigger asChild={true}>
+                <Avatar image="https://res.cloudinary.com/subframe/image/upload/v1711417507/shared/fychrij7dzl8wgq2zjq9.avif">
+                  A
+                </Avatar>
+              </SubframeCore.DropdownMenu.Trigger>
+              <SubframeCore.DropdownMenu.Portal>
+                <SubframeCore.DropdownMenu.Content
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                  asChild={true}
+                >
+                  <DropdownMenu>
+                    <DropdownMenu.DropdownItem icon={<FeatherUser />}>
+                      Profile
+                    </DropdownMenu.DropdownItem>
+                    <DropdownMenu.DropdownItem icon={<FeatherSettings />}>
+                      Settings
+                    </DropdownMenu.DropdownItem>
+                    <DropdownMenu.DropdownItem icon={<FeatherLogOut />}>
+                      Log out
+                    </DropdownMenu.DropdownItem>
+                  </DropdownMenu>
+                </SubframeCore.DropdownMenu.Content>
+              </SubframeCore.DropdownMenu.Portal>
+            </SubframeCore.DropdownMenu.Root>
+          </>
+        }
+      />
+      {children ? (
+        <div className="flex w-full grow shrink-0 basis-0 flex-col items-start gap-4 overflow-y-auto bg-default-background">
+          {children}
         </div>
-
-        {/* Mobile Navigation */}
-        <nav className="flex md:hidden items-center gap-1 border-t border-neutral-200 px-4 py-2 dark:border-neutral-800">
-          {navItems.map((item) => {
-            const isActive =
-              pathname === item.href ||
-              (item.href !== "/" && pathname?.startsWith(item.href));
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex flex-1 flex-col items-center gap-1 rounded-md px-3 py-2 text-xs font-medium transition-colors",
-                  isActive
-                    ? "bg-[#162238] text-white dark:bg-white dark:text-[#162238]"
-                    : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                )}
-              >
-                <Icon className="h-5 w-5" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1">{children}</main>
+      ) : null}
     </div>
   );
-}
+});
 
+export const DefaultPageLayout = DefaultPageLayoutRoot;

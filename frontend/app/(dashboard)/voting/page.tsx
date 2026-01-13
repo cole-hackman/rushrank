@@ -1,189 +1,448 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, PanInfo, motion } from "framer-motion";
+import {
+  BarChart2,
+  Check,
+  Clock,
+  HelpCircle,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  SkipForward,
+  Star,
+  Unlock,
+  Users,
+  X,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
-import { motion, AnimatePresence, PanInfo } from "framer-motion";
-import {
-  X,
-  Check,
-  HelpCircle,
-  Star,
-  Users,
-  Clock,
-  BarChart3,
-  Lock,
-  Unlock,
-  SkipForward,
-} from "lucide-react";
+import { useSessionWebSocket } from "@/hooks/useSessionWebSocket";
+import { Tabs } from "@/ui/components/Tabs";
+import { Button } from "@/ui/components/Button";
+import { Badge } from "@/ui/components/Badge";
+import { Progress } from "@/ui/components/Progress";
+import { IconButton } from "@/ui/components/IconButton";
+import { Avatar } from "@/ui/components/Avatar";
 import { cn } from "@/lib/utils";
-import { Avatar } from "@/components/subframe/Avatar";
-import { Badge } from "@/components/subframe/Badge";
-import { Button } from "@/components/subframe/Button";
-import { IconButton } from "@/components/subframe/IconButton";
-import { Progress } from "@/components/subframe/Progress";
-import { Tabs } from "@/components/subframe/Tabs";
 
 type PNM = {
   id: string;
   name: string;
-  major?: string;
-  hometown?: string;
-  year?: string;
+  major?: string | null;
+  hometown?: string | null;
+  year?: string | null;
+  bio?: string | null;
   photo_url?: string | null;
   tags?: string[];
-  weirdest_talent?: string;
-};
-
-type VoteMode = "open" | "session";
-type SwipeDirection = "left" | "right" | "up" | null;
-
-type VoteStats = {
-  yes: number;
-  no: number;
-  unknown: number;
-  favorites: number;
 };
 
 type Session = {
   id: string;
+  round_id: string;
   join_code: string;
-  locked: boolean;
-  current_pnm_id?: string;
-  votes_collected: number;
-  total_voters: number;
+  locked?: boolean;
+  votes_collected?: number;
+  total_voters?: number;
+  is_chair?: boolean;
 };
+
+type VoteChoice = "YES" | "NO" | "UNKNOWN";
+
+const swipeThreshold = 80;
 
 export default function VotingPage() {
   const { toast } = useToast();
-  const [mode, setMode] = useState<VoteMode>("open");
+  const router = useRouter();
   
-  // Open Voting State
-  const [unvotedPNMs, setUnvotedPNMs] = useState<PNM[]>([]);
-  const [currentPNM, setCurrentPNM] = useState<PNM | null>(null);
+  // Redirect if voting is disabled
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_ENABLE_VOTING !== "true") {
+      router.push("/");
+      toast({ 
+        title: "Voting page disabled", 
+        description: "The voting feature is currently disabled. See docs/VOTING_PAGE_REIMPLEMENTATION.md for details." 
+      });
+    }
+  }, [router, toast]);
+  
+  const [activeTab, setActiveTab] = useState<"open" | "session">("open");
+  const [chapterId, setChapterId] = useState<string | null | undefined>(undefined);
+
+  // Open voting
   const [openRoundId, setOpenRoundId] = useState<string | null>(null);
-  
-  // Live Session State
+  const [openPNM, setOpenPNM] = useState<PNM | null>(null);
+  const [openLoading, setOpenLoading] = useState(true);
+  const [openDone, setOpenDone] = useState(false);
+
+  // Session voting
   const [session, setSession] = useState<Session | null>(null);
   const [sessionPNM, setSessionPNM] = useState<PNM | null>(null);
   const [joinCode, setJoinCode] = useState("");
+  const [startTimer, setStartTimer] = useState(180);
+  const [startAnonymous, setStartAnonymous] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [isChair, setIsChair] = useState(false);
-  
-  // UI State
-  const [dragDirection, setDragDirection] = useState<SwipeDirection>(null);
-  const [voteStats, setVoteStats] = useState<VoteStats>({ yes: 0, no: 0, unknown: 0, favorites: 0 });
-  const [chapterId, setChapterId] = useState<string | null>(null);
-  const swipeThreshold = 100;
 
-  // Initialize - get chapter
+  // Shared UI state
+  const [dragDirection, setDragDirection] = useState<"left" | "right" | "up" | null>(null);
+  const [voteStats, setVoteStats] = useState({ yes: 0, no: 0, unknown: 0, favorites: 0 });
+
+  // Load chapter ID on mount
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string }[]>("/chapters");
-        const cid = chapters[0]?.id;
-        setChapterId(cid || null);
+        const chapters = await api<{ id: string; name: string }[]>("/chapters");
+        if (chapters && chapters.length > 0) {
+          setChapterId(chapters[0].id);
+        } else {
+          toast({ title: "No chapters found", description: "You need to be a member of a chapter to vote" });
+          setChapterId(null);
+        }
       } catch (e: any) {
-        toast({ title: "Failed to load chapter", description: e.message });
+        console.error("Failed to load chapters:", e);
+        toast({ title: "Failed to load chapter", description: e?.message || "Please refresh the page" });
+        setChapterId(null);
       }
     })();
   }, [toast]);
 
-  // Open Voting - Load unvoted PNMs
   useEffect(() => {
-    if (mode !== "open" || !chapterId) return;
-    
-    (async () => {
-      try {
-        // Ensure open round exists
-        await api(`/rounds/open`, { method: "POST", body: { chapter_id: chapterId } });
-        
-        // Get current unvoted PNM
-        const current = await api<{ pnm: PNM; round_id: string } | null>(`/rounds/open/current`);
-        if (current) {
-          setCurrentPNM(current.pnm);
-          setOpenRoundId(current.round_id);
-        } else {
-          setCurrentPNM(null);
-        }
-      } catch (e: any) {
-        toast({ title: "Failed to load voting", description: e.message });
+    if (activeTab === "open") {
+      if (chapterId === undefined) {
+        // Still loading chapter - keep loading state
+        setOpenLoading(true);
+      } else if (chapterId === null) {
+        // Chapter loading failed or no chapter - stop loading
+        setOpenLoading(false);
+      } else if (chapterId) {
+        // Chapter loaded - start open round
+        ensureOpenRound();
       }
-    })();
-  }, [mode, chapterId, toast]);
+    } else if (activeTab === "session") {
+      // Load session (will skip loading state if session already exists)
+      loadActiveSession(!!session);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, chapterId]);
 
-  // Live Session - Poll for updates
-  useEffect(() => {
-    if (mode !== "session" || !session?.id) return;
-    
-    const interval = setInterval(async () => {
-      try {
-        const active = await api<Session>(`/sessions/active`);
-        if (active) {
-          setSession(active);
-          if (active.current_pnm_id) {
-            const pnm = await api<PNM>(`/pnms/${active.current_pnm_id}`);
-            setSessionPNM(pnm);
-          }
-        }
-      } catch (e) {
-        // Silently fail
+  const ensureOpenRound = async () => {
+    if (!chapterId) {
+      setOpenLoading(false);
+      return;
+    }
+    setOpenLoading(true);
+    try {
+      const result = await api(`/rounds/open?chapter_id=${chapterId}`, { method: "POST" });
+      console.log("Open round created/retrieved:", result);
+      await fetchNextOpenPNM();
+    } catch (e: any) {
+      console.error("Failed to ensure open round:", e);
+      toast({ title: "Failed to start open voting", description: e?.message || "Please try again" });
+      setOpenLoading(false);
+      setOpenPNM(null);
+      setOpenDone(false);
+    }
+  };
+
+  const fetchNextOpenPNM = async () => {
+    setOpenLoading(true);
+    try {
+      const res = await api<{ round_id: string | null; pnm: PNM | null; no_round?: boolean; no_pnms?: boolean; all_voted?: boolean } | null>(`/rounds/open/current`);
+      console.log("Fetched next open PNM:", res);
+
+      if (!res) {
+        // Legacy null response - treat as all voted
+        setOpenDone(true);
+        setOpenPNM(null);
+        setOpenRoundId(null);
+      } else if (res.no_round) {
+        // No round exists - should not happen after ensureOpenRound, but handle gracefully
+        setOpenDone(false);
+        setOpenPNM(null);
+        setOpenRoundId(null);
+        toast({ title: "No open round found", description: "Please try starting a new round" });
+      } else if (res.no_pnms) {
+        // Round exists but has no PNMs
+        setOpenDone(false);
+        setOpenPNM(null);
+        setOpenRoundId(res.round_id || null);
+        toast({ title: "No PNMs in round", description: "Add PNMs to start voting" });
+      } else if (res.all_voted || !res.pnm) {
+        // All PNMs have been voted on
+        setOpenDone(true);
+        setOpenPNM(null);
+        setOpenRoundId(res.round_id || null);
+      } else {
+        // PNM available for voting
+        setOpenDone(false);
+        setOpenPNM(res.pnm);
+        setOpenRoundId(res.round_id || null);
       }
-    }, 2000);
-    
-    return () => clearInterval(interval);
-  }, [mode, session?.id]);
+    } catch (e: any) {
+      console.error("Failed to fetch next open PNM:", e);
+      toast({ title: "Failed to load next PNM", description: e?.message || "Please try again" });
+      setOpenDone(false);
+      setOpenPNM(null);
+    } finally {
+      setOpenLoading(false);
+    }
+  };
 
-  const vote = useCallback(
-    async (choice: "YES" | "NO" | "UNKNOWN", favorite = false) => {
-      const pnm = mode === "open" ? currentPNM : sessionPNM;
-      const roundId = mode === "open" ? openRoundId : session?.id;
-      
-      if (!pnm || !roundId) return;
-      
-      try {
-        const score = choice === "YES" ? 9 : choice === "NO" ? 2 : 5;
-        await api(`/votes`, {
-          method: "POST",
-          body: {
-            round_id: roundId,
-            pnm_id: pnm.id,
-            score,
-            is_favorite: favorite,
-          },
+  const loadActiveSession = async (skipLoadingState = false) => {
+    if (!skipLoadingState) {
+      setSessionLoading(true);
+    }
+    try {
+      const active = await api<Session | null>(`/sessions/active`);
+      if (active) {
+        setSession(active);
+        setIsChair(active.is_chair || false);
+        await fetchSessionCurrent(active.id);
+      } else {
+        // Only clear session if this is the initial load (not a refresh)
+        if (!skipLoadingState) {
+          setSession(null);
+          setSessionPNM(null);
+          setIsChair(false);
+        }
+      }
+    } catch (e: any) {
+      // If 404 or null response, no active session - that's fine
+      if (e?.status !== 404) {
+        toast({ title: "Unable to load session", description: e?.message });
+      }
+      // Only clear session if this is the initial load (not a refresh)
+      if (!skipLoadingState) {
+        setSession(null);
+        setSessionPNM(null);
+        setIsChair(false);
+      }
+    } finally {
+      if (!skipLoadingState) {
+        setSessionLoading(false);
+      }
+    }
+  };
+
+  const fetchSessionCurrent = async (id: string) => {
+    try {
+      const res = await api<{ pnm: PNM | null; locked?: boolean }>(`/sessions/${id}/current`);
+      setSessionPNM(res?.pnm || null);
+      if (res?.locked !== undefined) {
+        setSession((prev) => (prev ? { ...prev, locked: res.locked } : prev));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const submitVote = async (mode: "open" | "session", choice: VoteChoice, favorite = false) => {
+    const target = mode === "open" ? openPNM : sessionPNM;
+    const roundId = mode === "open" ? openRoundId : session?.round_id;
+    if (!target || !roundId) return;
+
+    try {
+      await api(`/votes`, {
+        method: "POST",
+        body: {
+          round_id: roundId,
+          pnm_id: target.id,
+          choice,
+          favorite,
+        },
+      });
+      setVoteStats((prev) => ({
+        yes: choice === "YES" ? prev.yes + 1 : prev.yes,
+        no: choice === "NO" ? prev.no + 1 : prev.no,
+        unknown: choice === "UNKNOWN" ? prev.unknown + 1 : prev.unknown,
+        favorites: favorite ? prev.favorites + 1 : prev.favorites,
+      }));
+      const choiceLabel = choice === "UNKNOWN" ? "Don't Know" : choice;
+      toast({ title: `Voted ${choiceLabel}${favorite ? " + Favorite" : ""}` });
+      if (mode === "open") {
+        await fetchNextOpenPNM();
+      }
+    } catch (e: any) {
+      toast({ title: "Vote failed", description: e?.message });
+    }
+  };
+
+  const handleFavorite = async (mode: "open" | "session") => {
+    const target = mode === "open" ? openPNM : sessionPNM;
+    const roundId = mode === "open" ? openRoundId : session?.round_id;
+    if (!target || !roundId) return;
+
+    try {
+      await api(`/votes`, {
+        method: "POST",
+        body: {
+          round_id: roundId,
+          pnm_id: target.id,
+          favorite: true,
+        },
+      });
+      setVoteStats((prev) => ({
+        ...prev,
+        favorites: prev.favorites + 1,
+      }));
+      toast({ title: "Added to favorites" });
+    } catch (e: any) {
+      toast({ title: "Failed to favorite", description: e?.message });
+    }
+  };
+
+  const startSession = async () => {
+    if (!chapterId) {
+      toast({
+        title: "No chapter found",
+        description: chapterId === null
+          ? "You need to be a member of a chapter to start a session"
+          : "Please wait for chapter to load"
+      });
+      return;
+    }
+    try {
+      const created = await api<Session>(`/sessions`, {
+        method: "POST",
+        body: {
+          chapter_id: chapterId,
+          timer_seconds: startTimer,
+          anonymous: startAnonymous,
+          swipe_mode: true,
+        },
+      });
+      setSession(created);
+      setIsChair(created.is_chair || true);
+      toast({ title: "Session started", description: `Join code: ${created.join_code}` });
+      await fetchSessionCurrent(created.id);
+    } catch (e: any) {
+      console.error("Failed to start session:", e);
+      toast({ title: "Could not start session", description: e?.message || "Please try again" });
+    }
+  };
+
+  const joinSession = async () => {
+    if (!joinCode.trim()) return;
+    try {
+      const joined = await api<Session & { current_pnm?: PNM; pnm_ids?: string[]; user_votes?: Record<string, { choice: string; favorite: boolean }> }>(`/sessions/join`, {
+        method: "POST",
+        body: { join_code: joinCode.trim() },
+      });
+      setSession(joined);
+      setIsChair(joined.is_chair || false);
+      // Use current_pnm from join response if available
+      if (joined.current_pnm) {
+        setSessionPNM(joined.current_pnm);
+      } else {
+        await fetchSessionCurrent(joined.id);
+      }
+      toast({ title: "Joined session" });
+    } catch (e: any) {
+      toast({ title: "Join failed", description: e?.message });
+    }
+  };
+
+  const toggleLock = async () => {
+    if (!session) return;
+    const nextLocked = !session.locked;
+    try {
+      await api(`/sessions/${session.id}/lock`, { method: "POST", body: { locked: nextLocked } });
+      setSession({ ...session, locked: nextLocked });
+      toast({ title: nextLocked ? "Session locked" : "Session unlocked" });
+    } catch (e: any) {
+      toast({ title: "Lock toggle failed", description: e?.message });
+    }
+  };
+
+  const advanceSession = async () => {
+    if (!session) return;
+    try {
+      const result = await api<{ success: boolean; current_pnm_id?: string | null; session_ended?: boolean; round_id?: string }>(`/sessions/${session.id}/advance`, { method: "POST" });
+
+      if (result.session_ended) {
+        // Session ended - redirect to results page
+        const roundId = result.round_id || session.round_id;
+        toast({
+          title: "Session completed!",
+          description: "All PNMs have been voted on. Redirecting to results..."
         });
-        
-        setVoteStats((prev) => ({
-          yes: choice === "YES" ? prev.yes + 1 : prev.yes,
-          no: choice === "NO" ? prev.no + 1 : prev.no,
-          unknown: choice === "UNKNOWN" ? prev.unknown + 1 : prev.unknown,
-          favorites: favorite ? prev.favorites + 1 : prev.favorites,
-        }));
-        
-        toast({ title: `Voted ${choice}${favorite ? " + Favorite" : ""}` });
-        
-        // Open mode: fetch next PNM
-        if (mode === "open") {
-          const next = await api<{ pnm: PNM; round_id: string } | null>(`/rounds/open/current`);
-          setCurrentPNM(next?.pnm || null);
-        }
-        // Session mode: session will auto-advance or chair controls it
-      } catch (e: any) {
-        toast({ title: "Vote failed", description: e.message });
+        // Small delay to show toast, then redirect
+        setTimeout(() => {
+          router.push(`/results?roundId=${roundId}`);
+        }, 1500);
+      } else {
+        // Session continues - fetch new current PNM
+        await fetchSessionCurrent(session.id);
       }
-    },
-    [mode, currentPNM, sessionPNM, openRoundId, session, toast]
-  );
+    } catch (e: any) {
+      // Check if error is because session already ended
+      if (e?.message?.includes("ended") || e?.message?.includes("not found")) {
+        const roundId = session.round_id;
+        toast({
+          title: "Session completed",
+          description: "Redirecting to results..."
+        });
+        setTimeout(() => {
+          router.push(`/results?roundId=${roundId}`);
+        }, 1500);
+      } else {
+        toast({ title: "Advance failed", description: e?.message });
+      }
+    }
+  };
 
-  const handleSwipe = useCallback(
-    (direction: SwipeDirection) => {
-      if (direction === "right") vote("YES");
-      else if (direction === "left") vote("NO");
-      else if (direction === "up") vote("UNKNOWN");
-      
-      setDragDirection(direction);
-      setTimeout(() => setDragDirection(null), 300);
-    },
-    [vote]
-  );
+  // WebSocket for real-time session updates
+  const handleWsPnmAdvance = useCallback((pnmId: string | null, pnm: PNM | null) => {
+    if (pnm) {
+      setSessionPNM(pnm);
+    } else if (pnmId) {
+      // Fallback: fetch PNM if not included in message
+      fetchSessionCurrent(session?.id || "");
+    } else {
+      setSessionPNM(null);
+    }
+  }, [session?.id]);
+
+  const handleWsLockChange = useCallback((locked: boolean) => {
+    if (session) {
+      setSession({ ...session, locked });
+    }
+  }, [session]);
+
+  const handleWsSessionEnd = useCallback((roundId: string) => {
+    toast({
+      title: "Session completed!",
+      description: "All PNMs have been voted on. Redirecting to results..."
+    });
+    setTimeout(() => {
+      router.push(`/results?roundId=${roundId}`);
+    }, 1500);
+  }, [router, toast]);
+
+  const { connected: wsConnected } = useSessionWebSocket({
+    sessionId: session?.id || null,
+    onPnmAdvance: handleWsPnmAdvance,
+    onLockChange: handleWsLockChange,
+    onSessionEnd: handleWsSessionEnd,
+    enabled: activeTab === "session" && !!session?.id,
+  });
+
+  // Fallback polling for when WebSocket is not connected (every 5 seconds)
+  useEffect(() => {
+    if (!session?.id || activeTab !== "session" || wsConnected) return;
+
+    const interval = setInterval(() => {
+      // Only refresh current PNM, don't reload entire session (avoids state resets)
+      fetchSessionCurrent(session.id);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [session?.id, activeTab, wsConnected]);
 
   const handleDrag = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (Math.abs(info.offset.y) > Math.abs(info.offset.x)) {
@@ -195,453 +454,406 @@ export default function VotingPage() {
 
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (Math.abs(info.offset.x) > swipeThreshold) {
-      handleSwipe(info.offset.x > 0 ? "right" : "left");
+      submitVote(activeTab, info.offset.x > 0 ? "YES" : "NO");
     } else if (Math.abs(info.offset.y) > swipeThreshold && info.offset.y < 0) {
-      handleSwipe("up");
-    } else {
-      setDragDirection(null);
+      submitVote(activeTab, "UNKNOWN");
     }
+    setDragDirection(null);
   };
 
-  const startSession = async () => {
-    if (!chapterId) return;
-    try {
-      const newSession = await api<Session>(`/sessions`, {
-        method: "POST",
-        body: { chapter_id: chapterId, anonymous: false, swipe_mode: true, timer_seconds: 30 },
-      });
-      setSession(newSession);
-      setIsChair(true);
-      toast({ title: "Session created", description: `Join code: ${newSession.join_code}` });
-    } catch (e: any) {
-      toast({ title: "Failed to create session", description: e.message });
-    }
-  };
-
-  const joinSession = async () => {
-    if (!joinCode.trim()) return;
-    try {
-      // Find session by join code
-      const active = await api<Session>(`/sessions/active`);
-      if (active && active.join_code === joinCode) {
-        setSession(active);
-        setIsChair(false);
-        
-        // Join the session
-        await api(`/sessions/${active.id}/join`, { method: "POST" });
-        
-        toast({ title: "Joined session" });
-      } else {
-        throw new Error("Invalid join code");
-      }
-    } catch (e: any) {
-      toast({ title: "Failed to join", description: e.message });
-    }
-  };
-
-  const toggleLock = async () => {
-    if (!session?.id || !isChair) return;
-    try {
-      await api(`/sessions/${session.id}/lock`, {
-        method: "POST",
-        body: { locked: !session.locked },
-      });
-      setSession((prev) => (prev ? { ...prev, locked: !prev.locked } : null));
-    } catch (e: any) {
-      toast({ title: "Failed to toggle lock", description: e.message });
-    }
-  };
-
-  const advanceSession = async () => {
-    if (!session?.id || !isChair) return;
-    try {
-      await api(`/sessions/${session.id}/advance`, { method: "POST" });
-      toast({ title: "Advanced to next PNM" });
-    } catch (e: any) {
-      toast({ title: "Failed to advance", description: e.message });
-    }
-  };
-
-  const activePNM = mode === "open" ? currentPNM : sessionPNM;
+  const activePNM = activeTab === "open" ? openPNM : sessionPNM;
 
   return (
-    <div className="flex w-full gap-6 mobile:flex-col">
-      {/* Main Voting Area */}
-      <div className="flex-1 space-y-6">
-        {/* Mode Tabs */}
-        <Tabs>
-          <Tabs.Item active={mode === "open"} onClick={() => setMode("open")}>
-            Open Voting
-          </Tabs.Item>
-          <Tabs.Item active={mode === "session"} onClick={() => setMode("session")}>
-            Live Session
-          </Tabs.Item>
-        </Tabs>
+    <div className="flex w-full flex-col gap-6">
+      <Tabs>
+        <Tabs.Item active={activeTab === "open"} onClick={() => setActiveTab("open")}>
+          Open Voting
+        </Tabs.Item>
+        <Tabs.Item active={activeTab === "session"} onClick={() => setActiveTab("session")}>
+          Live Session
+        </Tabs.Item>
+      </Tabs>
 
-        {/* Open Voting Mode */}
-        {mode === "open" && (
-          <>
-            {!activePNM ? (
-              <div className="flex flex-col items-center justify-center h-96 gap-4">
-                <Check className="w-16 h-16 text-green-500" />
-                <p className="text-xl font-semibold text-beta-navy dark:text-white">All caught up!</p>
-                <p className="text-muted-foreground">You've voted on all PNMs. Great work!</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-beta-navy dark:text-white">Open Voting</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Vote at your own pace</p>
+      <div className="flex w-full flex-col gap-6 lg:flex-row">
+        <div className="flex-1 space-y-4">
+          {activeTab === "open" && (
+            <>
+              {openLoading ? (
+                <div className="flex h-96 flex-col items-center justify-center gap-4 rounded-xl border border-beta-gray/30 bg-white">
+                  <Loader2 className="h-8 w-8 animate-spin text-beta-navy" />
+                  <div className="text-sm font-medium text-beta-gray">Loading open round...</div>
+                </div>
+              ) : openDone ? (
+                <div className="flex h-96 flex-col items-center justify-center gap-4 rounded-xl border border-beta-gray/30 bg-white p-8">
+                  <ShieldCheck className="h-16 w-16 text-green-600" />
+                  <div className="text-xl font-semibold text-beta-navy">All caught up</div>
+                  <div className="text-center text-sm text-beta-gray">You've voted on every PNM in this round.</div>
+                </div>
+              ) : (
+                <VoteCard
+                  pnm={activePNM}
+                  dragDirection={dragDirection}
+                  onFavorite={() => handleFavorite("open")}
+                  onVote={(choice) => submitVote("open", choice)}
+                  onDrag={handleDrag}
+                  onDragEnd={handleDragEnd}
+                />
+              )}
+            </>
+          )}
+
+          {activeTab === "session" && (
+            <>
+              {sessionLoading ? (
+                <div className="flex h-96 flex-col items-center justify-center gap-4 rounded-xl border border-beta-gray/30 bg-white">
+                  <Loader2 className="h-8 w-8 animate-spin text-beta-navy" />
+                  <div className="text-sm font-medium text-beta-gray">Loading active session...</div>
+                </div>
+              ) : !session ? (
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+                    <div className="mb-4 text-xl font-semibold text-beta-navy">Start Session</div>
+                    <div className="space-y-4">
+                      <label className="flex items-center gap-3 text-sm text-beta-gray">
+                        <input
+                          type="checkbox"
+                          checked={startAnonymous}
+                          onChange={(e) => setStartAnonymous(e.target.checked)}
+                          className="h-4 w-4 rounded border-beta-gray/60 text-beta-navy focus:ring-beta-navy"
+                        />
+                        <span>Anonymous votes</span>
+                      </label>
+                      <div className="flex items-center gap-3 text-sm text-beta-gray">
+                        <Clock className="h-5 w-5 text-beta-navy" />
+                        <input
+                          type="number"
+                          min={30}
+                          value={startTimer}
+                          onChange={(e) => setStartTimer(Number(e.target.value))}
+                          className="h-10 w-28 rounded-lg border border-beta-gray/60 px-3 text-sm font-medium text-beta-navy focus:ring-2 focus:ring-beta-navy"
+                        />
+                        <span>seconds per PNM</span>
+                      </div>
+                      <Button className="mt-2 w-full" onClick={startSession}>
+                        Start Session
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+                    <div className="mb-4 text-xl font-semibold text-beta-navy">Join Session</div>
+                    <div className="space-y-4">
+                      <input
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                        placeholder="Enter join code"
+                        maxLength={6}
+                        className="h-12 w-full rounded-lg border border-beta-gray/60 px-4 text-center text-lg font-mono font-semibold tracking-widest text-beta-navy placeholder:text-beta-gray/50 focus:ring-2 focus:ring-beta-navy"
+                      />
+                      <Button className="w-full" onClick={joinSession} disabled={!joinCode.trim()}>
+                        Join Session
+                      </Button>
+                    </div>
                   </div>
                 </div>
+              ) : (
 
-                {/* Swipe Card */}
-                <div className="relative w-full max-w-[448px] mx-auto" style={{ height: "600px" }}>
-                  <AnimatePresence>
-                    <motion.div
-                      key={activePNM.id}
-                      drag
-                      dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                      dragElastic={0.5}
-                      onDrag={(e, i) => handleDrag(e as any, i)}
-                      onDragEnd={(e, i) => handleDragEnd(e as any, i)}
-                      initial={{ scale: 0.95, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{
-                        x: dragDirection === "right" ? 400 : dragDirection === "left" ? -400 : 0,
-                        y: dragDirection === "up" ? -400 : 0,
-                        rotate: dragDirection === "right" ? 20 : dragDirection === "left" ? -20 : 0,
-                        opacity: 0,
-                        transition: { duration: 0.3 },
-                      }}
-                      className="absolute inset-0 rounded-2xl overflow-hidden border-2 border-beta-gray/30 dark:border-neutral-800 cursor-grab active:cursor-grabbing shadow-2xl bg-white dark:bg-neutral-900"
-                    >
-                      <div className="relative w-full h-full">
-                        {activePNM.photo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={activePNM.photo_url}
-                            alt={activePNM.name}
-                            className="w-full h-2/3 object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-2/3 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 flex items-center justify-center">
-                            <span className="text-6xl font-bold text-neutral-300 dark:text-neutral-700">
-                              {activePNM.name.slice(0, 2).toUpperCase()}
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beta-navy via-beta-navy/80 to-transparent p-6">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-2xl font-bold text-white">{activePNM.name}</h3>
-                            <IconButton
-                              variant="inverse"
-                              size="large"
-                              icon={<Star className="w-5 h-5" />}
-                              onClick={() => vote("YES", true)}
-                            />
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap mb-2">
-                            {activePNM.major && (
-                              <Badge variant="neutral">{activePNM.major}</Badge>
-                            )}
-                            {activePNM.hometown && (
-                              <Badge variant="neutral">{activePNM.hometown}</Badge>
-                            )}
-                            {activePNM.year && <Badge variant="neutral">{activePNM.year}</Badge>}
-                          </div>
-                          {activePNM.weirdest_talent && (
-                            <p className="text-sm text-white/90 mt-2">{activePNM.weirdest_talent}</p>
-                          )}
-                        </div>
-
-                        {dragDirection && (
-                          <div className="absolute inset-0 pointer-events-none">
-                            <div
-                              className={cn(
-                                "absolute inset-0 transition-opacity duration-200",
-                                dragDirection === "right" && "bg-green-500/20",
-                                dragDirection === "left" && "bg-red-500/20",
-                                dragDirection === "up" && "bg-yellow-500/20"
-                              )}
-                            />
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                              {dragDirection === "right" && (
-                                <Check className="w-24 h-24 text-green-500 drop-shadow-lg" />
-                              )}
-                              {dragDirection === "left" && (
-                                <X className="w-24 h-24 text-red-500 drop-shadow-lg" />
-                              )}
-                              {dragDirection === "up" && (
-                                <HelpCircle className="w-24 h-24 text-yellow-500 drop-shadow-lg" />
-                              )}
-                            </div>
-                          </div>
-                        )}
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between rounded-xl border border-beta-gray/30 bg-white p-5 shadow-sm">
+                    <div className="space-y-1">
+                      <div className="text-xl font-semibold text-beta-navy">Live Voting Session</div>
+                      <div className="flex items-center gap-2 text-sm text-beta-gray">
+                        <span>Join Code:</span>
+                        <span className="font-mono font-semibold tracking-widest text-beta-navy">{session.join_code}</span>
                       </div>
-                    </motion.div>
-                  </AnimatePresence>
+                    </div>
+                    <div className="flex items-center gap-2">
+                    <Badge variant={session.locked ? "warning" : "success"} className="text-sm">
+                      {session.locked ? "Locked" : "Active"}
+                    </Badge>
+                      <div 
+                        className={cn(
+                          "flex items-center gap-1 rounded-lg px-2 py-1 text-xs",
+                          wsConnected 
+                            ? "bg-green-100 text-green-700" 
+                            : "bg-yellow-100 text-yellow-700"
+                        )}
+                        title={wsConnected ? "Real-time connected" : "Using fallback polling"}
+                      >
+                        {wsConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                        {wsConnected ? "Live" : "Polling"}
+                      </div>
+                    </div>
+                  </div>
+                  {sessionPNM ? (
+                    <>
+                      <VoteCard
+                        pnm={sessionPNM}
+                        dragDirection={dragDirection}
+                        disabled={session.locked}
+                        onFavorite={() => handleFavorite("session")}
+                        onVote={(choice) => submitVote("session", choice)}
+                        onDrag={handleDrag}
+                        onDragEnd={handleDragEnd}
+                      />
+                      {isChair && (
+                        <div className="flex gap-3">
+                          <Button
+                            variant="neutral-secondary"
+                            icon={session.locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                            onClick={toggleLock}
+                            className="flex-1"
+                          >
+                            {session.locked ? "Unlock Voting" : "Lock Voting"}
+                          </Button>
+                          <Button
+                            variant="neutral-secondary"
+                            icon={<SkipForward className="h-4 w-4" />}
+                            onClick={advanceSession}
+                            className="flex-1"
+                          >
+                            Next PNM
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex h-64 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-beta-gray/40 bg-white">
+                      <Clock className="h-10 w-10 text-beta-gray/60" />
+                      <div className="text-center">
+                        <div className="font-medium text-beta-navy">Waiting for chair to start voting</div>
+                        <div className="mt-1 text-sm text-beta-gray">The session will begin when the chair advances to the first PNM</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+            </>
+          )}
+        </div>
 
-                {/* Vote Buttons */}
-                <div className="flex items-center justify-center gap-4">
-                  <Button
-                    variant="destructive-secondary"
-                    size="large"
-                    icon={<X className="w-5 h-5" />}
-                    onClick={() => vote("NO")}
-                  >
-                    No
-                  </Button>
-                  <Button
-                    variant="neutral-secondary"
-                    size="large"
-                    icon={<HelpCircle className="w-5 h-5" />}
-                    onClick={() => vote("UNKNOWN")}
-                  >
-                    Don't Know
-                  </Button>
-                  <Button size="large" icon={<Check className="w-5 h-5" />} onClick={() => vote("YES")}>
-                    Yes
-                  </Button>
+        <div className="w-full space-y-4 lg:max-w-sm">
+          <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+            <div className="flex items-center gap-3">
+              <Users className="h-5 w-5 text-beta-navy" />
+              <span className="text-lg font-semibold text-beta-navy">
+                {activeTab === "session" ? "Session Status" : "Round Status"}
+              </span>
+            </div>
+            <div className="mt-4 h-px w-full bg-beta-gray/40" />
+            {activeTab === "session" && session ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-sm">
+                    <span className="text-beta-gray">Votes Collected</span>
+                    <span className="font-semibold text-beta-navy">
+                      {session.votes_collected || 0} / {session.total_voters || 0}
+                    </span>
+                  </div>
+                  <Progress
+                    value={Math.min(100, ((session.votes_collected || 0) / (session.total_voters || 1)) * 100)}
+                    className="h-2"
+                  />
                 </div>
-
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Swipe right for Yes • left for No • up for Don't Know
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Click the star for favorites
-                  </p>
-                </div>
-              </>
+                <StatLine
+                  label="Lock State"
+                  value={session.locked ? "Locked" : "Open"}
+                  icon={session.locked ? <Lock className="h-4 w-4 text-amber-600" /> : <Unlock className="h-4 w-4 text-green-600" />}
+                />
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <StatLine
+                  label="Status"
+                  value={openDone ? "Complete" : "Open"}
+                  icon={openDone ? <ShieldCheck className="h-4 w-4 text-green-600" /> : <Clock className="h-4 w-4 text-beta-navy" />}
+                />
+              </div>
             )}
-          </>
-        )}
+          </div>
 
-        {/* Live Session Mode */}
-        {mode === "session" && (
-          <>
-            {!session ? (
-              <div className="flex flex-col items-center justify-center gap-6 py-12">
-                <h2 className="text-xl font-semibold text-beta-navy dark:text-white">No Active Session</h2>
-                
-                {/* Chair: Start Session */}
-                <div className="w-full max-w-md space-y-4">
-                  <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-neutral-900 p-6 space-y-4">
-                    <h3 className="font-semibold text-beta-navy dark:text-white">Start a Session (Chair)</h3>
-                    <Button className="w-full" onClick={startSession}>
-                      Start Live Session
-                    </Button>
-                  </div>
+          <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+            <div className="flex items-center gap-3">
+              <BarChart2 className="h-5 w-5 text-beta-navy" />
+              <span className="text-lg font-semibold text-beta-navy">Your Progress</span>
+            </div>
+            <div className="mt-4 h-px w-full bg-beta-gray/40" />
+            <div className="mt-4 space-y-3">
+              <StatLine
+                label="Yes"
+                value={voteStats.yes.toString()}
+                icon={<Check className="h-4 w-4 text-green-600" />}
+              />
+              <StatLine
+                label="No"
+                value={voteStats.no.toString()}
+                icon={<X className="h-4 w-4 text-red-600" />}
+              />
+              <StatLine
+                label="Don't Know"
+                value={voteStats.unknown.toString()}
+                icon={<HelpCircle className="h-4 w-4 text-amber-600" />}
+              />
+              <StatLine
+                label="Favorites"
+                value={voteStats.favorites.toString()}
+                icon={<Star className="h-4 w-4 text-beta-navy" />}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                  {/* Member: Join Session */}
-                  <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-neutral-900 p-6 space-y-4">
-                    <h3 className="font-semibold text-beta-navy dark:text-white">Join Session</h3>
-                    <input
-                      type="text"
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value)}
-                      placeholder="Enter join code..."
-                      className="w-full h-10 rounded-lg border border-beta-gray/50 bg-white dark:bg-neutral-900 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-beta-navy"
-                    />
-                    <Button className="w-full" onClick={joinSession}>
-                      Join Session
-                    </Button>
-                  </div>
-                </div>
-              </div>
+function VoteCard({
+  pnm,
+  dragDirection,
+  disabled,
+  onFavorite,
+  onVote,
+  onDrag,
+  onDragEnd,
+}: {
+  pnm: PNM | null;
+  dragDirection: "left" | "right" | "up" | null;
+  disabled?: boolean;
+  onFavorite: () => void;
+  onVote: (choice: VoteChoice) => void;
+  onDrag: (event: any, info: PanInfo) => void;
+  onDragEnd: (event: any, info: PanInfo) => void;
+}) {
+  if (!pnm) return null;
+
+  return (
+    <div className="flex w-full flex-col items-center gap-6 rounded-xl border border-beta-gray/30 bg-white p-6 shadow-lg">
+      <div className="relative w-full max-w-[520px] overflow-hidden rounded-xl bg-beta-surface shadow-lg">
+        <AnimatePresence>
+          <motion.div
+            key={pnm.id}
+            drag
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={0.6}
+            onDrag={onDrag}
+            onDragEnd={onDragEnd}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, x: dragDirection === "right" ? 200 : dragDirection === "left" ? -200 : 0, y: dragDirection === "up" ? -200 : 0 }}
+            className="relative"
+          >
+            {pnm.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pnm.photo_url} alt={pnm.name} className="h-[500px] w-full object-cover" />
             ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-beta-navy dark:text-white">Live Voting Session</h1>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {isChair ? "You are the chair" : `Code: ${session.join_code}`}
-                    </p>
-                  </div>
-                  <Badge>{session.locked ? "Locked" : "Active"}</Badge>
+              <div className="flex h-[500px] w-full items-center justify-center bg-gradient-to-br from-beta-navy/10 to-beta-navy/5 text-6xl font-bold text-beta-navy">
+                {pnm.name.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#162238] via-transparent to-transparent opacity-80" />
+            <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-3 px-6 py-6 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <h2 className="text-3xl font-bold leading-tight">{pnm.name}</h2>
+                  {pnm.bio && <p className="mt-2 text-sm leading-relaxed text-white/90">{pnm.bio}</p>}
                 </div>
-
-                {sessionPNM ? (
-                  <>
-                    {/* Same swipe card as open mode */}
-                    <div className="relative w-full max-w-[448px] mx-auto" style={{ height: "600px" }}>
-                      <div className="absolute inset-0 rounded-2xl overflow-hidden border-2 border-beta-navy/20 shadow-2xl bg-white dark:bg-neutral-900">
-                        <div className="relative w-full h-full">
-                          {sessionPNM.photo_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={sessionPNM.photo_url}
-                              alt={sessionPNM.name}
-                              className="w-full h-2/3 object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-2/3 bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-                              <span className="text-6xl font-bold text-neutral-300">
-                                {sessionPNM.name.slice(0, 2).toUpperCase()}
-                              </span>
-                            </div>
-                          )}
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-beta-navy p-6">
-                            <div className="flex items-center justify-between mb-3">
-                              <h3 className="text-2xl font-bold text-white">{sessionPNM.name}</h3>
-                              <IconButton
-                                variant="inverse"
-                                icon={<Star className="w-5 h-5" />}
-                                onClick={() => vote("YES", true)}
-                              />
-                            </div>
-                            <div className="flex gap-2 flex-wrap">
-                              {sessionPNM.major && <Badge variant="neutral">{sessionPNM.major}</Badge>}
-                              {sessionPNM.hometown && <Badge variant="neutral">{sessionPNM.hometown}</Badge>}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-4">
-                      <Button
-                        variant="destructive-secondary"
-                        size="large"
-                        icon={<X className="w-5 h-5" />}
-                        onClick={() => vote("NO")}
-                        disabled={session.locked}
-                      >
-                        No
-                      </Button>
-                      <Button
-                        variant="neutral-secondary"
-                        size="large"
-                        icon={<HelpCircle className="w-5 h-5" />}
-                        onClick={() => vote("UNKNOWN")}
-                        disabled={session.locked}
-                      >
-                        Don't Know
-                      </Button>
-                      <Button
-                        size="large"
-                        icon={<Check className="w-5 h-5" />}
-                        onClick={() => vote("YES")}
-                        disabled={session.locked}
-                      >
-                        Yes
-                      </Button>
-                    </div>
-
-                    {/* Chair Controls */}
-                    {isChair && (
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          variant="neutral-secondary"
-                          size="small"
-                          icon={session.locked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                          onClick={toggleLock}
-                        >
-                          {session.locked ? "Unlock" : "Lock"}
-                        </Button>
-                        <Button
-                          variant="neutral-secondary"
-                          size="small"
-                          icon={<SkipForward className="w-4 h-4" />}
-                          onClick={advanceSession}
-                        >
-                          Next PNM
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center h-96">
-                    <p className="text-muted-foreground">Waiting for chair to start voting...</p>
-                  </div>
+                <IconButton
+                  variant="inverse"
+                  size="large"
+                  icon={<Star />}
+                  onClick={onFavorite}
+                  className="shrink-0"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {pnm.major && (
+                  <Badge variant="neutral" className="bg-white/20 text-white backdrop-blur-sm">
+                    {pnm.major}
+                  </Badge>
                 )}
-              </>
-            )}
-          </>
-        )}
+                {pnm.hometown && (
+                  <Badge variant="neutral" className="bg-white/20 text-white backdrop-blur-sm">
+                    {pnm.hometown}
+                  </Badge>
+                )}
+                {pnm.year && (
+                  <Badge variant="neutral" className="bg-white/20 text-white backdrop-blur-sm">
+                    {pnm.year}
+                  </Badge>
+                )}
+                {pnm.tags && pnm.tags.length > 0 && (
+                  <>
+                    {pnm.tags.slice(0, 3).map((tag, idx) => (
+                      <Badge key={idx} variant="neutral" className="bg-white/20 text-white backdrop-blur-sm">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
-
-      {/* Sidebar - Stats */}
-      <div className="w-80 flex-none space-y-4 mobile:w-full">
-        {/* Round Status */}
-        <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-neutral-900 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-beta-navy dark:text-white" />
-            <h3 className="font-semibold text-beta-navy dark:text-white">
-              {mode === "session" ? "Session Status" : "Round Status"}
-            </h3>
-          </div>
-          <div className="h-px bg-beta-gray/30" />
-          {mode === "session" && session && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Votes Collected</span>
-                <span className="text-sm font-semibold text-beta-navy dark:text-white">
-                  {session.votes_collected} / {session.total_voters}
-                </span>
-              </div>
-              <Progress value={(session.votes_collected / session.total_voters) * 100} />
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant={session.locked ? "warning" : "success"}>
-                  {session.locked ? "Locked" : "Active"}
-                </Badge>
-              </div>
-            </div>
-          )}
-          {mode === "open" && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant="success">Open</Badge>
-              </div>
-            </div>
+      <div className="flex w-full flex-col gap-4">
+        <div className="flex w-full items-center justify-center gap-3">
+          <Button
+            variant="destructive-secondary"
+            size="large"
+            icon={<X className="h-5 w-5" />}
+            onClick={() => onVote("NO")}
+            disabled={disabled}
+            className="flex-1"
+          >
+            No
+          </Button>
+          <Button
+            variant="neutral-secondary"
+            size="large"
+            icon={<HelpCircle className="h-5 w-5" />}
+            onClick={() => onVote("UNKNOWN")}
+            disabled={disabled}
+            className="flex-1"
+          >
+            Don't Know
+          </Button>
+          <Button
+            variant="brand-secondary"
+            size="large"
+            icon={<Check className="h-5 w-5" />}
+            onClick={() => onVote("YES")}
+            disabled={disabled}
+            className="flex-1"
+          >
+            Yes
+          </Button>
+        </div>
+        <div className="flex w-full flex-col items-center gap-2 text-center text-xs text-beta-gray">
+          <span>Swipe right for Yes, left for No, up for Don't Know</span>
+          {disabled && (
+            <span className="text-xs font-medium text-amber-600">Voting is currently locked</span>
           )}
         </div>
-
-        {/* Your Progress */}
-        <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-neutral-900 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-beta-navy dark:text-white" />
-            <h3 className="font-semibold text-beta-navy dark:text-white">Your Progress</h3>
-          </div>
-          <div className="h-px bg-beta-gray/30" />
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-green-600" />
-                <span className="text-sm text-muted-foreground">Yes</span>
-              </div>
-              <span className="text-sm font-semibold text-beta-navy dark:text-white">{voteStats.yes}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <X className="w-4 h-4 text-red-600" />
-                <span className="text-sm text-muted-foreground">No</span>
-              </div>
-              <span className="text-sm font-semibold text-beta-navy dark:text-white">{voteStats.no}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <HelpCircle className="w-4 h-4 text-yellow-600" />
-                <span className="text-sm text-muted-foreground">Don't Know</span>
-              </div>
-              <span className="text-sm font-semibold text-beta-navy dark:text-white">{voteStats.unknown}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-beta-navy" />
-                <span className="text-sm text-muted-foreground">Favorites</span>
-              </div>
-              <span className="text-sm font-semibold text-beta-navy dark:text-white">{voteStats.favorites}</span>
-            </div>
-          </div>
-        </div>
       </div>
+    </div>
+  );
+}
+
+function StatLine({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 text-sm text-beta-gray">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <span className="text-sm font-semibold text-beta-navy">{value}</span>
     </div>
   );
 }

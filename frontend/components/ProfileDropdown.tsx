@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronUp, Settings, DoorOpen, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 export default function ProfileDropdown() {
   const [open, setOpen] = useState(false);
@@ -18,11 +19,32 @@ export default function ProfileDropdown() {
     }
   }, []);
 
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const profile = await api<{ memberships: Array<{ role: string }> }>("/me").catch(() => null);
+        if (profile) {
+          const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
+          setIsAdmin(hasAdminRole || false);
+        }
+      } catch (e) {
+        console.error("Failed to check admin status:", e);
+      }
+    })();
+  }, []);
+
   const menuItems = [
     { 
+      icon: <User className="w-5 h-5" />, 
+      label: "Profile",
+      onClick: () => router.push("/profile")
+    },
+    { 
       icon: <Settings className="w-5 h-5" />, 
-      label: "Settings",
-      onClick: () => router.push("/settings")
+      label: isAdmin ? "Admin Settings" : "Settings",
+      onClick: () => router.push(isAdmin ? "/settings" : "/profile")
     },
     {
       icon: <DoorOpen className="w-5 h-5" />,
