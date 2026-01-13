@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST='{"app/(dashboard)/profile/page.tsx -> @/lib/supabaseClient":{"id":3303,"files":["static/chunks/2724-c89812568e2fdef5.js","static/chunks/3303.f8d8005b33afe161.js"]}}';

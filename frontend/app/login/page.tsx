@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { Button } from "@/ui/components/Button";
 import { TextField } from "@/ui/components/TextField";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,7 +10,9 @@ import ToastProvider, { useToast } from "@/components/ToastProvider";
 function RushRankLogin() {
   return (
     <ToastProvider>
-      <LoginInner />
+      <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
+        <LoginInner />
+      </Suspense>
     </ToastProvider>
   );
 }
