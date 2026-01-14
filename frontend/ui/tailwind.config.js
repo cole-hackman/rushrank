@@ -67,11 +67,11 @@ module.exports = {
           900: "rgb(6, 78, 59)",
         },
         "brand-primary": "rgb(37, 99, 235)",
-        "default-font": "rgb(24, 24, 27)",
-        "subtext-color": "rgb(113, 113, 122)",
-        "neutral-border": "rgb(228, 228, 231)",
+        "default-font": "hsl(var(--foreground))",
+        "subtext-color": "hsl(var(--muted-foreground))",
+        "neutral-border": "hsl(var(--border))",
         white: "rgb(255, 255, 255)",
-        "default-background": "rgb(255, 255, 255)",
+        "default-background": "hsl(var(--background))",
       },
       fontSize: {
         caption: [

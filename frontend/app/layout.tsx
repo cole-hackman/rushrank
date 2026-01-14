@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import ToastProvider from "@/components/ToastProvider";
 import GoogleFonts from "@/components/GoogleFonts";
 import { QueryProvider } from "@/providers/QueryProvider";
@@ -7,6 +7,14 @@ import { QueryProvider } from "@/providers/QueryProvider";
 export const metadata: Metadata = {
 	title: "RushRank",
 	description: "Digital rush voting platform",
+};
+
+export const viewport: Viewport = {
+	width: "device-width",
+	initialScale: 1,
+	maximumScale: 1,
+	userScalable: false,
+	viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

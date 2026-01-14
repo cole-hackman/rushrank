@@ -32,17 +32,17 @@ const AvatarRoot = React.forwardRef<HTMLDivElement, AvatarRootProps>(
     return (
       <div
         className={SubframeUtils.twClassNames(
-          "group/bec25ae6 flex h-8 w-8 flex-col items-center justify-center gap-2 overflow-hidden rounded-full bg-brand-100 relative",
+          "group/bec25ae6 flex h-8 w-8 flex-col items-center justify-center gap-2 overflow-hidden rounded-full bg-brand-100 dark:bg-brand-900 relative",
           {
             "rounded-md": square,
             "h-5 w-5": size === "x-small",
             "h-6 w-6": size === "small",
             "h-12 w-12": size === "large",
             "h-16 w-16": size === "x-large",
-            "bg-warning-100": variant === "warning",
-            "bg-success-100": variant === "success",
-            "bg-error-100": variant === "error",
-            "bg-neutral-100": variant === "neutral",
+            "bg-warning-100 dark:bg-warning-900": variant === "warning",
+            "bg-success-100 dark:bg-success-900": variant === "success",
+            "bg-error-100 dark:bg-error-900": variant === "error",
+            "bg-neutral-100 dark:bg-neutral-800": variant === "neutral",
           },
           className
         )}
@@ -52,7 +52,7 @@ const AvatarRoot = React.forwardRef<HTMLDivElement, AvatarRootProps>(
         {children ? (
           <span
             className={SubframeUtils.twClassNames(
-              "line-clamp-1 w-full font-['Inter'] text-[14px] font-[500] leading-[14px] text-brand-800 text-center absolute",
+              "line-clamp-1 w-full font-['Inter'] text-[14px] font-[500] leading-[14px] text-brand-800 dark:text-brand-200 text-center absolute",
               {
                 "font-['Inter'] text-[10px] font-[500] leading-[10px] tracking-normal":
                   size === "x-small" || size === "small",
@@ -60,10 +60,10 @@ const AvatarRoot = React.forwardRef<HTMLDivElement, AvatarRootProps>(
                   size === "large",
                 "font-['Inter'] text-[24px] font-[500] leading-[24px] tracking-normal":
                   size === "x-large",
-                "text-warning-800": variant === "warning",
-                "text-success-800": variant === "success",
-                "text-error-800": variant === "error",
-                "text-neutral-800": variant === "neutral",
+                "text-warning-800 dark:text-warning-200": variant === "warning",
+                "text-success-800 dark:text-success-200": variant === "success",
+                "text-error-800 dark:text-error-200": variant === "error",
+                "text-neutral-800 dark:text-neutral-200": variant === "neutral",
               }
             )}
           >
