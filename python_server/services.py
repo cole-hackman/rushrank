@@ -1443,7 +1443,8 @@ class ExportService:
                    COALESCE((
                        SELECT COUNT(*)
                        FROM attendance a
-                       WHERE a.pnm_id = p.id
+                       JOIN events e ON e.id = a.event_id
+                       WHERE a.pnm_id = p.id AND e.is_active = true
                    ), 0) AS attendance_count,
                    p.created_at
             FROM pnms p

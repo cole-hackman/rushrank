@@ -411,8 +411,17 @@ async def get_pnms(
                 JOIN tags t ON t.id = pt.tag_id
                 WHERE pt.pnm_id = p.id
             ), ARRAY[]::text[]) AS tags,
-            COUNT(DISTINCT ea.event_id) as attendance_count,
-            (SELECT COUNT(DISTINCT e.id) FROM events e WHERE e.chapter_id = p.chapter_id) as total_events,
+            (
+                SELECT COUNT(DISTINCT ea.event_id) 
+                FROM event_attendance ea 
+                JOIN events e ON e.id = ea.event_id 
+                WHERE ea.pnm_id = p.id AND e.is_active = true
+            ) as attendance_count,
+            (
+                SELECT COUNT(DISTINCT e.id) 
+                FROM events e 
+                WHERE e.chapter_id = p.chapter_id AND e.is_active = true
+            ) as total_events,
             COALESCE(
                 ROUND(
                     (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric / 
@@ -422,7 +431,6 @@ async def get_pnms(
             COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
             COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
         FROM pnms p
-        LEFT JOIN event_attendance ea ON ea.pnm_id = p.id
         LEFT JOIN votes v ON v.pnm_id = p.id
         WHERE p.chapter_id = $1
         GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
@@ -472,13 +480,46 @@ async def get_pnm(
     pnm_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get specific PNM"""
-    pnm = await pnm_service.get_pnm(pnm_id)
-    if not pnm:
+    """Get specific PNM with stats"""
+    db = get_db()
+    
+    # We fetch with stats similar to the list view
+    query = """
+        SELECT 
+            p.*,
+            COALESCE(ARRAY(
+                SELECT t.label FROM pnm_tags pt
+                JOIN tags t ON t.id = pt.tag_id
+                WHERE pt.pnm_id = p.id
+            ), ARRAY[]::text[]) AS tags,
+            (
+                SELECT COUNT(DISTINCT ea.event_id) 
+                FROM event_attendance ea 
+                JOIN events e ON e.id = ea.event_id 
+                WHERE ea.pnm_id = p.id AND e.is_active = true
+            ) as attendance_count,
+            (
+                SELECT COUNT(DISTINCT e.id) 
+                FROM events e 
+                WHERE e.chapter_id = p.chapter_id AND e.is_active = true
+            ) as total_events
+        FROM pnms p
+        WHERE p.id = $1
+    """
+    
+    row = await db.execute_one(query, pnm_id)
+    if not row:
         raise HTTPException(status_code=404, detail="PNM not found")
     
-    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
-    return pnm
+    await chapter_service.verify_membership(current_user["user_id"], row["chapter_id"])
+    
+    # Convert row to dict and then to PNM model
+    pnm_dict = dict(row)
+    pnm_dict["id"] = str(pnm_dict["id"])
+    pnm_dict["chapter_id"] = str(pnm_dict["chapter_id"])
+    pnm_dict["tags"] = pnm_dict["tags"] or []
+    
+    return pnm_dict
 
 @router.get("/pnms/{pnm_id}/qr")
 async def get_pnm_qr(
