@@ -24,7 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     (async () => {
       try {
-        const profile = await api<{ memberships: Array<{ role: string }> }>("/me", { timeout: 5000 });
+        const profile = await api<{ memberships: Array<{ role: string }> }>("/me", { timeout: 15000 });
         const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
         setIsAdmin(hasAdminRole);
       } catch (e: any) {

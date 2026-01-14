@@ -39,7 +39,7 @@ export default function DashboardPage() {
       // Get chapter
       let cid: string | null = null;
       try {
-        const chapters = await api<{ id: string }[]>("/chapters", { timeout: 5000 });
+        const chapters = await api<{ id: string }[]>("/chapters", { timeout: 15000 });
         cid = chapters[0]?.id || null;
         if (!cid) {
           toast({ title: "No chapter found", description: "Please create a chapter first" });
