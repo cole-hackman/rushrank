@@ -825,18 +825,19 @@ class PNMService:
                 """, chapter_id, today)
                 
                 if events_today:
+                    logger.info(f"Found {len(events_today)} event(s) today - auto-checking in PNM {pnm_id}")
                     for event_row in events_today:
                         try:
                             await db.execute_command("""
                                 INSERT INTO attendance (event_id, pnm_id, notes)
-                                VALUES ($1, $2, 'Auto-logged on PNM creation')
-                                ON CONFLICT DO NOTHING
+                                VALUES ($1, $2, 'Auto-checked in on PNM creation')
+                                ON CONFLICT (event_id, pnm_id) DO NOTHING
                             """, str(event_row["id"]), pnm_id)
-                            logger.info(f"Auto-logged attendance for PNM {pnm_id} at event {event_row['id']}")
+                            logger.info(f"✅ Auto-checked in PNM {pnm_id} at event {event_row['id']}")
                         except Exception as e:
-                            logger.warning(f"Failed to auto-log attendance for event {event_row['id']}: {e}")
+                            logger.warning(f"Failed to auto-check in for event {event_row['id']}: {e}")
             except Exception as e:
-                logger.warning(f"Error checking for same-day events: {e}")
+                logger.warning(f"Error checking for same-day events: {e}", exc_info=True)
         
         # Fire and forget - don't await
         asyncio.create_task(background_tasks())
