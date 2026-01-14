@@ -32,7 +32,7 @@ export function ActionCard({
       className={cn(
         "grid grid-cols-[72px_1fr_24px] gap-4 items-center",
         "p-5 rounded-xl border-2",
-        "min-h-[124px]",
+        "min-h-[160px] md:min-h-[124px]",
         "transition-all shadow-sm",
         "focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
         "active:scale-[0.99]",
