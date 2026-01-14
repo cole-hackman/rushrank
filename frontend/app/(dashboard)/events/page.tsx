@@ -432,13 +432,15 @@ function RushRankEventPage() {
               <SkeletonTable rows={5} columns={5} showCheckbox={false} />
             </div>
           ) : filteredEvents.length === 0 ? (
-            <div className="flex flex-col h-64 w-full items-center justify-center gap-4 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900">
-              <FeatherCalendar className="h-12 w-12 text-neutral-400" />
-              <div className="text-center">
-                <p className="text-body-bold font-body-bold text-default-font mb-1">
+            <div className="flex flex-col items-center justify-center gap-4 py-16 px-4 w-full rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white dark:bg-neutral-800 shadow-sm">
+                <FeatherCalendar className="h-8 w-8 text-neutral-400" />
+              </div>
+              <div className="flex flex-col gap-1 text-center">
+                <p className="text-body-bold font-body-bold text-default-font">
                   {search ? "No events match your search" : "No events yet"}
                 </p>
-                <p className="text-caption text-subtext-color">
+                <p className="text-caption text-subtext-color max-w-[280px]">
                   {search ? "Try a different search term" : "Create your first event to get started"}
                 </p>
               </div>

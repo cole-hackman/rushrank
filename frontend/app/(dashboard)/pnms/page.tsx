@@ -65,7 +65,6 @@ export default function PNMsPage() {
   const [selectedPnmIds, setSelectedPnmIds] = useState<string[]>([]);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [photoFilter, setPhotoFilter] = useState<"all" | "has-photo" | "no-photo">("all");
 
   useEffect(() => {
     (async () => {
@@ -148,14 +147,8 @@ export default function PNMsPage() {
     if (selectedTags.length) {
       data = data.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
     }
-    // Photo filter
-    if (photoFilter === "has-photo") {
-      data = data.filter((p) => p.photo_url);
-    } else if (photoFilter === "no-photo") {
-      data = data.filter((p) => !p.photo_url);
-    }
     return data;
-  }, [pnms, search, selectedTags, photoFilter]);
+  }, [pnms, search, selectedTags]);
 
   const stats = useMemo(() => {
     const total = pnms.length;
@@ -374,28 +367,6 @@ export default function PNMsPage() {
         </div>
         {/* Quick filter chips */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setPhotoFilter(photoFilter === "has-photo" ? "all" : "has-photo")}
-            className={cn(
-              "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
-              photoFilter === "has-photo"
-                ? "border-success-600 bg-success-600 text-white"
-                : "border-neutral-border bg-white dark:bg-neutral-800 text-default-font hover:bg-neutral-50 dark:hover:bg-neutral-700"
-            )}
-          >
-            Has Photo
-          </button>
-          <button
-            onClick={() => setPhotoFilter(photoFilter === "no-photo" ? "all" : "no-photo")}
-            className={cn(
-              "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
-              photoFilter === "no-photo"
-                ? "border-warning-600 bg-warning-600 text-white"
-                : "border-neutral-border bg-white dark:bg-neutral-800 text-default-font hover:bg-neutral-50 dark:hover:bg-neutral-700"
-            )}
-          >
-            No Photo
-          </button>
           {allTags.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               {allTags.map((tag) => (
@@ -437,7 +408,27 @@ export default function PNMsPage() {
               </Button>
             </div>
           )}
-          {!loading && !error && (
+          {!loading && !error && pnms.length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-4 py-16 px-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800">
+                <FeatherUsers className="h-8 w-8 text-neutral-400" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-body-bold font-body-bold text-default-font">
+                  No PNMs yet
+                </p>
+                <p className="text-caption text-subtext-color max-w-[280px]">
+                  Add your first potential new member to get started
+                </p>
+              </div>
+              <Link href="/rush">
+                <Button variant="brand-primary" icon={<FeatherUserPlus />}>
+                  Add PNM
+                </Button>
+              </Link>
+            </div>
+          )}
+          {!loading && !error && pnms.length > 0 && (
             <div className="overflow-x-auto -mx-6 px-6">
               <Table
                 className="min-w-[1200px] w-full"
@@ -545,31 +536,6 @@ export default function PNMsPage() {
                     </Table.Cell>
                   </Table.Row>
                 ))}
-                {filteredPnms.length === 0 && pnms.length === 0 && (
-                  <Table.Row>
-                    <Table.Cell
-                      colSpan={7 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
-                      className="py-12"
-                    >
-                      <div className="flex flex-col items-center justify-center gap-4">
-                        <FeatherUsers className="h-12 w-12 text-neutral-400" />
-                        <div className="text-center">
-                          <p className="text-body-bold font-body-bold text-default-font mb-1">
-                            No PNMs yet
-                          </p>
-                          <p className="text-caption text-subtext-color">
-                            Add your first PNM to get started
-                          </p>
-                        </div>
-                        <Link href="/rush">
-                          <Button icon={<FeatherUserPlus />}>
-                            Add PNM
-                          </Button>
-                        </Link>
-                      </div>
-                    </Table.Cell>
-                  </Table.Row>
-                )}
                 {filteredPnms.length === 0 && pnms.length > 0 && (
                   <Table.Row>
                     <Table.Cell
