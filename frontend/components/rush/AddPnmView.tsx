@@ -5,7 +5,7 @@ import { useToast } from "@/components/ToastProvider";
 import { Label } from "@/components/ui/ui/label";
 import { Input } from "@/components/ui/ui/input";
 import { Button } from "@/ui/components/Button";
-import { ArrowLeft, CheckCircle2, QrCode, AlertCircle, Camera } from "lucide-react";
+import { ArrowLeft, CheckCircle2, QrCode, AlertCircle, Camera, Upload } from "lucide-react";
 import { cn, formatPhoneNumber } from "@/lib/utils";
 
 interface AddPnmViewProps {
@@ -21,7 +21,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
   const [major, setMajor] = useState("");
   const [hometown, setHometown] = useState("");
   const [year, setYear] = useState("");
-  const [funFact, setFunFact] = useState("");
+  const [celebrityCrush, setCelebrityCrush] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [createdPnmId, setCreatedPnmId] = useState<string | null>(null);
@@ -79,6 +79,18 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     if (!major.trim()) {
       newErrors.major = "Major is required";
     }
+    if (!year.trim()) {
+      newErrors.year = "Year is required";
+    }
+    if (!hometown.trim()) {
+      newErrors.hometown = "Hometown is required";
+    }
+    if (!celebrityCrush.trim()) {
+      newErrors.celebrityCrush = "Celebrity Crush is required";
+    }
+    if (!file) {
+      newErrors.file = "Photo is required";
+    }
 
     // Validate questionnaire required fields
     questionnaireQuestions.forEach((q, idx) => {
@@ -102,6 +114,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     }
 
     if (!validate()) {
+      toast({ title: "Please fill all required fields", description: "Photo and all fields are required." });
       return;
     }
 
@@ -115,11 +128,11 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
           email: email.trim() || null,
           phone: phone.trim() || null,
           major: major.trim(),
-          hometown: hometown.trim() || null,
-          year: year.trim() || null,
+          hometown: hometown.trim(), // Now required
+          year: year.trim(), // Now required
           photo_url: null,
           tags: [],
-          fun_fact: funFact.trim() || null
+          fun_fact: celebrityCrush.trim() // Map from Celebrity Crush
         }
       });
       const pnmId = created.id as string;
@@ -144,8 +157,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
         }
       }
 
-      // Optional photo upload - don't fail the whole creation if this fails
-      // Optional photo upload
+      // Photo upload
       if (file) {
         try {
           const formData = new FormData();
@@ -163,8 +175,6 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
             console.error("Photo upload failed:", text);
             toast({ title: "Photo upload failed", description: "PNM was added but photo failed to upload" });
           } else {
-            // Success - no need to update PNM again as backend does it
-            // Just logging for debug
             console.log("Photo uploaded successfully via proxy");
           }
         } catch (photoError: any) {
@@ -196,7 +206,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     setMajor("");
     setHometown("");
     setYear("");
-    setFunFact("");
+    setCelebrityCrush("");
     setQuestionnaireAnswers({});
     setFile(null);
     setPreview(null);
@@ -369,12 +379,19 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
               </LabelInputContainer>
 
               <LabelInputContainer>
-                <Label htmlFor="year">Year</Label>
+                <Label htmlFor="year">Year *</Label>
                 <select
                   id="year"
                   value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  className="h-12 text-base px-4 rounded-lg border border-beta-gray/60 bg-white text-beta-navy focus:ring-2 focus:ring-beta-navy focus:border-beta-navy"
+                  onChange={(e) => {
+                    setYear(e.target.value);
+                    if (errors.year) setErrors({ ...errors, year: "" });
+                  }}
+                  className={cn(
+                    "h-12 text-base px-4 rounded-lg border border-beta-gray/60 bg-white text-beta-navy focus:ring-2 focus:ring-beta-navy focus:border-beta-navy",
+                    errors.year && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  )}
+                  required
                 >
                   <option value="">Select year</option>
                   <option value="1st">1st Year</option>
@@ -382,32 +399,64 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                   <option value="3rd">3rd Year</option>
                   <option value="4th">4th Year</option>
                 </select>
+                {errors.year && (
+                  <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{errors.year}</span>
+                  </div>
+                )}
               </LabelInputContainer>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
               <LabelInputContainer>
-                <Label htmlFor="hometown">Hometown</Label>
+                <Label htmlFor="hometown">Hometown *</Label>
                 <Input
                   id="hometown"
                   placeholder=""
                   type="text"
                   value={hometown}
-                  onChange={(e) => setHometown(e.target.value)}
-                  className="h-12 text-base py-4"
+                  onChange={(e) => {
+                    setHometown(e.target.value);
+                    if (errors.hometown) setErrors({ ...errors, hometown: "" });
+                  }}
+                  className={cn(
+                    "h-12 text-base py-4",
+                    errors.hometown && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  )}
+                  required
                 />
+                {errors.hometown && (
+                  <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{errors.hometown}</span>
+                  </div>
+                )}
               </LabelInputContainer>
 
               <LabelInputContainer>
-                <Label htmlFor="funfact">Fun Fact</Label>
+                <Label htmlFor="celebrityCrush">Celebrity Crush *</Label>
                 <Input
-                  id="funfact"
+                  id="celebrityCrush"
                   placeholder=""
                   type="text"
-                  value={funFact}
-                  onChange={(e) => setFunFact(e.target.value)}
-                  className="h-12 text-base py-4"
+                  value={celebrityCrush}
+                  onChange={(e) => {
+                    setCelebrityCrush(e.target.value);
+                    if (errors.celebrityCrush) setErrors({ ...errors, celebrityCrush: "" });
+                  }}
+                  className={cn(
+                    "h-12 text-base py-4",
+                    errors.celebrityCrush && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                  )}
+                  required
                 />
+                {errors.celebrityCrush && (
+                  <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{errors.celebrityCrush}</span>
+                  </div>
+                )}
               </LabelInputContainer>
             </div>
 
@@ -464,48 +513,38 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
           {/* Photo Upload Section */}
           <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-6 space-y-4">
             <LabelInputContainer>
-              <Label htmlFor="photo">Photo (Optional)</Label>
+              <Label htmlFor="photo">Photo *</Label>
               <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <label className="flex-1">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => {
-                        const selectedFile = e.target.files?.[0];
-                        if (selectedFile) {
-                          setFile(selectedFile);
-                        }
-                      }}
-                      className="hidden"
-                      id="photo-camera"
-                    />
-                    <div className="flex items-center justify-center gap-2 rounded-lg border border-beta-gray/60 bg-white px-4 py-3 text-sm font-medium text-beta-navy hover:bg-beta-navy/5 cursor-pointer transition-colors min-h-[44px]">
-                      <Camera className="h-4 w-4" />
-                      <span>Take Photo</span>
+                <label className="flex-1 block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const selectedFile = e.target.files?.[0];
+                      if (selectedFile) {
+                        setFile(selectedFile);
+                        const newErrors = { ...errors };
+                        delete newErrors.file;
+                        setErrors(newErrors);
+                      }
+                    }}
+                    className="hidden"
+                    id="photo-upload"
+                  />
+                  <div className={cn(
+                    "flex items-center justify-center gap-2 rounded-lg border border-dashed border-beta-gray/60 bg-white px-4 py-8 text-sm font-medium text-beta-navy hover:bg-beta-navy/5 cursor-pointer transition-colors min-h-[120px]",
+                    errors.file && "border-red-500 bg-red-50"
+                  )}>
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="h-8 w-8 text-beta-gray" />
+                      <span className="text-base">Upload Photo</span>
+                      <span className="text-xs text-beta-gray">Take photo or choose from library</span>
                     </div>
-                  </label>
-                  <label className="flex-1">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const selectedFile = e.target.files?.[0];
-                        if (selectedFile) {
-                          setFile(selectedFile);
-                        }
-                      }}
-                      className="hidden"
-                      id="photo-gallery"
-                    />
-                    <div className="flex items-center justify-center gap-2 rounded-lg border border-beta-gray/60 bg-white px-4 py-3 text-sm font-medium text-beta-navy hover:bg-beta-navy/5 cursor-pointer transition-colors min-h-[44px]">
-                      <span>Choose from Gallery</span>
-                    </div>
-                  </label>
-                </div>
+                  </div>
+                </label>
+
                 {preview && (
-                  <div className="relative w-full max-w-xs aspect-square rounded-lg overflow-hidden border-2 border-beta-gray/30 shadow-sm">
+                  <div className="relative w-full max-w-xs mx-auto aspect-square rounded-lg overflow-hidden border-2 border-beta-gray/30 shadow-sm">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={preview} alt="Preview" className="w-full h-full object-cover" />
                     <button
@@ -513,10 +552,8 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                       onClick={() => {
                         setFile(null);
                         setPreview(null);
-                        const cameraInput = document.getElementById("photo-camera") as HTMLInputElement;
-                        const galleryInput = document.getElementById("photo-gallery") as HTMLInputElement;
-                        if (cameraInput) cameraInput.value = "";
-                        if (galleryInput) galleryInput.value = "";
+                        const uploadInput = document.getElementById("photo-upload") as HTMLInputElement;
+                        if (uploadInput) uploadInput.value = "";
                       }}
                       className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1.5 hover:bg-red-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                       aria-label="Remove photo"
@@ -525,10 +562,11 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                     </button>
                   </div>
                 )}
-                {file && (
-                  <p className="text-xs text-beta-gray">
-                    Selected: {file.name}
-                  </p>
+                {errors.file && (
+                  <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1 justify-center">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{errors.file}</span>
+                  </div>
                 )}
               </div>
             </LabelInputContainer>
@@ -572,4 +610,3 @@ const LabelInputContainer = ({
     </div>
   );
 };
-
