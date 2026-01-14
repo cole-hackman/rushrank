@@ -478,6 +478,13 @@ export default function PNMsPage() {
                     </Table.Cell>
                     <Table.Cell className="w-[100px] min-w-[100px] text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <IconButton
+                          size="small"
+                          icon={<FeatherImage />}
+                          onClick={() => handleExportGraphic(pnm.id, pnm.name)}
+                          aria-label={`Generate graphic for ${pnm.name}`}
+                          title="Generate graphic"
+                        />
                         <Link href={`/pnms/${pnm.id}`}>
                           <IconButton
                             size="small"
