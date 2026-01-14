@@ -45,9 +45,9 @@ class Membership(BaseModel):
 # PNM Models
 class PNMCreate(BaseModel):
     name: str
-    email: str
-    phone: str
-    major: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    major: Optional[str] = None
     hometown: Optional[str] = None
     year: Optional[str] = None
     photo_url: Optional[str] = None

@@ -151,8 +151,8 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
         method: "POST",
         body: {
           name: name.trim(),
-          email: email.trim() || null,
-          phone: phone.trim() || null,
+          email: email.trim() || "",
+          phone: phone.trim() || "",
           major: major.trim(),
           hometown: hometown.trim(), // Now required
           year: year.trim(), // Now required
