@@ -22,6 +22,7 @@ import { IconButton } from "@/ui/components/IconButton";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Tabs } from "@/ui/components/Tabs";
 import { TextArea } from "@/ui/components/TextArea";
+import { downloadFileForMobile } from "@/lib/utils";
 
 type PNM = {
   id: string;
@@ -97,19 +98,41 @@ export default function PNMProfilePage() {
   };
 
   const handleExportGraphic = async () => {
-    if (!id) return;
+    if (!id || !pnm) return;
     try {
+      toast({ title: "Generating...", description: "Creating PNM card image" });
       const response = await api<{ url: string }>(`/exports/pnm-card/${id}`, {
         method: "POST",
       });
-      
+
       if (response.url) {
-        // Open the image URL in a new tab for viewing/downloading
-        window.open(response.url, "_blank");
-        toast({ 
-          title: "Image generated", 
-          description: "PNM card image is ready. Opening in new tab..." 
-        });
+        // Detect Safari - Safari has issues with blob downloads and download attribute
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+        if (isSafari) {
+          // For Safari: open the image URL directly in a new tab
+          // User can then long-press or right-click to save
+          const newTab = window.open(response.url, "_blank");
+          if (!newTab) {
+            // Popup was blocked, use same window
+            window.location.href = response.url;
+          }
+          toast({
+            title: "Image opened!",
+            description: "Long-press or right-click to save the image"
+          });
+        } else {
+          // For Chrome/Firefox: use blob download approach
+          const filename = `${pnm.name.replace(/\s+/g, "_")}_graphic.png`;
+          const downloaded = await downloadFileForMobile(response.url, filename);
+          if (downloaded) {
+            toast({ title: "Image downloaded!", description: "Check your downloads folder" });
+          } else {
+            // Fallback: open in same window
+            window.location.href = response.url;
+            toast({ title: "Opening image...", description: "File should open for download" });
+          }
+        }
       } else {
         toast({ title: "Export failed", description: "No image URL returned" });
       }
