@@ -463,8 +463,8 @@ async def create_pnm(
     chapter_id: str = Query(..., description="Chapter ID"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Create new PNM (admin only)"""
-    await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
+    """Create new PNM (all members)"""
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
     return await pnm_service.create_pnm(pnm_data, chapter_id)
 
 @router.get("/pnms/{pnm_id}", response_model=PNM)
@@ -525,12 +525,12 @@ async def update_pnm(
     pnm_data: PNMCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Update PNM (admin only)"""
+    """Update PNM (all members)"""
     pnm = await pnm_service.get_pnm(pnm_id)
     if not pnm:
         raise HTTPException(status_code=404, detail="PNM not found")
     
-    await chapter_service.verify_admin_access(current_user["user_id"], pnm.chapter_id)
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
     return await pnm_service.update_pnm(pnm_id, pnm_data)
 
 @router.delete("/pnms/{pnm_id}", response_model=APIResponse)
@@ -568,7 +568,7 @@ async def create_pnm_upload_url(
     pnm = await pnm_service.get_pnm(pnm_id)
     if not pnm:
         raise HTTPException(status_code=404, detail="PNM not found")
-    await chapter_service.verify_admin_access(current_user["user_id"], pnm.chapter_id)
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
     return await upload_service.create_signed_upload_url(pnm_id, filename)
 
 @router.post("/pnms/{pnm_id}/upload-photo")
@@ -582,7 +582,7 @@ async def upload_pnm_photo(
     pnm = await pnm_service.get_pnm(pnm_id)
     if not pnm:
         raise HTTPException(status_code=404, detail="PNM not found")
-    await chapter_service.verify_admin_access(current_user["user_id"], pnm.chapter_id)
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
     
     # Read file content
     content = await file.read()
