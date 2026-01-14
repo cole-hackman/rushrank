@@ -120,6 +120,22 @@ ALLOWED_ORIGINS = [
     if origin.strip() and not origin.strip().startswith('https://vercel.com')  # Filter out invalid Vercel project URLs
 ]
 
+# Add middleware to normalize paths (remove double slashes)
+# This must be added BEFORE CORS middleware
+@app.middleware("http")
+async def normalize_path_middleware(request: Request, call_next):
+    """Normalize request paths by removing double slashes"""
+    original_path = request.url.path
+    if "//" in original_path:
+        # Replace multiple consecutive slashes with single slash
+        normalized_path = "/" + "/".join(part for part in original_path.split("/") if part)
+        # Update the request scope
+        request.scope["path"] = normalized_path
+        request.scope["raw_path"] = normalized_path.encode()
+        logger.debug(f"Normalized path: {original_path} -> {normalized_path}")
+    response = await call_next(request)
+    return response
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -169,6 +185,26 @@ async def global_exception_handler(request: Request, exc: Exception):
 # /api/v1 is the canonical path, /api is kept for backwards compatibility
 app.include_router(router, prefix="/api/v1")
 app.include_router(router, prefix="/api")  # Backwards compatibility
+
+# Explicit OPTIONS handler for CORS preflight (catches any path)
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str, request: Request):
+    """Handle CORS preflight OPTIONS requests"""
+    origin = request.headers.get("origin", "")
+    if origin in ALLOWED_ORIGINS:
+        from fastapi.responses import Response
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
+    from fastapi.responses import Response
+    return Response(status_code=403)
 
 @app.get("/")
 async def root():
