@@ -333,60 +333,60 @@ function RushRankEventPage() {
       <div className="flex w-full flex-col items-start gap-8">
 
         {/* Stats Cards */}
-        <div className="flex w-full items-start gap-4 flex-wrap mobile:flex-col mobile:flex-nowrap mobile:gap-4">
-          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-neutral-100 px-6 py-6">
+        <div className="grid w-full grid-cols-4 gap-4 mobile:grid-cols-2">
+          <div className="flex w-full flex-col items-start gap-2 rounded-xl bg-neutral-100 px-6 py-6 mobile:px-4 mobile:py-4">
             <div className="flex w-full items-center gap-2">
               <IconWithBackground
                 variant="neutral"
                 size="small"
                 icon={<FeatherCalendar />}
               />
-              <span className="text-caption-bold font-caption-bold text-subtext-color">
+              <span className="text-caption-bold font-caption-bold text-subtext-color mobile:text-[10px] mobile:leading-3">
                 TOTAL EVENTS
               </span>
             </div>
-            <span className="text-heading-1 font-heading-1 text-default-font">
+            <span className="text-heading-1 font-heading-1 text-default-font mobile:text-heading-2">
               {loading ? "..." : stats.totalEvents}
             </span>
           </div>
-          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-success-100 px-6 py-6">
+          <div className="flex w-full flex-col items-start gap-2 rounded-xl bg-success-50 px-6 py-6 mobile:px-4 mobile:py-4 border border-success-100">
             <div className="flex w-full items-center gap-2">
               <IconWithBackground
                 variant="success"
                 size="small"
                 icon={<FeatherUsers />}
               />
-              <span className="text-caption-bold font-caption-bold text-success-700">
+              <span className="text-caption-bold font-caption-bold text-success-700 mobile:text-[10px] mobile:leading-3">
                 TOTAL ATTENDANCE
               </span>
             </div>
-            <span className="text-heading-1 font-heading-1 text-success-700">
+            <span className="text-heading-1 font-heading-1 text-success-700 mobile:text-heading-2">
               {loading ? "..." : stats.totalAttendance}
             </span>
           </div>
-          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-brand-100 px-6 py-6">
+          <div className="flex w-full flex-col items-start gap-2 rounded-xl bg-brand-50 px-6 py-6 mobile:px-4 mobile:py-4 border border-brand-100">
             <div className="flex w-full items-center gap-2">
               <IconWithBackground size="small" icon={<FeatherTrendingUp />} />
-              <span className="text-caption-bold font-caption-bold text-brand-700">
+              <span className="text-caption-bold font-caption-bold text-brand-700 mobile:text-[10px] mobile:leading-3">
                 AVG ATTENDANCE
               </span>
             </div>
-            <span className="text-heading-1 font-heading-1 text-brand-700">
+            <span className="text-heading-1 font-heading-1 text-brand-700 mobile:text-heading-2">
               {loading ? "..." : stats.avgAttendance}
             </span>
           </div>
-          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-warning-100 px-6 py-6">
+          <div className="flex w-full flex-col items-start gap-2 rounded-xl bg-warning-50 px-6 py-6 mobile:px-4 mobile:py-4 border border-warning-100">
             <div className="flex w-full items-center gap-2">
               <IconWithBackground
                 variant="warning"
                 size="small"
                 icon={<FeatherClock />}
               />
-              <span className="text-caption-bold font-caption-bold text-warning-700">
+              <span className="text-caption-bold font-caption-bold text-warning-700 mobile:text-[10px] mobile:leading-3">
                 UPCOMING
               </span>
             </div>
-            <span className="text-heading-1 font-heading-1 text-warning-700">
+            <span className="text-heading-1 font-heading-1 text-warning-700 mobile:text-heading-2">
               {loading ? "..." : stats.upcoming}
             </span>
           </div>
