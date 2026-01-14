@@ -10,11 +10,14 @@
     --beta-surface: #fefefe;
 
     /* Base surfaces */
-    --background: 0 0% 99%;                 /* #fefefe */
-    --foreground: 212 100% 20%;             /* near navy for text */
+    --background: 0 0% 99%;
+    /* #fefefe */
+    --foreground: 212 100% 20%;
+    /* near navy for text */
 
     /* Primary - Beta Navy */
-    --primary: 212 100% 21%;                /* #013068 */
+    --primary: 212 100% 21%;
+    /* #013068 */
     --primary-foreground: 0 0% 100%;
 
     /* Secondary - Muted */
@@ -22,7 +25,8 @@
     --secondary-foreground: 212 100% 21%;
 
     /* Muted */
-    --muted: 0 0% 94%;                      /* light gray backgrounds */
+    --muted: 0 0% 94%;
+    /* light gray backgrounds */
     --muted-foreground: 0 0% 45%;
 
     /* Accent - Navy */
@@ -30,9 +34,11 @@
     --accent-foreground: 0 0% 100%;
 
     /* Borders & Inputs */
-    --border: 0 0% 75%;                     /* #bebebe zone */
+    --border: 0 0% 75%;
+    /* #bebebe zone */
     --input: 0 0% 75%;
-    --ring: 212 100% 21%;                   /* navy focus rings */
+    --ring: 212 100% 21%;
+    /* navy focus rings */
 
     /* Cards */
     --card: 0 0% 99%;
@@ -43,7 +49,8 @@
     --popover-foreground: 212 100% 20%;
 
     /* Utility */
-    --radius: 0.75rem; /* 12px - Beta ΘΠ standard */
+    --radius: 0.75rem;
+    /* 12px - Beta ΘΠ standard */
 
     /* Status colors */
     --success: 142 71% 45%;
@@ -55,7 +62,8 @@
     --background: 222 12% 10%;
     --foreground: 0 0% 98%;
 
-    --primary: 212 100% 70%;                /* lighter navy for dark */
+    --primary: 212 100% 70%;
+    /* lighter navy for dark */
     --primary-foreground: 222 12% 10%;
 
     --secondary: 222 12% 16%;
@@ -83,14 +91,27 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-html, body {
+html,
+body {
   height: 100%;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safe Area Support */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 /* Beta ΘΠ Custom Utilities */
@@ -98,17 +119,49 @@ html, body {
   .focus-beta {
     @apply focus:outline-none focus:ring-2 focus:ring-beta-navy focus:ring-offset-2;
   }
-  
+
   .card-beta {
     @apply rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm;
   }
-  
+
   .btn-beta-primary {
     @apply bg-beta-navy text-white hover:bg-beta-navy/90 focus:ring-beta-navy;
   }
-  
+
   .btn-beta-secondary {
     @apply border border-beta-gray/50 text-beta-navy dark:text-white hover:bg-beta-navy/5;
   }
+
+  /* Dark mode surface utilities */
+  .surface-card {
+    @apply bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700;
+  }
+
+  .surface-page {
+    @apply bg-neutral-50 dark:bg-neutral-900;
+  }
+
+  .input-field {
+    @apply bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100;
+  }
 }
 
+/* Global dark mode overrides for legacy bg-white elements */
+@layer base {
+  .dark .bg-white:not(.dark\:bg-neutral-800):not(.dark\:bg-neutral-900):not(.dark\:bg-black) {
+    background-color: rgb(30, 30, 35);
+  }
+
+  .dark .border-neutral-border {
+    border-color: rgb(63, 63, 70);
+  }
+
+  .dark .border-beta-gray\/30 {
+    border-color: rgba(63, 63, 70, 0.8);
+  }
+
+  /* Override text colors for dark mode */
+  .dark .text-beta-navy {
+    color: rgb(147, 197, 253);
+  }
+}

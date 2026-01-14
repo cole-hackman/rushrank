@@ -5,6 +5,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/ui/dropdown-menu";
 
 // SubframeCore wrapper to match the user's expected API
@@ -14,6 +16,8 @@ export const SubframeCore = {
     Trigger: DropdownMenuTrigger,
     Portal: DropdownMenuPortal,
     Content: DropdownMenuContent,
+    Separator: DropdownMenuSeparator,
+    Label: DropdownMenuLabel,
   },
 };
 

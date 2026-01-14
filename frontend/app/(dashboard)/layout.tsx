@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import Protected from "@/components/Protected";
 import ToastProvider from "@/components/ToastProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeToggleItems } from "@/components/ThemeToggle";
 import Link from "next/link";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -55,11 +56,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return null;
   };
 
+  // Define mobile navigation items
+  const mobileNavItems = [
+    { label: "Home", href: "/" },
+    { label: "Rush", href: "/rush" },
+    { label: "PNMs", href: "/pnms" },
+    { label: "Events", href: "/events" },
+    // ADMIN PAGES HIDDEN - See docs/archive/REIMPLEMENTATION.md
+    /*
+    ...(isAdmin ? [
+      { label: "Settings", href: "/settings" },
+      { label: "Tag Management", href: "/admin/tags" },
+      { label: "User Management", href: "/admin/users" },
+      { label: "Analytics", href: "/admin/analytics" },
+    ] : []),
+    */
+  ];
+
   return (
     <Protected>
       <ThemeProvider>
         <ToastProvider>
           <TopbarWithLeftNav
+            mobileNavItems={mobileNavItems}
             leftSlot={
               <>
                 <Link href="/">
@@ -82,29 +101,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   {/* Voting and Results pages temporarily hidden - see docs/VOTING_PAGE_REIMPLEMENTATION.md */}
                   {process.env.NEXT_PUBLIC_ENABLE_VOTING === "true" && (
                     <>
-                  <TopbarWithLeftNav.NavItem selected={pathname === "/voting"} href="/voting">
-                    Voting
-                  </TopbarWithLeftNav.NavItem>
-                  <TopbarWithLeftNav.NavItem selected={pathname === "/results"} href="/results">
-                    Results
-                  </TopbarWithLeftNav.NavItem>
+                      <TopbarWithLeftNav.NavItem selected={pathname === "/voting"} href="/voting">
+                        Voting
+                      </TopbarWithLeftNav.NavItem>
+                      <TopbarWithLeftNav.NavItem selected={pathname === "/results"} href="/results">
+                        Results
+                      </TopbarWithLeftNav.NavItem>
                     </>
                   )}
                   <TopbarWithLeftNav.NavItem selected={pathname === "/events"} href="/events">
                     Events
                   </TopbarWithLeftNav.NavItem>
+                  {/* ADMIN DROPDOWN HIDDEN - See docs/archive/REIMPLEMENTATION.md */}
+                  {/*
                   {adminCheckReady && isAdmin && (
                     <SubframeCore.DropdownMenu.Root>
                       <SubframeCore.DropdownMenu.Trigger asChild>
                         <button
-                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            pathname?.startsWith("/admin") || pathname === "/settings"
-                              ? "bg-beta-navy/10 text-beta-navy"
-                              : "text-beta-gray hover:bg-beta-navy/5 hover:text-beta-navy"
-                          }`}
+                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${pathname?.startsWith("/admin") || pathname === "/settings"
+                            ? "bg-beta-navy/10 text-beta-navy"
+                            : "text-beta-gray hover:bg-beta-navy/5 hover:text-beta-navy"
+                            }`}
                         >
-                        <Shield className="h-3.5 w-3.5" />
-                        Admin
+                          <Shield className="h-3.5 w-3.5" />
+                          Admin
                         </button>
                       </SubframeCore.DropdownMenu.Trigger>
                       <SubframeCore.DropdownMenu.Portal>
@@ -141,6 +161,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       </SubframeCore.DropdownMenu.Portal>
                     </SubframeCore.DropdownMenu.Root>
                   )}
+                  */}
                 </div>
               </>
             }
@@ -148,7 +169,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <>
                 <IconButton
                   icon={<Bell className="h-5 w-5" />}
-                  onClick={() => {}}
+                  onClick={() => { }}
                 />
                 <SubframeCore.DropdownMenu.Root>
                   <SubframeCore.DropdownMenu.Trigger asChild={true}>
@@ -164,6 +185,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       align="end"
                       sideOffset={4}
                     >
+                      {/* USER MENU ITEMS HIDDEN - See docs/archive/REIMPLEMENTATION.md */}
+                      {/*
                       <DropdownMenu.DropdownItem
                         icon={<User className="h-4 w-4" />}
                         onClick={() => router.push("/settings")}
@@ -176,6 +199,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       >
                         Settings
                       </DropdownMenu.DropdownItem>
+                      */}
+                      <SubframeCore.DropdownMenu.Separator />
+                      <SubframeCore.DropdownMenu.Label className="px-2 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                        Theme
+                      </SubframeCore.DropdownMenu.Label>
+                      <ThemeToggleItems />
+                      <SubframeCore.DropdownMenu.Separator />
                       <DropdownMenu.DropdownItem
                         icon={<LogOut className="h-4 w-4" />}
                         onClick={handleLogout}
@@ -195,4 +225,3 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </Protected>
   );
 }
-

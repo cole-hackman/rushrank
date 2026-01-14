@@ -143,7 +143,7 @@ export default function DashboardPage() {
 
       {/* Stats Grid - Mobile First */}
       <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-sm">
           <div className="flex items-center gap-2.5">
             <IconWithBackground size="medium" variant="neutral" icon={<FeatherUsers />} />
             <span className="text-caption-bold font-caption-bold text-subtext-color">
@@ -155,7 +155,7 @@ export default function DashboardPage() {
           </span>
         </div>
 
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-sm">
           <div className="flex items-center gap-2.5">
             <IconWithBackground size="medium" variant="success" icon={<FeatherCalendar />} />
             <span className="text-caption-bold font-caption-bold text-subtext-color">
@@ -167,7 +167,7 @@ export default function DashboardPage() {
           </span>
         </div>
 
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border bg-white p-5 shadow-sm sm:col-span-2 lg:col-span-1">
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-sm sm:col-span-2 lg:col-span-1">
           <div className="flex items-center gap-2.5">
             <IconWithBackground size="medium" variant="warning" icon={<FeatherMapPin />} />
             <span className="text-caption-bold font-caption-bold text-subtext-color">
@@ -193,10 +193,10 @@ export default function DashboardPage() {
         <div className="w-full grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <button
             onClick={() => handleQuickAction("add-pnm")}
-            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
           >
-            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-brand-100">
-              <FeatherUserPlus className="h-6 w-6 text-brand-600" />
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-brand-100 dark:bg-brand-900/40">
+              <FeatherUserPlus className="h-6 w-6 text-brand-600 dark:text-brand-400" />
             </div>
             <span className="text-body-bold font-body-bold text-default-font text-center">
               Add PNM
@@ -205,10 +205,10 @@ export default function DashboardPage() {
 
           <button
             onClick={() => handleQuickAction("new-event")}
-            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
           >
-            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-orange-100">
-              <FeatherCalendar className="h-6 w-6 text-orange-600" />
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-orange-100 dark:bg-orange-900/40">
+              <FeatherCalendar className="h-6 w-6 text-orange-600 dark:text-orange-400" />
             </div>
             <span className="text-body-bold font-body-bold text-default-font text-center">
               New Event
@@ -217,10 +217,10 @@ export default function DashboardPage() {
 
           <button
             onClick={() => handleQuickAction("all-pnms")}
-            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
           >
-            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-neutral-100">
-              <FeatherUsers className="h-6 w-6 text-neutral-600" />
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-700">
+              <FeatherUsers className="h-6 w-6 text-neutral-600 dark:text-neutral-300" />
             </div>
             <span className="text-body-bold font-body-bold text-default-font text-center">
               All PNMs
@@ -229,10 +229,10 @@ export default function DashboardPage() {
 
           <button
             onClick={() => handleQuickAction("export")}
-            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border bg-white p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
+            className="flex flex-col items-center justify-center gap-3 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation"
           >
-            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-neutral-100">
-              <FeatherDownload className="h-6 w-6 text-neutral-600" />
+            <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-700">
+              <FeatherDownload className="h-6 w-6 text-neutral-600 dark:text-neutral-300" />
             </div>
             <span className="text-body-bold font-body-bold text-default-font text-center">
               Export
