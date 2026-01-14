@@ -730,17 +730,25 @@ class PNMService:
             RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at
         """
         
+        # Normalize optional string fields: strip if present, convert empty strings to None
+        email = pnm_data.email.strip() if pnm_data.email and pnm_data.email.strip() else None
+        phone = pnm_data.phone.strip() if pnm_data.phone and pnm_data.phone.strip() else None
+        major = pnm_data.major.strip() if pnm_data.major and pnm_data.major.strip() else None
+        hometown = pnm_data.hometown.strip() if pnm_data.hometown and pnm_data.hometown.strip() else None
+        year = pnm_data.year.strip() if pnm_data.year and pnm_data.year.strip() else None
+        fun_fact = pnm_data.fun_fact.strip() if pnm_data.fun_fact and pnm_data.fun_fact.strip() else None
+        
         row = await db.execute_one(
             query,
             chapter_id,
             pnm_data.name,
-            pnm_data.email.strip() if pnm_data.email else None,
-            pnm_data.phone.strip() if pnm_data.phone else None,
-            pnm_data.major,
-            pnm_data.hometown,
-            pnm_data.year,
+            email,
+            phone,
+            major,
+            hometown,
+            year,
             pnm_data.photo_url,
-            pnm_data.fun_fact
+            fun_fact
         )
         
         pnm_id = str(row["id"])
@@ -839,6 +847,13 @@ class PNMService:
         """Update PNM"""
         db = get_db()
         
+        # Normalize optional string fields: strip if present, convert empty strings to None
+        email = pnm_data.email.strip() if pnm_data.email and pnm_data.email.strip() else None
+        phone = pnm_data.phone.strip() if pnm_data.phone and pnm_data.phone.strip() else None
+        major = pnm_data.major.strip() if pnm_data.major and pnm_data.major.strip() else None
+        hometown = pnm_data.hometown.strip() if pnm_data.hometown and pnm_data.hometown.strip() else None
+        year = pnm_data.year.strip() if pnm_data.year and pnm_data.year.strip() else None
+        
         # Update only columns that exist in the migration schema
         query = """
             UPDATE pnms
@@ -851,11 +866,11 @@ class PNMService:
             query,
             pnm_id,
             pnm_data.name,
-            pnm_data.email.strip() if pnm_data.email else None,
-            pnm_data.phone.strip() if pnm_data.phone else None,
-            pnm_data.major,
-            pnm_data.hometown,
-            pnm_data.year,
+            email,
+            phone,
+            major,
+            hometown,
+            year,
             pnm_data.photo_url
         )
         
