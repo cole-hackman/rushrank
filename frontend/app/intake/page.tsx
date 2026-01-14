@@ -113,6 +113,33 @@ export default function IntakePage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Check if form is valid for button state
+  const isFormValid = (): boolean => {
+    if (!chapterId) return false;
+    if (!name.trim()) return false;
+    if (!email.trim()) return false;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return false;
+    if (!phone.trim()) return false;
+    if (!major.trim()) return false;
+    if (!year.trim()) return false;
+    if (!hometown.trim()) return false;
+    if (!celebrityCrush.trim()) return false;
+    if (!file) return false;
+    
+    // Check questionnaire required fields
+    for (let idx = 0; idx < questionnaireQuestions.length; idx++) {
+      const q = questionnaireQuestions[idx];
+      if (q.required) {
+        const fieldId = `questionnaire-${q.id || idx}`;
+        if (!questionnaireAnswers[fieldId] || !questionnaireAnswers[fieldId].trim()) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  };
+
   const handleNext = () => {
     if (validateStep1()) {
       setCurrentStep(2);
@@ -563,13 +590,36 @@ export default function IntakePage() {
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => {
+                        capture="environment"
+                        onChange={async (e) => {
                           const selectedFile = e.target.files?.[0];
                           if (selectedFile) {
                             setFile(selectedFile);
                             const newErrors = { ...errors };
                             delete newErrors.file;
                             setErrors(newErrors);
+                            
+                            // On iOS, photos taken with capture attribute should save automatically
+                            // For other platforms, try to save if File System Access API is available
+                            if (selectedFile && 'showSaveFilePicker' in window && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                              try {
+                                const fileHandle = await (window as any).showSaveFilePicker({
+                                  suggestedName: `PNM_${Date.now()}.jpg`,
+                                  types: [{
+                                    description: 'Image files',
+                                    accept: { 'image/*': ['.jpg', '.jpeg', '.png'] }
+                                  }]
+                                });
+                                const writable = await fileHandle.createWritable();
+                                await writable.write(selectedFile);
+                                await writable.close();
+                              } catch (err: any) {
+                                // User cancelled or API not available - that's okay
+                                if (err.name !== 'AbortError') {
+                                  console.log('Could not save to device:', err);
+                                }
+                              }
+                            }
                           }
                         }}
                         className="hidden"
@@ -626,7 +676,7 @@ export default function IntakePage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || !chapterId}
+                  disabled={submitting || !chapterId || !isFormValid()}
                   className="flex-1 bg-beta-navy hover:bg-beta-navy/90 text-white rounded-lg h-12 font-medium shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-beta-navy focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
                 >
                   {submitting ? "Creating..." : "Add PNM"}

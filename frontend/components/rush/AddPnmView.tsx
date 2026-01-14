@@ -106,6 +106,32 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Check if form is valid for button state
+  const isFormValid = (): boolean => {
+    if (!chapterId) return false;
+    if (!name.trim()) return false;
+    if (!email.trim() && !phone.trim()) return false;
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return false;
+    if (!major.trim()) return false;
+    if (!year.trim()) return false;
+    if (!hometown.trim()) return false;
+    if (!celebrityCrush.trim()) return false;
+    if (!file) return false;
+    
+    // Check questionnaire required fields
+    for (let idx = 0; idx < questionnaireQuestions.length; idx++) {
+      const q = questionnaireQuestions[idx];
+      if (q.required) {
+        const fieldId = `questionnaire-${q.id || idx}`;
+        if (!questionnaireAnswers[fieldId] || !questionnaireAnswers[fieldId].trim()) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  };
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!chapterId) {
@@ -519,13 +545,36 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => {
+                    capture="environment"
+                    onChange={async (e) => {
                       const selectedFile = e.target.files?.[0];
                       if (selectedFile) {
                         setFile(selectedFile);
                         const newErrors = { ...errors };
                         delete newErrors.file;
                         setErrors(newErrors);
+                        
+                        // On iOS, photos taken with capture attribute should save automatically
+                        // For other platforms, try to save if File System Access API is available
+                        if (selectedFile && 'showSaveFilePicker' in window && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                          try {
+                            const fileHandle = await (window as any).showSaveFilePicker({
+                              suggestedName: `PNM_${Date.now()}.jpg`,
+                              types: [{
+                                description: 'Image files',
+                                accept: { 'image/*': ['.jpg', '.jpeg', '.png'] }
+                              }]
+                            });
+                            const writable = await fileHandle.createWritable();
+                            await writable.write(selectedFile);
+                            await writable.close();
+                          } catch (err: any) {
+                            // User cancelled or API not available - that's okay
+                            if (err.name !== 'AbortError') {
+                              console.log('Could not save to device:', err);
+                            }
+                          }
+                        }
                       }
                     }}
                     className="hidden"
@@ -584,7 +633,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
             </Button>
             <Button
               type="submit"
-              disabled={submitting || !chapterId}
+              disabled={submitting || !chapterId || !isFormValid()}
               size="large"
               className="flex-1 min-h-[48px] text-base"
             >

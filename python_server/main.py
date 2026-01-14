@@ -112,7 +112,13 @@ app = FastAPI(
 
 # Allowed CORS origins (from environment variable or defaults)
 _default_origins = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
-ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
+# Normalize origins: strip whitespace, remove trailing slashes, filter out invalid URLs
+_raw_origins = os.getenv("ALLOWED_ORIGINS", _default_origins)
+ALLOWED_ORIGINS = [
+    origin.strip().rstrip('/')  # Remove trailing slashes
+    for origin in _raw_origins.split(",")
+    if origin.strip() and not origin.strip().startswith('https://vercel.com')  # Filter out invalid Vercel project URLs
+]
 
 # Add CORS middleware
 app.add_middleware(

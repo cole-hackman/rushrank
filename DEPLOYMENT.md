@@ -56,7 +56,8 @@ You need to copy these from your local `.env` or Supabase dashboard:
 5.  **Environment Variables**:
     *   `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase URL.
     *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon Key (Public).
-    *   `NEXT_PUBLIC_API_URL`: The URL of your **Render Backend** (e.g., `https://rushrank-backend.onrender.com`). **Do not add a trailing slash.**
+    *   `NEXT_PUBLIC_API_BASE_URL`: The URL of your **Render Backend** (e.g., `https://rushrank-backend.onrender.com`). The `/api` suffix will be added automatically. **Do not add a trailing slash.**
+    *   *Note: `NEXT_PUBLIC_API_URL` is also supported for backwards compatibility.*
 6.  Click **Deploy**.
 
 ---

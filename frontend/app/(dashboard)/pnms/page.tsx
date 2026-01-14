@@ -81,7 +81,22 @@ export default function PNMsPage() {
           setIsAdmin(false);
         }
       } catch (e: any) {
-        toast({ title: "Failed to load chapter", description: e?.message || "Unable to fetch chapters" });
+        const errorMsg = e?.message || "Unable to fetch chapters";
+        console.error("Failed to load chapters:", e);
+        
+        if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
+          toast({
+            title: "Cannot connect to backend",
+            description: `Backend server is not reachable. Please check if the server is running at ${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"}.`
+          });
+        } else if (errorMsg.includes("Authentication failed") || errorMsg.includes("401")) {
+          toast({
+            title: "Authentication failed",
+            description: "Your session may have expired. Please try logging out and back in."
+          });
+        } else {
+          toast({ title: "Failed to load chapter", description: errorMsg });
+        }
       }
     })();
   }, [toast]);

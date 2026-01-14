@@ -1,10 +1,42 @@
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
+// Support both NEXT_PUBLIC_API_BASE_URL and NEXT_PUBLIC_API_URL for backwards compatibility
+// If URL doesn't end with /api, append it
+function getApiBase(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl) {
+    // If it already ends with /api, use as-is, otherwise append /api
+    return envUrl.endsWith('/api') ? envUrl : `${envUrl}/api`;
+  }
+  return "http://localhost:8000/api";
+}
+
+export const API_BASE = getApiBase();
 
 function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("access_token");
+}
+
+/**
+ * Check if backend server is reachable
+ */
+export async function checkBackendHealth(): Promise<{ reachable: boolean; error?: string }> {
+  try {
+    // Health endpoint is at root level, not under /api
+    const baseUrl = API_BASE.replace('/api', '');
+    const healthUrl = `${baseUrl}/health`;
+    const res = await fetch(healthUrl, { 
+      method: 'GET',
+      signal: AbortSignal.timeout(5000)
+    });
+    return { reachable: res.ok };
+  } catch (error: any) {
+    return { 
+      reachable: false, 
+      error: error.message || 'Backend server not reachable' 
+    };
+  }
 }
 
 export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: any; headers?: Record<string, string>; timeout?: number }): Promise<T> {
@@ -38,7 +70,23 @@ export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: 
     
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(text || `Request failed: ${res.status}`);
+      let errorMessage = text || `Request failed: ${res.status}`;
+      
+      // Handle specific HTTP status codes
+      if (res.status === 401) {
+        // Authentication error - token might be invalid or expired
+        errorMessage = `Authentication failed (401). Your session may have expired. Please try logging out and back in.`;
+      } else if (res.status === 403) {
+        errorMessage = `Access forbidden (403). You may not have permission to access this resource.`;
+      } else if (res.status === 404) {
+        errorMessage = `Resource not found (404). The requested endpoint does not exist.`;
+      } else if (res.status >= 500) {
+        errorMessage = `Server error (${res.status}). The backend server encountered an error.`;
+      }
+      
+      const error = new Error(errorMessage);
+      (error as any).status = res.status;
+      throw error;
     }
     const ct = res.headers.get("content-type");
     if (ct && ct.includes("application/json")) return (await res.json()) as T;
@@ -48,6 +96,35 @@ export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: 
     if (error.name === 'AbortError') {
       throw new Error(`Request timed out after ${timeout}ms. Is the backend server running at ${API_BASE}?`);
     }
+    
+    // Handle network errors (connection refused, CORS, etc.)
+    if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+      const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+      const envVarName = process.env.NEXT_PUBLIC_API_BASE_URL ? 'NEXT_PUBLIC_API_BASE_URL' : 
+                        (process.env.NEXT_PUBLIC_API_URL ? 'NEXT_PUBLIC_API_URL' : 'NEXT_PUBLIC_API_BASE_URL');
+      
+      let errorMsg = `Cannot connect to backend server at ${API_BASE}. `;
+      
+      if (isProduction) {
+        errorMsg += `\n\nThis appears to be a production deployment issue. Please check:\n`;
+        errorMsg += `1. Is your Render backend service running and healthy?\n`;
+        errorMsg += `2. Is ${envVarName} set correctly in Vercel environment variables?\n`;
+        errorMsg += `3. Is ALLOWED_ORIGINS set correctly in Render to include your Vercel domain?\n`;
+        errorMsg += `4. Check Render logs for any errors.\n`;
+        errorMsg += `\nCurrent API URL: ${API_BASE}`;
+      } else {
+        errorMsg += `\n\nPlease check:\n`;
+        errorMsg += `1. Is the backend server running locally?\n`;
+        errorMsg += `2. Is ${envVarName} set correctly in .env.local?\n`;
+        errorMsg += `3. Are there any CORS issues?\n`;
+        errorMsg += `4. Check browser console for more details\n`;
+        errorMsg += `\nCurrent API URL: ${API_BASE}`;
+      }
+      
+      throw new Error(errorMsg);
+    }
+    
+    // Re-throw with original message if it exists
     throw error;
   }
 }
