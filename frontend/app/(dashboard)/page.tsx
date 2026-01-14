@@ -10,16 +10,25 @@ import { FeatherMapPin } from "@subframe/core";
 import { FeatherPlay } from "@subframe/core";
 import { FeatherPlus } from "@subframe/core";
 import { FeatherArrowRight } from "@subframe/core";
+import { MoreHorizontal } from "lucide-react";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Button } from "@/ui/components/Button";
 import { SkeletonCard } from "@/components/ui/SkeletonTable";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useActiveEvent } from "@/hooks/useActiveEvent";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/ui/dropdown-menu";
 
 
 export default function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { activeEvent, loading: eventLoading } = useActiveEvent();
   const [loading, setLoading] = useState(true);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [totalPnms, setTotalPnms] = useState(0);
@@ -155,8 +164,7 @@ export default function DashboardPage() {
           <div className="h-8 w-32 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
           <div className="h-5 w-64 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
         </div>
-        <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <SkeletonCard />
+        <div className="w-full grid grid-cols-2 gap-4">
           <SkeletonCard />
           <SkeletonCard />
         </div>
@@ -180,6 +188,59 @@ export default function DashboardPage() {
         <p className="text-body font-body text-subtext-color">
           Overview of your chapter's rush activities
         </p>
+      </div>
+
+      {/* Active Event Panel */}
+      <div className="w-full rounded-xl border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20 p-4 sm:p-5">
+        {activeEvent ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <h3 className="text-heading-3 font-heading-3 text-default-font mb-1">
+                  Active Event
+                </h3>
+                <p className="text-body-bold font-body-bold text-default-font">
+                  {activeEvent.name}
+                </p>
+                {activeEvent.location && (
+                  <p className="text-caption font-caption text-subtext-color mt-1">
+                    {activeEvent.location}
+                  </p>
+                )}
+                {activeEvent.date && (
+                  <p className="text-caption font-caption text-subtext-color">
+                    {new Date(activeEvent.date).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              onClick={() => router.push("/rush")}
+              variant="brand-primary"
+              className="w-full sm:w-auto"
+            >
+              Open Rush Mode
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div>
+              <h3 className="text-heading-3 font-heading-3 text-default-font mb-1">
+                Active Event
+              </h3>
+              <p className="text-body font-body text-subtext-color">
+                No active event selected
+              </p>
+            </div>
+            <Button
+              onClick={() => router.push("/rush")}
+              variant="brand-primary"
+              className="w-full sm:w-auto"
+            >
+              Open Rush Mode
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Onboarding Panel - Show when counts are 0 */}
@@ -262,46 +323,55 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stats Grid - Tighter layout */}
-      <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="flex flex-col items-start gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 shadow-sm">
+      {/* Stats Grid - 2-column layout with clickable cards */}
+      <div className="w-full grid grid-cols-2 gap-3">
+        <button
+          onClick={() => router.push("/pnms")}
+          className="flex flex-col items-start gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 sm:p-5 shadow-sm min-h-[100px] transition-all cursor-pointer hover:shadow-md hover:border-brand-200 dark:hover:border-brand-700 active:scale-[0.98] touch-manipulation"
+        >
           <div className="flex items-center gap-2">
             <IconWithBackground size="small" variant="neutral" icon={<FeatherUsers />} />
             <span className="text-caption-bold font-caption-bold text-subtext-color">
               Total PNMs
             </span>
           </div>
-          <span className="text-heading-2 font-heading-2 text-default-font">
+          <span className="text-heading-1 font-heading-1 text-default-font">
             {totalPnms}
           </span>
-        </div>
+        </button>
 
-        <div className="flex flex-col items-start gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 shadow-sm">
+        <button
+          onClick={() => router.push("/events")}
+          className="flex flex-col items-start gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 sm:p-5 shadow-sm min-h-[100px] transition-all cursor-pointer hover:shadow-md hover:border-brand-200 dark:hover:border-brand-700 active:scale-[0.98] touch-manipulation"
+        >
           <div className="flex items-center gap-2">
             <IconWithBackground size="small" variant="success" icon={<FeatherCalendar />} />
             <span className="text-caption-bold font-caption-bold text-subtext-color">
               Total Events
             </span>
           </div>
-          <span className="text-heading-2 font-heading-2 text-default-font">
+          <span className="text-heading-1 font-heading-1 text-default-font">
             {totalEvents}
           </span>
-        </div>
+        </button>
 
-        <div className="flex flex-col items-start gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 shadow-sm sm:col-span-2 lg:col-span-1">
+        <button
+          onClick={() => router.push("/events")}
+          className="flex flex-col items-start gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 sm:p-5 shadow-sm min-h-[100px] transition-all cursor-pointer hover:shadow-md hover:border-brand-200 dark:hover:border-brand-700 active:scale-[0.98] touch-manipulation col-span-2"
+        >
           <div className="flex items-center gap-2">
             <IconWithBackground size="small" variant="warning" icon={<FeatherMapPin />} />
             <span className="text-caption-bold font-caption-bold text-subtext-color">
               Upcoming Events
             </span>
           </div>
-          <span className="text-heading-2 font-heading-2 text-default-font">
+          <span className="text-heading-1 font-heading-1 text-default-font">
             {upcomingEvents}
           </span>
-        </div>
+        </button>
       </div>
 
-      {/* Quick Actions - Tighter layout with primary CTA emphasis */}
+      {/* Quick Actions - Mobile simplified, desktop full grid */}
       <div className="flex w-full flex-col items-start gap-3">
         <div className="flex flex-col items-start gap-0.5">
           <h2 className="text-heading-3 font-heading-3 text-default-font">
@@ -311,8 +381,63 @@ export default function DashboardPage() {
             Common tasks and shortcuts
           </p>
         </div>
-        <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Primary CTA: Add PNM */}
+        
+        {/* Mobile: 2 large buttons + More dropdown */}
+        <div className="w-full grid grid-cols-3 gap-3 md:hidden">
+          <button
+            onClick={() => handleQuickAction("add-pnm")}
+            className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20 p-4 transition-all cursor-pointer hover:bg-brand-100 dark:hover:bg-brand-900/40 hover:shadow-md active:scale-[0.98] touch-manipulation"
+          >
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-brand-100 dark:bg-brand-800">
+              <FeatherUserPlus className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+            </div>
+            <span className="text-body-bold font-body-bold text-brand-700 dark:text-brand-300 text-center">
+              Add PNM
+            </span>
+          </button>
+
+          <button
+            onClick={() => router.push("/rush")}
+            className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20 p-4 transition-all cursor-pointer hover:bg-brand-100 dark:hover:bg-brand-900/40 hover:shadow-md active:scale-[0.98] touch-manipulation"
+          >
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-brand-100 dark:bg-brand-800">
+              <FeatherPlay className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+            </div>
+            <span className="text-body-bold font-body-bold text-brand-700 dark:text-brand-300 text-center">
+              Open Rush Mode
+            </span>
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex flex-col items-center justify-center gap-2 rounded-xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] touch-manipulation">
+                <div className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-neutral-100 dark:bg-neutral-700">
+                  <MoreHorizontal className="h-5 w-5 text-neutral-600 dark:text-neutral-300" />
+                </div>
+                <span className="text-body-bold font-body-bold text-default-font text-center">
+                  More
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => handleQuickAction("new-event")}>
+                <FeatherCalendar className="h-4 w-4 mr-2" />
+                New Event
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleQuickAction("all-pnms")}>
+                <FeatherUsers className="h-4 w-4 mr-2" />
+                All PNMs
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleQuickAction("export")}>
+                <FeatherDownload className="h-4 w-4 mr-2" />
+                Export
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Desktop: Full grid */}
+        <div className="w-full hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3">
           <button
             onClick={() => handleQuickAction("add-pnm")}
             className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20 p-4 transition-all cursor-pointer hover:bg-brand-100 dark:hover:bg-brand-900/40 hover:shadow-md active:scale-[0.98] touch-manipulation"
