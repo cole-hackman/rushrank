@@ -22,7 +22,7 @@ W, H = 1080, 1350
 # Safe margins
 SAFE_LEFT = 64
 SAFE_RIGHT = 64
-SAFE_BOTTOM = 64
+SAFE_BOTTOM = 40
 
 # Colors
 WHITE = (255, 255, 255)
