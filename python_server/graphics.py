@@ -127,13 +127,21 @@ def _fit_text_to_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.Fre
 
 
 async def _load_remote_image(url: str) -> Optional[Image.Image]:
-    """Load an image from a remote URL."""
+    """Load an image from a remote URL and apply EXIF orientation fix."""
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            img = Image.open(BytesIO(resp.content)).convert("RGB")
-            return img
+            img = Image.open(BytesIO(resp.content))
+            
+            # Fix iPhone/camera rotation by applying EXIF orientation
+            # This handles images that were taken in portrait mode but stored rotated
+            try:
+                img = ImageOps.exif_transpose(img)
+            except Exception:
+                pass  # Ignore if no EXIF data or transpose fails
+            
+            return img.convert("RGB")
     except Exception:
         return None
 
