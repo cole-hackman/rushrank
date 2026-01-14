@@ -2,40 +2,32 @@
 Pillow-based composition utilities for RushRank PNM share cards
 
 Instagram portrait spec: 1080x1350 (4:5 ratio)
-Template C Layout:
-  - Top Header Strip (170px): Name bar with dark overlay
-  - Middle Photo Zone: Full-bleed photo with center crop
-  - Bottom Footer Strip (170px): Details, fun fact, tags
+Modern IG Card Layout:
+  - Full-bleed photo background (or gradient + initials if no photo)
+  - Bottom gradient overlay (black 70% → transparent)
+  - Bottom-left text block: Name + info chips + fun fact
+  - Bottom-right branding watermark
 """
 from __future__ import annotations
 
 from io import BytesIO
 from typing import List, Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import httpx
 
 # Canvas dimensions (Instagram portrait 4:5)
 W, H = 1080, 1350
 
-# Template C zone heights
-HEADER_H = 170
-FOOTER_H = 170  # Same as header
-PHOTO_H = H - HEADER_H - FOOTER_H  # 1010px
-
 # Safe margins
 SAFE_LEFT = 64
 SAFE_RIGHT = 64
-SAFE_TOP = 48
-SAFE_BOTTOM = 48
+SAFE_BOTTOM = 64
 
 # Colors
-OVERLAY_COLOR = (1, 48, 104)  # Beta navy #013068
-OVERLAY_ALPHA = int(255 * 0.65)  # 65% opacity
 WHITE = (255, 255, 255)
-WHITE_SUBTLE = (255, 255, 255, int(255 * 0.5))  # 50% for branding
-CHIP_FILL_ALPHA = int(255 * 0.12)  # 12% white fill for chips
-CHIP_BORDER_ALPHA = int(255 * 0.18)  # 18% white border
+WHITE_DIM = (255, 255, 255, int(255 * 0.25))  # 25% for branding
+CHIP_BG = (0, 0, 0, int(255 * 0.35))  # 35% black for chips
 
 
 def _try_load_font(path: str, size: int) -> Optional[ImageFont.FreeTypeFont]:
@@ -48,11 +40,9 @@ def _try_load_font(path: str, size: int) -> Optional[ImageFont.FreeTypeFont]:
 
 def _load_fonts() -> Tuple[
     ImageFont.FreeTypeFont,  # name_font (72px bold)
-    ImageFont.FreeTypeFont,  # major_year_font (36px semibold)
-    ImageFont.FreeTypeFont,  # hometown_font (32px regular)
-    ImageFont.FreeTypeFont,  # fun_fact_font (30px italic or regular)
-    ImageFont.FreeTypeFont,  # tag_font (24px)
-    ImageFont.FreeTypeFont,  # brand_font (24px)
+    ImageFont.FreeTypeFont,  # chip_font (32px semibold)
+    ImageFont.FreeTypeFont,  # fun_fact_font (28px regular)
+    ImageFont.FreeTypeFont,  # brand_font (24px semibold)
 ]:
     """Load fonts with graceful fallbacks."""
     
@@ -78,13 +68,6 @@ def _load_fonts() -> Tuple[
         "/Library/Fonts/Arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
-    italic_paths = [
-        "python_server/assets/fonts/Inter-Italic.ttf",
-        "assets/fonts/Inter-Italic.ttf",
-        "/System/Library/Fonts/Supplemental/Arial Italic.ttf",
-        "/Library/Fonts/Arial Italic.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
-    ]
     
     def first_available(paths: List[str], size: int) -> ImageFont.FreeTypeFont:
         for p in paths:
@@ -94,70 +77,16 @@ def _load_fonts() -> Tuple[
         return ImageFont.load_default()
     
     name_font = first_available(bold_paths, 72)
-    major_year_font = first_available(semibold_paths, 36)
-    hometown_font = first_available(regular_paths, 32)
-    fun_fact_font = first_available(italic_paths, 30)
-    tag_font = first_available(semibold_paths, 24)
+    chip_font = first_available(semibold_paths, 32)
+    fun_fact_font = first_available(regular_paths, 28)
     brand_font = first_available(semibold_paths, 24)
     
-    return name_font, major_year_font, hometown_font, fun_fact_font, tag_font, brand_font
+    return name_font, chip_font, fun_fact_font, brand_font
 
 
 def _cover_crop(image: Image.Image, target_w: int, target_h: int) -> Image.Image:
-    """Crop image to fill target dimensions (cover behavior, center crop)."""
-    return ImageOps.fit(image, (target_w, target_h), method=Image.Resampling.LANCZOS, centering=(0.5, 0.4))
-
-
-def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int, max_lines: int = 2) -> List[str]:
-    """Wrap text to fit within max_width, limiting to max_lines with ellipsis if needed."""
-    if not text:
-        return []
-    
-    words = text.split()
-    if not words:
-        return []
-    
-    lines: List[str] = []
-    current_line = ""
-    
-    for word in words:
-        test_line = f"{current_line} {word}".strip() if current_line else word
-        bbox = draw.textbbox((0, 0), test_line, font=font)
-        line_width = bbox[2] - bbox[0]
-        
-        if line_width <= max_width:
-            current_line = test_line
-        else:
-            if current_line:
-                lines.append(current_line)
-            current_line = word
-            
-            # Check if we've hit max lines
-            if len(lines) >= max_lines:
-                break
-    
-    if current_line and len(lines) < max_lines:
-        lines.append(current_line)
-    
-    # Add ellipsis if we truncated
-    if len(lines) == max_lines:
-        # Check if there's more content
-        joined = " ".join(lines)
-        if len(joined) < len(text):
-            # Truncate last line and add ellipsis
-            last_line = lines[-1]
-            while last_line:
-                test = last_line + "…"
-                bbox = draw.textbbox((0, 0), test, font=font)
-                if bbox[2] - bbox[0] <= max_width:
-                    lines[-1] = test
-                    break
-                last_line = last_line[:-1].rstrip()
-                if not last_line:
-                    lines[-1] = "…"
-                    break
-    
-    return lines
+    """Crop image to fill target dimensions (cover behavior, top-center crop to preserve faces)."""
+    return ImageOps.fit(image, (target_w, target_h), method=Image.Resampling.LANCZOS, centering=(0.5, 0.3))
 
 
 def _fit_text_to_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, 
@@ -209,18 +138,51 @@ async def _load_remote_image(url: str) -> Optional[Image.Image]:
         return None
 
 
-def _draw_rounded_rect(draw: ImageDraw.ImageDraw, xy: Tuple[int, int, int, int], 
-                       radius: int, fill: Optional[Tuple] = None, 
-                       outline: Optional[Tuple] = None, width: int = 1):
-    """Draw a rounded rectangle."""
-    x1, y1, x2, y2 = xy
-    draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+def _draw_gradient_overlay(canvas: Image.Image, start_opacity: float = 0.70, 
+                           gradient_height_ratio: float = 0.45) -> Image.Image:
+    """Draw a bottom-to-top gradient overlay for text readability.
+    
+    Args:
+        canvas: The image to overlay
+        start_opacity: Opacity at the bottom (0-1)
+        gradient_height_ratio: What fraction of the image height the gradient covers
+    """
+    gradient = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gradient_draw = ImageDraw.Draw(gradient)
+    
+    gradient_start_y = int(H * (1 - gradient_height_ratio))  # Where gradient begins (top of gradient zone)
+    
+    for y in range(gradient_start_y, H):
+        # Progress from 0 (top of gradient) to 1 (bottom)
+        progress = (y - gradient_start_y) / (H - gradient_start_y)
+        # Ease in - start subtle, get darker faster
+        alpha = int(255 * start_opacity * (progress ** 1.5))
+        gradient_draw.line([(0, y), (W, y)], fill=(0, 0, 0, alpha))
+    
+    # Composite gradient onto canvas
+    if canvas.mode != "RGBA":
+        canvas = canvas.convert("RGBA")
+    return Image.alpha_composite(canvas, gradient)
 
 
-def _draw_chip(img: Image.Image, text: str, font: ImageFont.FreeTypeFont, 
-               x: int, y: int, padding_h: int = 16, padding_v: int = 10) -> int:
-    """Draw a tag chip and return its width."""
-    draw = ImageDraw.Draw(img)
+def _draw_chip(img: Image.Image, draw: ImageDraw.ImageDraw, text: str, 
+               font: ImageFont.FreeTypeFont, x: int, y: int) -> Tuple[int, int]:
+    """Draw an info chip (pill) and return (width, height).
+    
+    Args:
+        img: Image to draw on (RGBA mode)
+        draw: ImageDraw object
+        text: Text to display in chip
+        font: Font to use
+        x: X position
+        y: Y position
+    
+    Returns:
+        Tuple of (chip_width, chip_height)
+    """
+    padding_h = 18
+    padding_v = 10
+    
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
@@ -233,29 +195,39 @@ def _draw_chip(img: Image.Image, text: str, font: ImageFont.FreeTypeFont,
     chip_img = Image.new("RGBA", (chip_w, chip_h), (0, 0, 0, 0))
     chip_draw = ImageDraw.Draw(chip_img)
     
-    # Fill with subtle white
-    fill_color = (255, 255, 255, CHIP_FILL_ALPHA)
-    border_color = (255, 255, 255, CHIP_BORDER_ALPHA)
-    
+    # Draw rounded rectangle
     chip_draw.rounded_rectangle(
         [(0, 0), (chip_w - 1, chip_h - 1)],
         radius=radius,
-        fill=fill_color,
-        outline=border_color,
-        width=1
+        fill=CHIP_BG,
     )
     
-    # Draw text
+    # Draw text (centered in chip)
     text_x = padding_h
     text_y = padding_v - 2  # Small adjustment for visual centering
     chip_draw.text((text_x, text_y), text, font=font, fill=WHITE)
     
     # Composite onto main image
-    if img.mode != "RGBA":
-        img = img.convert("RGBA")
     img.paste(chip_img, (x, y), chip_img)
     
-    return chip_w
+    return chip_w, chip_h
+
+
+def _truncate_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, 
+                   max_width: int) -> str:
+    """Truncate text with ellipsis if it exceeds max_width."""
+    bbox = draw.textbbox((0, 0), text, font=font)
+    if bbox[2] - bbox[0] <= max_width:
+        return text
+    
+    while len(text) > 1:
+        text = text[:-1]
+        test_text = text.rstrip() + "…"
+        bbox = draw.textbbox((0, 0), test_text, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return test_text
+    
+    return "…"
 
 
 async def compose_pnm_card(
@@ -266,14 +238,15 @@ async def compose_pnm_card(
     fun_fact: Optional[str],
     photo_url: Optional[str],
     tags: Optional[List[str]] = None,
-    brand_text: str = "RushRank",
+    brand_text: str = "RushApp",
 ) -> bytes:
-    """Generate a 4:5 ratio PNM card image (Template C layout).
+    """Generate a 4:5 ratio PNM card image (Modern IG Card layout).
     
     Layout:
-      - Top Header (170px): Name with dark overlay
-      - Middle Photo Zone: Full-bleed photo
-      - Bottom Footer (320px): Details, fun fact, tags, branding
+      - Full-bleed photo background (or gradient + initials if no photo)
+      - Bottom gradient overlay for text readability
+      - Bottom-left: Name (large) + info chips + fun fact
+      - Bottom-right: Brand watermark
     
     Args:
         name: PNM full name
@@ -282,175 +255,170 @@ async def compose_pnm_card(
         year: Year (optional)
         fun_fact: Fun fact text (optional)
         photo_url: URL to PNM photo (optional)
-        tags: List of tag labels (optional)
-        brand_text: Brand text for footer (default: "RushRank")
+        tags: List of tag labels (optional, not displayed in this layout)
+        brand_text: Brand text for watermark (default: "RushApp")
     
     Returns:
-        JPEG image bytes
+        PNG image bytes
     """
     # Load fonts
-    name_font, major_year_font, hometown_font, fun_fact_font, tag_font, brand_font = _load_fonts()
+    name_font, chip_font, fun_fact_font, brand_font = _load_fonts()
     
     # Create base canvas
     canvas = Image.new("RGBA", (W, H), (30, 30, 30, 255))
     
     # =========================================================================
-    # B) MIDDLE PHOTO ZONE - Load and place photo first
+    # 1) BACKGROUND - Load photo or create fallback
     # =========================================================================
     photo: Optional[Image.Image] = None
     if photo_url:
         photo = await _load_remote_image(photo_url)
     
     if photo is not None:
-        # Cover crop to fill entire canvas
+        # Cover crop to fill entire canvas (top-center to preserve faces)
         photo_cropped = _cover_crop(photo, W, H)
         canvas.paste(photo_cropped, (0, 0))
     else:
-        # Placeholder gradient
+        # Fallback: tasteful dark gradient background with initials
         for y_pos in range(H):
             ratio = y_pos / H
-            gray = int(40 + (80 - 40) * ratio)
+            # Slate gradient (dark blue-gray tones)
+            r = int(30 + (45 - 30) * ratio)
+            g = int(35 + (50 - 35) * ratio)
+            b = int(45 + (60 - 45) * ratio)
             for x_pos in range(W):
-                canvas.putpixel((x_pos, y_pos), (gray, gray, gray, 255))
+                canvas.putpixel((x_pos, y_pos), (r, g, b, 255))
         
-        # Draw initials in center
+        # Draw large initials in center
         initials = "".join(word[0].upper() for word in name.split()[:2]) if name else "?"
+        # Create a larger font for initials (150px)
+        init_font = name_font
+        font_path = getattr(name_font, 'path', None)
+        if font_path:
+            try:
+                init_font = ImageFont.truetype(font_path, 150)
+            except Exception:
+                pass
+        
         temp_draw = ImageDraw.Draw(canvas)
-        init_bbox = temp_draw.textbbox((0, 0), initials, font=name_font)
+        init_bbox = temp_draw.textbbox((0, 0), initials, font=init_font)
         init_w = init_bbox[2] - init_bbox[0]
         init_h = init_bbox[3] - init_bbox[1]
         init_x = (W - init_w) // 2
-        init_y = (H - init_h) // 2
-        temp_draw.text((init_x, init_y), initials, font=name_font, fill=(100, 100, 100, 255))
+        init_y = (H - init_h) // 2 - 100  # Slightly above center to make room for text
+        temp_draw.text((init_x, init_y), initials, font=init_font, fill=(80, 85, 95, 255))
     
     # =========================================================================
-    # A) TOP HEADER STRIP - Dark overlay with name
+    # 2) BOTTOM GRADIENT OVERLAY
     # =========================================================================
-    header_overlay = Image.new("RGBA", (W, HEADER_H), (*OVERLAY_COLOR, OVERLAY_ALPHA))
-    canvas.paste(header_overlay, (0, 0), header_overlay)
+    canvas = _draw_gradient_overlay(canvas, start_opacity=0.75, gradient_height_ratio=0.50)
     
+    # =========================================================================
+    # 3) TEXT BLOCK - Bottom left
+    # =========================================================================
     draw = ImageDraw.Draw(canvas)
     
-    # Draw name (left-aligned, with safe margins)
-    max_name_width = W - SAFE_LEFT - SAFE_RIGHT
-    display_name, adjusted_font = _fit_text_to_width(draw, name, name_font, max_name_width, min_size=48)
-    
-    # Vertical centering in header
-    name_bbox = draw.textbbox((0, 0), display_name, font=adjusted_font)
-    name_h = name_bbox[3] - name_bbox[1]
-    name_y = (HEADER_H - name_h) // 2
-    
-    draw.text((SAFE_LEFT, name_y), display_name, font=adjusted_font, fill=WHITE)
-    
-    # =========================================================================
-    # C) BOTTOM FOOTER STRIP - Details, fun fact, tags, branding
-    # =========================================================================
-    footer_top = H - FOOTER_H
-    footer_overlay = Image.new("RGBA", (W, FOOTER_H), (*OVERLAY_COLOR, OVERLAY_ALPHA))
-    canvas.paste(footer_overlay, (0, footer_top), footer_overlay)
-    
-    # Recreate draw after paste
-    draw = ImageDraw.Draw(canvas)
-    
-    # Content positioning within footer
+    # Calculate content area
     content_x = SAFE_LEFT
-    content_y = footer_top + 20  # Reduced from SAFE_TOP (48) to fit in 170px height
-    max_content_width = W - SAFE_LEFT - SAFE_RIGHT
-    line_spacing = 8  # Reduced from 12
+    max_content_width = W - SAFE_LEFT - SAFE_RIGHT - 100  # Leave room for branding
     
-    # Line 1: Major • Year
-    major_year_parts = []
-    if major:
-        major_year_parts.append(major)
-    if year:
-        major_year_parts.append(year)
+    # Start from bottom and work up
+    current_y = H - SAFE_BOTTOM
     
-    if major_year_parts:
-        major_year_text = " • ".join(major_year_parts)
-        draw.text((content_x, content_y), major_year_text, font=major_year_font, fill=WHITE)
-        bbox = draw.textbbox((0, 0), major_year_text, font=major_year_font)
-        content_y += (bbox[3] - bbox[1]) + line_spacing
+    # Fun fact (if present) - draw first (bottommost)
+    if fun_fact and fun_fact.strip():
+        # Truncate if too long
+        display_fact = _truncate_text(draw, fun_fact, fun_fact_font, max_content_width)
+        bbox = draw.textbbox((0, 0), display_fact, font=fun_fact_font)
+        fact_h = bbox[3] - bbox[1]
+        current_y -= fact_h
+        draw.text((content_x, current_y), display_fact, font=fun_fact_font, fill=WHITE)
+        current_y -= 16  # Gap above fun fact
     
-    # Line 2: Hometown
-    if hometown:
-        draw.text((content_x, content_y), hometown, font=hometown_font, fill=WHITE)
-        bbox = draw.textbbox((0, 0), hometown, font=hometown_font)
-        content_y += (bbox[3] - bbox[1]) + line_spacing
+    # Info chips row (Major, Year, Hometown)
+    chips_data = []
+    if major and major.strip():
+        chips_data.append(major.strip())
+    if year and year.strip():
+        chips_data.append(year.strip())
+    if hometown and hometown.strip():
+        chips_data.append(hometown.strip())
     
-    # Line 3-4: Fun fact (max 2 lines with quote marks)
-    if fun_fact:
-        # Add quote styling
-        quoted_fact = f'"{fun_fact}"'
-        fun_fact_lines = _wrap_text(draw, quoted_fact, fun_fact_font, max_content_width, max_lines=2)
+    if chips_data:
+        # Calculate chip layout (may need to wrap)
+        chip_gap = 12
+        chip_rows: List[List[Tuple[str, int]]] = []  # List of rows, each containing (text, width)
+        current_row: List[Tuple[str, int]] = []
+        current_row_width = 0
         
-        for line in fun_fact_lines:
-            draw.text((content_x, content_y), line, font=fun_fact_font, fill=WHITE)
-            bbox = draw.textbbox((0, 0), line, font=fun_fact_font)
-            content_y += (bbox[3] - bbox[1]) + 6
-        
-        content_y += line_spacing - 6
-    
-    # Tags row - chips with wrapping (max 2 rows)
-    if tags and len(tags) > 0:
-        content_y += 8  # Extra spacing before tags
-        chip_gap = 10
-        chip_x = content_x
-        chip_y = content_y
-        row_height = 44  # Approximate chip height
-        tags_shown = 0
-        max_tags_per_row = 4
-        rows_used = 0
-        max_rows = 2
-        remaining_tags = 0
-        
-        for i, tag in enumerate(tags):
-            if rows_used >= max_rows:
-                remaining_tags = len(tags) - i
-                break
+        for chip_text in chips_data:
+            bbox = draw.textbbox((0, 0), chip_text, font=chip_font)
+            chip_w = (bbox[2] - bbox[0]) + 36  # +36 for padding
             
-            # Measure chip
-            bbox = draw.textbbox((0, 0), tag, font=tag_font)
-            chip_w = (bbox[2] - bbox[0]) + 32  # padding
-            
-            # Check if we need to wrap
-            if chip_x + chip_w > W - SAFE_RIGHT:
-                rows_used += 1
-                if rows_used >= max_rows:
-                    remaining_tags = len(tags) - i
-                    break
-                chip_x = content_x
-                chip_y += row_height + chip_gap
-            
-            # Convert canvas to RGBA for chip compositing
-            if canvas.mode != "RGBA":
-                canvas = canvas.convert("RGBA")
-            
-            chip_w = _draw_chip(canvas, tag, tag_font, chip_x, chip_y)
-            chip_x += chip_w + chip_gap
-            tags_shown += 1
-        
-        # Show "+N" chip if there are more tags
-        if remaining_tags > 0:
-            plus_text = f"+{remaining_tags}"
-            if chip_x + 60 > W - SAFE_RIGHT:
-                # Would overflow, skip
-                pass
+            if current_row and (current_row_width + chip_gap + chip_w > max_content_width):
+                # Start new row
+                chip_rows.append(current_row)
+                current_row = [(chip_text, chip_w)]
+                current_row_width = chip_w
             else:
-                _draw_chip(canvas, plus_text, tag_font, chip_x, chip_y)
+                if current_row:
+                    current_row_width += chip_gap
+                current_row.append((chip_text, chip_w))
+                current_row_width += chip_w
+        
+        if current_row:
+            chip_rows.append(current_row)
+        
+        # Draw chips from bottom to top
+        chip_height = 52  # Approximate chip height
+        for row in reversed(chip_rows):
+            current_y -= chip_height
+            chip_x = content_x
+            for chip_text, chip_w in row:
+                _draw_chip(canvas, draw, chip_text, chip_font, chip_x, current_y)
+                chip_x += chip_w + chip_gap
+            current_y -= 8  # Gap between rows
+        
+        # Recreate draw after chip compositing
+        draw = ImageDraw.Draw(canvas)
+        current_y -= 8  # Extra gap above chips
     
-    # Recreate draw after potential mode changes
-    draw = ImageDraw.Draw(canvas)
+    # Name (large, bold) - topmost text element
+    display_name, adjusted_name_font = _fit_text_to_width(
+        draw, name, name_font, max_content_width, min_size=48
+    )
+    name_bbox = draw.textbbox((0, 0), display_name, font=adjusted_name_font)
+    name_h = name_bbox[3] - name_bbox[1]
+    current_y -= name_h
+    draw.text((content_x, current_y), display_name, font=adjusted_name_font, fill=WHITE)
     
     # =========================================================================
-    # Export as JPEG
+    # 4) BRANDING WATERMARK - Bottom right
     # =========================================================================
-    # Convert to RGB for JPEG
+    if brand_text:
+        # Create semi-transparent text
+        brand_bbox = draw.textbbox((0, 0), brand_text, font=brand_font)
+        brand_w = brand_bbox[2] - brand_bbox[0]
+        brand_h = brand_bbox[3] - brand_bbox[1]
+        brand_x = W - SAFE_RIGHT - brand_w
+        brand_y = H - SAFE_BOTTOM - brand_h
+        
+        # Draw with low opacity
+        brand_layer = Image.new("RGBA", (brand_w + 10, brand_h + 10), (0, 0, 0, 0))
+        brand_draw = ImageDraw.Draw(brand_layer)
+        brand_draw.text((0, 0), brand_text, font=brand_font, fill=WHITE_DIM)
+        canvas.paste(brand_layer, (brand_x, brand_y), brand_layer)
+    
+    # =========================================================================
+    # 5) EXPORT AS PNG
+    # =========================================================================
+    # Ensure RGB mode for PNG export (remove alpha channel)
     if canvas.mode == "RGBA":
-        # Create white background
+        # Create white background and composite
         rgb_canvas = Image.new("RGB", canvas.size, (0, 0, 0))
         rgb_canvas.paste(canvas, mask=canvas.split()[3] if len(canvas.split()) == 4 else None)
         canvas = rgb_canvas
     
     out = BytesIO()
-    canvas.save(out, format="JPEG", quality=90, optimize=True)
+    canvas.save(out, format="PNG", optimize=True)
     return out.getvalue()
