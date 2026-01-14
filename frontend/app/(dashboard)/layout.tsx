@@ -13,6 +13,7 @@ import ToastProvider from "@/components/ToastProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggleItems } from "@/components/ThemeToggle";
 import Link from "next/link";
+import { BottomNav } from "@/components/BottomNav";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -218,8 +219,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </>
             }
           >
-            <div className="w-full p-6">{children}</div>
+            <div className="w-full p-6 pb-24 md:pb-6">{children}</div>
           </TopbarWithLeftNav>
+          <BottomNav />
         </ToastProvider>
       </ThemeProvider>
     </Protected>
