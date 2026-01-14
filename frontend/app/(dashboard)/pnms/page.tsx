@@ -8,11 +8,9 @@ import { useEffect, useMemo, useState } from "react";
 import { FeatherAlertTriangle } from "@subframe/core";
 import { FeatherDownload } from "@subframe/core";
 import { FeatherEye } from "@subframe/core";
-import { FeatherFilter } from "@subframe/core";
 import { FeatherSearch } from "@subframe/core";
 import { FeatherTag } from "@subframe/core";
 import { FeatherUsers } from "@subframe/core";
-import { FeatherArrowLeftRight } from "@subframe/core";
 import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
@@ -161,16 +159,6 @@ export default function PNMsPage() {
     );
   };
 
-  const handleExport = () => {
-    const params = new URLSearchParams();
-    if (selectedTags.length > 0) {
-      params.set("tags", selectedTags.join(","));
-    }
-    if (search.trim()) {
-      params.set("search", search.trim());
-    }
-    router.push(`/exports?${params.toString()}`);
-  };
 
   const togglePnmSelection = (pnmId: string) => {
     setSelectedPnmIds((prev) =>
@@ -191,13 +179,6 @@ export default function PNMsPage() {
     setSelectedPnmIds([]);
   };
 
-  const handleCompare = () => {
-    if (selectedPnmIds.length < 2 || selectedPnmIds.length > 5) {
-      toast({ title: "Invalid selection", description: "Please select 2-5 PNMs to compare" });
-      return;
-    }
-    router.push(`/compare?ids=${selectedPnmIds.join(",")}`);
-  };
 
   const handleDeletePnm = async (pnmId: string, pnmName: string) => {
     if (!isAdmin) {
@@ -301,15 +282,6 @@ export default function PNMsPage() {
 
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-2">
-          {selectedPnmIds.length >= 2 && selectedPnmIds.length <= 5 && (
-            <Button
-              variant="neutral-secondary"
-              icon={<FeatherArrowLeftRight />}
-              onClick={handleCompare}
-            >
-              Compare ({selectedPnmIds.length})
-            </Button>
-          )}
           {selectedPnmIds.length > 0 && (
             <>
               <Button
@@ -330,14 +302,6 @@ export default function PNMsPage() {
               )}
             </>
           )}
-          <Button variant="neutral-secondary" icon={<FeatherDownload />} onClick={handleExport}>
-            Export CSV
-          </Button>
-          <Link href="/exports">
-            <Button variant="neutral-secondary" icon={<FeatherDownload />}>
-              Export Graphics
-            </Button>
-          </Link>
           <Link href="/intake">
             <Button variant="brand-primary">New PNM</Button>
           </Link>
@@ -367,10 +331,6 @@ export default function PNMsPage() {
           <div className="flex items-center gap-3">
             <Checkbox label="Show email" checked={showEmail} onCheckedChange={setShowEmail} />
             <Checkbox label="Show phone" checked={showPhone} onCheckedChange={setShowPhone} />
-          </div>
-          <div className="flex items-center gap-2 text-subtext-color">
-            <FeatherFilter className="w-4 h-4" />
-            <span className="text-caption-bold font-caption-bold">Filters</span>
           </div>
         </div>
         {/* Quick filter chips */}
@@ -518,12 +478,6 @@ export default function PNMsPage() {
                     </Table.Cell>
                     <Table.Cell className="w-[100px] min-w-[100px] text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <IconButton
-                          size="small"
-                          icon={<FeatherImage />}
-                          onClick={() => handleExportGraphic(pnm.id, pnm.name)}
-                          aria-label={`Export graphic for ${pnm.name}`}
-                        />
                         <Link href={`/pnms/${pnm.id}`}>
                           <IconButton
                             size="small"

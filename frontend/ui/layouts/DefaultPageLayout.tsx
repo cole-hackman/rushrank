@@ -9,7 +9,6 @@
  */
 
 import React from "react";
-import { FeatherBell } from "@subframe/core";
 import { FeatherLogOut } from "@subframe/core";
 import { FeatherSettings } from "@subframe/core";
 import { FeatherUser } from "@subframe/core";
@@ -61,7 +60,6 @@ const DefaultPageLayoutRoot = React.forwardRef<
         rightSlot={
           <>
             <IconButton />
-            <IconButton icon={<FeatherBell />} />
             <SubframeCore.DropdownMenu.Root>
               <SubframeCore.DropdownMenu.Trigger asChild={true}>
                 <Avatar image="https://res.cloudinary.com/subframe/image/upload/v1711417507/shared/fychrij7dzl8wgq2zjq9.avif">
