@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/ui/label";
 import { Input } from "@/components/ui/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { cn, formatPhoneNumber } from "@/lib/utils";
-import { Camera, CheckCircle2, AlertCircle } from "lucide-react";
+import { Camera, CheckCircle2, AlertCircle, Upload } from "lucide-react";
 
 export default function IntakePage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function IntakePage() {
   const [major, setMajor] = useState("");
   const [hometown, setHometown] = useState("");
   const [year, setYear] = useState("");
-  const [funFact, setFunFact] = useState("");
+  const [celebrityCrush, setCelebrityCrush] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +35,7 @@ export default function IntakePage() {
         const chapters = await api<{ id: string; name: string }[]>("/chapters");
         const cid = chapters[0]?.id || null;
         setChapterId(cid);
-        
+
         // Load active questionnaire
         if (cid) {
           try {
@@ -79,7 +79,16 @@ export default function IntakePage() {
     if (!major.trim()) {
       newErrors.major = "Major is required";
     }
-    
+    if (!year.trim()) {
+      newErrors.year = "Year is required";
+    }
+    if (!hometown.trim()) {
+      newErrors.hometown = "Hometown is required";
+    }
+    if (!celebrityCrush.trim()) {
+      newErrors.celebrityCrush = "Celebrity Crush is required";
+    }
+
     // Validate questionnaire required fields
     questionnaireQuestions.forEach((q, idx) => {
       if (q.required) {
@@ -89,7 +98,17 @@ export default function IntakePage() {
         }
       }
     });
-    
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validateStep2 = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!file) {
+      newErrors.file = "Photo is required";
+      toast({ title: "Photo required", description: "Please upload a photo to continue" });
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -112,13 +131,18 @@ export default function IntakePage() {
       toast({ title: "No chapter", description: "Join a chapter first" });
       return;
     }
-    
-    // Validate all required fields
+
+    // Validate step 1 again
     if (!validateStep1()) {
       setCurrentStep(1);
       return;
     }
-    
+
+    // Validate step 2
+    if (!validateStep2()) {
+      return;
+    }
+
     setSubmitting(true);
     setErrors({});
     try {
@@ -130,11 +154,11 @@ export default function IntakePage() {
           email: email.trim(),
           phone: phone.trim(),
           major: major.trim(),
-          hometown: hometown.trim() || null,
-          year: year.trim() || null,
+          hometown: hometown.trim(), // Now required
+          year: year.trim(), // Now required
           photo_url: null,
           tags: [],
-          fun_fact: funFact.trim() || null
+          fun_fact: celebrityCrush.trim() // Map to legacy field name
         }
       });
       const pnmId = created.id as string;
@@ -159,7 +183,7 @@ export default function IntakePage() {
         }
       }
 
-      // Optional photo upload - don't fail the whole creation if this fails
+      // Photo upload
       if (file) {
         try {
           const up = await api<{ path: string; signed_url: string }>(`/pnms/upload-url`, {
@@ -182,17 +206,13 @@ export default function IntakePage() {
               });
             }
           } else {
-            toast({ 
-              title: "Photo upload skipped", 
-              description: "PNM created but photo failed to upload. You can add it later." 
-            });
+            throw new Error("Upload failed");
           }
         } catch (photoError: any) {
-          // Log but don't fail the whole operation
           console.error("Photo upload failed:", photoError);
-          toast({ 
-            title: "Photo upload failed", 
-            description: "PNM created successfully, but photo couldn't be uploaded. Set up Supabase Storage bucket 'pnm-photos' to enable uploads." 
+          toast({
+            title: "Photo upload failed",
+            description: "PNM created but photo upload failed. Please try adding it later."
           });
         }
       }
@@ -205,9 +225,9 @@ export default function IntakePage() {
     } catch (e: any) {
       console.error("PNM creation error:", e);
       const errorMessage = e?.message || e?.toString() || "Unknown error occurred";
-      toast({ 
-        title: "Intake failed", 
-        description: errorMessage.includes("admin") 
+      toast({
+        title: "Intake failed",
+        description: errorMessage.includes("admin")
           ? "You need admin access to create PNMs. Please contact your chapter administrator."
           : errorMessage
       });
@@ -273,9 +293,9 @@ export default function IntakePage() {
               <div className="space-y-4">
                 <LabelInputContainer>
                   <Label htmlFor="name">Full Name *</Label>
-                  <Input 
-                    id="name" 
-                    placeholder="" 
+                  <Input
+                    id="name"
+                    placeholder=""
                     type="text"
                     value={name}
                     onChange={(e) => {
@@ -299,9 +319,9 @@ export default function IntakePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <LabelInputContainer>
                     <Label htmlFor="email">Email *</Label>
-                    <Input 
-                      id="email" 
-                      placeholder="" 
+                    <Input
+                      id="email"
+                      placeholder=""
                       type="email"
                       value={email}
                       onChange={(e) => {
@@ -324,9 +344,9 @@ export default function IntakePage() {
 
                   <LabelInputContainer>
                     <Label htmlFor="phone">Phone *</Label>
-                    <Input 
-                      id="phone" 
-                      placeholder="" 
+                    <Input
+                      id="phone"
+                      placeholder=""
                       type="tel"
                       value={phone}
                       onChange={(e) => {
@@ -352,9 +372,9 @@ export default function IntakePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <LabelInputContainer>
                     <Label htmlFor="major">Major *</Label>
-                    <Input 
-                      id="major" 
-                      placeholder="" 
+                    <Input
+                      id="major"
+                      placeholder=""
                       type="text"
                       value={major}
                       onChange={(e) => {
@@ -376,12 +396,19 @@ export default function IntakePage() {
                   </LabelInputContainer>
 
                   <LabelInputContainer>
-                    <Label htmlFor="year">Year</Label>
+                    <Label htmlFor="year">Year *</Label>
                     <select
-                      id="year" 
+                      id="year"
                       value={year}
-                      onChange={(e) => setYear(e.target.value)}
-                      className="h-12 text-base px-4 rounded-lg border border-beta-gray/60 bg-white text-beta-navy focus:ring-2 focus:ring-beta-navy focus:border-beta-navy w-full"
+                      onChange={(e) => {
+                        setYear(e.target.value);
+                        if (errors.year) setErrors({ ...errors, year: "" });
+                      }}
+                      className={cn(
+                        "h-12 text-base px-4 rounded-lg border border-beta-gray/60 bg-white text-beta-navy focus:ring-2 focus:ring-beta-navy focus:border-beta-navy w-full",
+                        errors.year && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      )}
+                      required
                     >
                       <option value="">Select year</option>
                       <option value="1st">1st Year</option>
@@ -389,32 +416,64 @@ export default function IntakePage() {
                       <option value="3rd">3rd Year</option>
                       <option value="4th">4th Year</option>
                     </select>
+                    {errors.year && (
+                      <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{errors.year}</span>
+                      </div>
+                    )}
                   </LabelInputContainer>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <LabelInputContainer>
-                    <Label htmlFor="hometown">Hometown</Label>
-                    <Input 
-                      id="hometown" 
-                      placeholder="" 
+                    <Label htmlFor="hometown">Hometown *</Label>
+                    <Input
+                      id="hometown"
+                      placeholder=""
                       type="text"
                       value={hometown}
-                      onChange={(e) => setHometown(e.target.value)}
-                      className="h-12 text-base py-4"
+                      onChange={(e) => {
+                        setHometown(e.target.value);
+                        if (errors.hometown) setErrors({ ...errors, hometown: "" });
+                      }}
+                      className={cn(
+                        "h-12 text-base py-4",
+                        errors.hometown && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      )}
+                      required
                     />
+                    {errors.hometown && (
+                      <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{errors.hometown}</span>
+                      </div>
+                    )}
                   </LabelInputContainer>
 
                   <LabelInputContainer>
-                    <Label htmlFor="funfact">Fun Fact</Label>
-                    <Input 
-                      id="funfact" 
-                      placeholder="" 
+                    <Label htmlFor="celebrityCrush">Celebrity Crush *</Label>
+                    <Input
+                      id="celebrityCrush"
+                      placeholder=""
                       type="text"
-                      value={funFact}
-                      onChange={(e) => setFunFact(e.target.value)}
-                      className="h-12 text-base py-4"
+                      value={celebrityCrush}
+                      onChange={(e) => {
+                        setCelebrityCrush(e.target.value);
+                        if (errors.celebrityCrush) setErrors({ ...errors, celebrityCrush: "" });
+                      }}
+                      className={cn(
+                        "h-12 text-base py-4",
+                        errors.celebrityCrush && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                      )}
+                      required
                     />
+                    {errors.celebrityCrush && (
+                      <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{errors.celebrityCrush}</span>
+                      </div>
+                    )}
                   </LabelInputContainer>
                 </div>
 
@@ -498,48 +557,38 @@ export default function IntakePage() {
             <div className="space-y-6">
               <div className="space-y-4">
                 <LabelInputContainer>
-                  <Label htmlFor="photo">Photo (Optional)</Label>
+                  <Label htmlFor="photo">Photo *</Label>
                   <div className="space-y-3">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <label className="flex-1">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={(e) => {
-                            const selectedFile = e.target.files?.[0];
-                            if (selectedFile) {
-                              setFile(selectedFile);
-                            }
-                          }}
-                          className="hidden"
-                          id="photo-camera"
-                        />
-                        <div className="flex items-center justify-center gap-2 rounded-lg border border-beta-gray/60 bg-white px-4 py-3 text-sm font-medium text-beta-navy hover:bg-beta-navy/5 cursor-pointer transition-colors min-h-[44px]">
-                          <Camera className="h-4 w-4" />
-                          <span>Take Photo</span>
+                    <label className="flex-1 block">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const selectedFile = e.target.files?.[0];
+                          if (selectedFile) {
+                            setFile(selectedFile);
+                            const newErrors = { ...errors };
+                            delete newErrors.file;
+                            setErrors(newErrors);
+                          }
+                        }}
+                        className="hidden"
+                        id="photo-upload"
+                      />
+                      <div className={cn(
+                        "flex items-center justify-center gap-2 rounded-lg border border-dashed border-beta-gray/60 bg-white px-4 py-8 text-sm font-medium text-beta-navy hover:bg-beta-navy/5 cursor-pointer transition-colors min-h-[120px]",
+                        errors.file && "border-red-500 bg-red-50"
+                      )}>
+                        <div className="flex flex-col items-center gap-2">
+                          <Upload className="h-8 w-8 text-beta-gray" />
+                          <span className="text-base">Upload Photo</span>
+                          <span className="text-xs text-beta-gray">Take photo or choose from library</span>
                         </div>
-                      </label>
-                      <label className="flex-1">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            const selectedFile = e.target.files?.[0];
-                            if (selectedFile) {
-                              setFile(selectedFile);
-                            }
-                          }}
-                          className="hidden"
-                          id="photo-gallery"
-                        />
-                        <div className="flex items-center justify-center gap-2 rounded-lg border border-beta-gray/60 bg-white px-4 py-3 text-sm font-medium text-beta-navy hover:bg-beta-navy/5 cursor-pointer transition-colors min-h-[44px]">
-                          <span>Choose from Gallery</span>
-                        </div>
-                      </label>
-                    </div>
+                      </div>
+                    </label>
+
                     {preview && (
-                      <div className="relative w-full max-w-xs aspect-square rounded-lg overflow-hidden border-2 border-beta-gray/30 shadow-sm">
+                      <div className="relative w-full max-w-xs mx-auto aspect-square rounded-lg overflow-hidden border-2 border-beta-gray/30 shadow-sm">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={preview} alt="Preview" className="w-full h-full object-cover" />
                         <button
@@ -547,11 +596,8 @@ export default function IntakePage() {
                           onClick={() => {
                             setFile(null);
                             setPreview(null);
-                            // Reset file inputs
-                            const cameraInput = document.getElementById("photo-camera") as HTMLInputElement;
-                            const galleryInput = document.getElementById("photo-gallery") as HTMLInputElement;
-                            if (cameraInput) cameraInput.value = "";
-                            if (galleryInput) galleryInput.value = "";
+                            const uploadInput = document.getElementById("photo-upload") as HTMLInputElement;
+                            if (uploadInput) uploadInput.value = "";
                           }}
                           className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1.5 hover:bg-red-700 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                           aria-label="Remove photo"
@@ -560,10 +606,11 @@ export default function IntakePage() {
                         </button>
                       </div>
                     )}
-                    {file && (
-                      <p className="text-xs text-beta-gray">
-                        Selected: {file.name}
-                      </p>
+                    {errors.file && (
+                      <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1 justify-center">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{errors.file}</span>
+                      </div>
                     )}
                   </div>
                 </LabelInputContainer>
@@ -615,5 +662,3 @@ const LabelInputContainer = ({
     </div>
   );
 };
-
-
