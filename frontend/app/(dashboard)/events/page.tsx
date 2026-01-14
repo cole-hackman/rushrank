@@ -160,7 +160,7 @@ function RushRankEventPage() {
 
   const handleCreateEvent = async () => {
     if (!chapterId) {
-      toast({ title: "Error", description: "No chapter selected" });
+      toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
       return;
     }
     if (!createFormData.name || !createFormData.date) {
@@ -208,7 +208,7 @@ function RushRankEventPage() {
 
   const handleExportAttendance = async () => {
     if (!chapterId) {
-      toast({ title: "Error", description: "No chapter selected" });
+      toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
       return;
     }
     try {
@@ -325,7 +325,14 @@ function RushRankEventPage() {
         <Button
           variant="brand-primary"
           icon={<FeatherPlus />}
-          onClick={() => setShowCreateForm(true)}
+          onClick={() => {
+            if (!chapterId) {
+              toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
+              return;
+            }
+            setShowCreateForm(true);
+          }}
+          disabled={loading}
         >
           Add Event
         </Button>
@@ -448,7 +455,13 @@ function RushRankEventPage() {
                 <Button
                   variant="brand-primary"
                   icon={<FeatherPlus />}
-                  onClick={() => setShowCreateForm(true)}
+                  onClick={() => {
+                    if (!chapterId) {
+                      toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
+                      return;
+                    }
+                    setShowCreateForm(true);
+                  }}
                 >
                   Create Event
                 </Button>

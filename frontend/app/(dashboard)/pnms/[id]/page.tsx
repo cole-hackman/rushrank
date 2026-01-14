@@ -100,9 +100,10 @@ export default function PNMProfilePage() {
   const handleExportGraphic = async () => {
     if (!id || !pnm) return;
     try {
-      toast({ title: "Generating...", description: "Creating PNM card image" });
+      toast({ title: "Generating...", description: "Creating PNM card image (this may take a moment)" });
       const response = await api<{ url: string }>(`/exports/pnm-card/${id}`, {
         method: "POST",
+        timeout: 60000,  // 60 second timeout for graphics generation
       });
 
       if (response.url) {

@@ -30,7 +30,7 @@ import { Avatar } from "@/ui/components/Avatar";
 import { BulkTagModal } from "@/components/admin/BulkTagModal";
 import { SkeletonTable } from "@/components/ui/SkeletonTable";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { cn, downloadFileForMobile } from "@/lib/utils";
 
 type PNM = {
   id: string;
@@ -265,15 +265,23 @@ export default function PNMsPage() {
 
   const handleExportGraphic = async (pnmId: string, pnmName: string) => {
     try {
-      toast({ title: "Generating graphic...", description: `Creating graphic for ${pnmName}` });
+      toast({ title: "Generating graphic...", description: `Creating graphic for ${pnmName} (this may take a moment)` });
       const result = await api<{ url: string; message: string }>(
         `/exports/pnm-card/${pnmId}`,
-        { method: "POST" }
+        { method: "POST", timeout: 60000 }  // 60 second timeout for graphics generation
       );
       if (result.url) {
-        // Open the image URL in a new tab for download
-        window.open(result.url, "_blank");
-        toast({ title: "Graphic ready!", description: "Image opened in new tab" });
+        // Use blob download approach for mobile Safari compatibility
+        // Safari blocks window.open after async operations
+        const filename = `${pnmName.replace(/\s+/g, "_")}_graphic.png`;
+        const downloaded = await downloadFileForMobile(result.url, filename);
+        if (downloaded) {
+          toast({ title: "Graphic downloaded!", description: "Check your downloads folder" });
+        } else {
+          // Fallback: try opening in same window
+          window.location.href = result.url;
+          toast({ title: "Opening graphic...", description: "File should open for download" });
+        }
       }
     } catch (e: any) {
       toast({ title: "Export failed", description: e?.message || "Unable to generate graphic" });

@@ -29,6 +29,7 @@ import {
   exportFilteredPnms,
   exportEventAttendance,
 } from "@/lib/export";
+import { downloadFileForMobile } from "@/lib/utils";
 
 type Event = {
   id: string;
@@ -124,25 +125,31 @@ export default function ExportsPage() {
   const handleExportAllPnmsImages = async (e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    
+
     if (!chapterId) {
       toast({ title: "No chapter", description: "Unable to export" });
       return;
     }
     setGraphicsLoading(true);
     try {
+      toast({ title: "Generating ZIP...", description: "This may take a few minutes" });
       const response = await api<{ url: string; message: string }>(`/exports/pnm-cards/bulk`, {
         method: "POST",
         body: { chapter_id: chapterId },
+        timeout: 120000,  // 2 minute timeout for bulk graphics generation
       });
-      
-      // Open the ZIP download URL
+
       if (response.url) {
-        window.open(response.url, "_blank");
-        toast({ 
-          title: "Export started", 
-          description: "PNM images ZIP download started. This may take a moment to generate." 
-        });
+        // Use blob download approach for mobile Safari compatibility
+        const filename = `pnm_graphics_${new Date().toISOString().split("T")[0]}.zip`;
+        const downloaded = await downloadFileForMobile(response.url, filename);
+        if (downloaded) {
+          toast({ title: "ZIP downloaded!", description: "Check your downloads folder" });
+        } else {
+          // Fallback: open in same window
+          window.location.href = response.url;
+          toast({ title: "Opening download...", description: "File should start downloading" });
+        }
       } else {
         toast({ title: "Export failed", description: "No download URL returned" });
       }

@@ -125,7 +125,7 @@ export default function IntakePage() {
     if (!hometown.trim()) return false;
     if (!celebrityCrush.trim()) return false;
     if (!file) return false;
-    
+
     // Check questionnaire required fields
     for (let idx = 0; idx < questionnaireQuestions.length; idx++) {
       const q = questionnaireQuestions[idx];
@@ -136,7 +136,7 @@ export default function IntakePage() {
         }
       }
     }
-    
+
     return true;
   };
 
@@ -598,7 +598,7 @@ export default function IntakePage() {
                             const newErrors = { ...errors };
                             delete newErrors.file;
                             setErrors(newErrors);
-                            
+
                             // On iOS, photos taken with capture attribute should save automatically
                             // For other platforms, try to save if File System Access API is available
                             if (selectedFile && 'showSaveFilePicker' in window && !/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
@@ -660,6 +660,15 @@ export default function IntakePage() {
                       <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1 justify-center">
                         <AlertCircle className="h-4 w-4" />
                         <span>{errors.file}</span>
+                      </div>
+                    )}
+                    {/* iOS Photo Save Guidance */}
+                    {preview && /iPhone|iPad|iPod/i.test(navigator.userAgent) && (
+                      <div className="mt-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <p className="text-sm text-blue-800 font-medium mb-2">📱 Save to Camera Roll</p>
+                        <p className="text-xs text-blue-700 mb-2">
+                          Photos taken via browser don't auto-save on iOS. Long-press the image above, then tap "Add to Photos" to save a copy.
+                        </p>
                       </div>
                     )}
                   </div>
