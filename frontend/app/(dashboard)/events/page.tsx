@@ -584,8 +584,8 @@ function RushRankEventPage() {
         {/* Create Event Modal */}
         {showCreateForm && (
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
-            <Dialog.Content className="max-w-2xl">
-              <div className="flex w-full flex-col items-start gap-6 p-6">
+            <Dialog.Content className="max-w-2xl w-[95vw] mobile:w-full overflow-y-auto max-h-[90vh]">
+              <div className="flex w-full flex-col items-start gap-6 p-6 mobile:p-4">
                 <div className="flex w-full items-center justify-between">
                   <span className="text-heading-2 font-heading-2 text-default-font">
                     Create New Event
