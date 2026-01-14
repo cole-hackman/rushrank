@@ -10,7 +10,7 @@ import { FeatherMapPin } from "@subframe/core";
 import { FeatherPlay } from "@subframe/core";
 import { FeatherPlus } from "@subframe/core";
 import { FeatherArrowRight } from "@subframe/core";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, ChevronRight } from "lucide-react";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Button } from "@/ui/components/Button";
 import { SkeletonCard } from "@/components/ui/SkeletonTable";
@@ -191,54 +191,61 @@ export default function DashboardPage() {
       </div>
 
       {/* Active Event Panel */}
-      <div className="w-full rounded-xl border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20 p-4 sm:p-5">
+      <div className="w-full rounded-2xl border border-neutral-border dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-sm">
         {activeEvent ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <h3 className="text-heading-3 font-heading-3 text-default-font mb-1">
-                  Active Event
-                </h3>
-                <p className="text-body-bold font-body-bold text-default-font">
-                  {activeEvent.name}
-                </p>
-                {activeEvent.location && (
-                  <p className="text-caption font-caption text-subtext-color mt-1">
-                    {activeEvent.location}
-                  </p>
-                )}
-                {activeEvent.date && (
-                  <p className="text-caption font-caption text-subtext-color">
-                    {new Date(activeEvent.date).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Left: Event Info */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                Active Event
+              </p>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate mb-1">
+                {activeEvent.name}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {activeEvent.location && activeEvent.date
+                  ? `${activeEvent.location} • ${new Date(activeEvent.date).toLocaleDateString()}`
+                  : activeEvent.location
+                  ? activeEvent.location
+                  : activeEvent.date
+                  ? new Date(activeEvent.date).toLocaleDateString()
+                  : null}
+              </p>
             </div>
-            <Button
-              onClick={() => router.push("/rush")}
-              variant="brand-primary"
-              className="w-full sm:w-auto"
-            >
-              Open Rush Mode
-            </Button>
+            {/* Right: CTA Button */}
+            <div className="flex-shrink-0">
+              <Button
+                onClick={() => router.push("/rush")}
+                variant="brand-primary"
+                iconRight={<ChevronRight className="h-4 w-4" />}
+                className="rounded-xl px-4 py-2 font-semibold"
+              >
+                Open Rush Mode
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            <div>
-              <h3 className="text-heading-3 font-heading-3 text-default-font mb-1">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Left: No Event Message */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
                 Active Event
-              </h3>
-              <p className="text-body font-body text-subtext-color">
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 No active event selected
               </p>
             </div>
-            <Button
-              onClick={() => router.push("/rush")}
-              variant="brand-primary"
-              className="w-full sm:w-auto"
-            >
-              Open Rush Mode
-            </Button>
+            {/* Right: CTA Button */}
+            <div className="flex-shrink-0">
+              <Button
+                onClick={() => router.push("/rush")}
+                variant="brand-primary"
+                iconRight={<ChevronRight className="h-4 w-4" />}
+                className="rounded-xl px-4 py-2 font-semibold"
+              >
+                Open Rush Mode
+              </Button>
+            </div>
           </div>
         )}
       </div>
