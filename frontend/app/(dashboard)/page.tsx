@@ -43,17 +43,25 @@ export default function DashboardPage() {
       } catch (e: any) {
         console.error("Failed to load chapters:", e);
         const errorMsg = e?.message || "Unable to fetch chapters";
+        const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
         
         // Check for specific error types
         if (errorMsg.includes("timed out") || errorMsg.includes("timeout")) {
-          toast({
-            title: "Backend server not responding",
-            description: "Please make sure the backend server is running on port 8000"
-          });
+          if (isProduction) {
+            toast({
+              title: "Backend server not responding",
+              description: `Request timed out. Please check if your Render backend service is running and healthy. API URL: ${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'Not configured'}`
+            });
+          } else {
+            toast({
+              title: "Backend server not responding",
+              description: "Please make sure the backend server is running on port 8000"
+            });
+          }
         } else if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
           toast({
             title: "Cannot connect to backend",
-            description: `Backend server at ${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"} is not reachable. Please check if the server is running.`
+            description: errorMsg // The api.ts already provides detailed production diagnostics
           });
         } else if (errorMsg.includes("Authentication failed") || errorMsg.includes("401")) {
           toast({
