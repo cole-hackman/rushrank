@@ -27,7 +27,8 @@ SAFE_BOTTOM = 64
 # Colors
 WHITE = (255, 255, 255)
 WHITE_DIM = (255, 255, 255, int(255 * 0.25))  # 25% for branding
-CHIP_BG = (0, 0, 0, int(255 * 0.35))  # 35% black for chips
+NAVY_BG = (1, 48, 104, int(255 * 0.90))  # Navy with 90% opacity for pills
+PILL_BORDER = (255, 255, 255, int(255 * 0.12))  # Subtle white border for pills
 
 
 def _try_load_font(path: str, size: int) -> Optional[ImageFont.FreeTypeFont]:
@@ -77,7 +78,7 @@ def _load_fonts() -> Tuple[
         return ImageFont.load_default()
     
     name_font = first_available(bold_paths, 72)
-    chip_font = first_available(semibold_paths, 32)
+    chip_font = first_available(semibold_paths, 30)  # Updated to 30px per spec
     fun_fact_font = first_available(regular_paths, 28)
     brand_font = first_available(semibold_paths, 24)
     
@@ -175,7 +176,7 @@ def _draw_gradient_overlay(canvas: Image.Image, start_opacity: float = 0.70,
 
 def _draw_chip(img: Image.Image, draw: ImageDraw.ImageDraw, text: str, 
                font: ImageFont.FreeTypeFont, x: int, y: int) -> Tuple[int, int]:
-    """Draw an info chip (pill) and return (width, height).
+    """Draw an info chip (pill) with fixed height and true centered text.
     
     Args:
         img: Image to draw on (RGBA mode)
@@ -188,31 +189,42 @@ def _draw_chip(img: Image.Image, draw: ImageDraw.ImageDraw, text: str,
     Returns:
         Tuple of (chip_width, chip_height)
     """
-    padding_h = 18
-    padding_v = 10
+    # Fixed dimensions per spec
+    PILL_HEIGHT = 44
+    PADDING_H = 18
+    BORDER_WIDTH = 1
     
+    # Calculate text dimensions
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
     
-    chip_w = text_w + padding_h * 2
-    chip_h = text_h + padding_v * 2
-    radius = chip_h // 2  # Fully rounded
+    chip_w = text_w + PADDING_H * 2
+    chip_h = PILL_HEIGHT
+    radius = chip_h // 2  # Fully rounded (999px equivalent)
     
     # Create chip with alpha
     chip_img = Image.new("RGBA", (chip_w, chip_h), (0, 0, 0, 0))
     chip_draw = ImageDraw.Draw(chip_img)
     
-    # Draw rounded rectangle
+    # Draw rounded rectangle with navy background
     chip_draw.rounded_rectangle(
         [(0, 0), (chip_w - 1, chip_h - 1)],
         radius=radius,
-        fill=CHIP_BG,
+        fill=NAVY_BG,
+        outline=PILL_BORDER,
+        width=BORDER_WIDTH,
     )
     
-    # Draw text (centered in chip)
-    text_x = padding_h
-    text_y = padding_v - 2  # Small adjustment for visual centering
+    # True vertical centering: use font metrics for precise baseline placement
+    # Get the ascent and descent for accurate vertical centering
+    ascent, descent = font.getmetrics() if hasattr(font, 'getmetrics') else (text_h, 0)
+    
+    # Calculate vertical center position
+    text_x = PADDING_H
+    # Center text vertically: (chip_height - text_height) / 2, adjusted for baseline
+    text_y = (chip_h - text_h) // 2 - bbox[1]  # Subtract bbox[1] to account for font offset
+    
     chip_draw.text((text_x, text_y), text, font=font, fill=WHITE)
     
     # Composite onto main image
@@ -246,7 +258,7 @@ async def compose_pnm_card(
     fun_fact: Optional[str],
     photo_url: Optional[str],
     tags: Optional[List[str]] = None,
-    brand_text: str = "RushApp",
+    brand_text: str = "RushRank",
 ) -> bytes:
     """Generate a 4:5 ratio PNM card image (Modern IG Card layout).
     
@@ -333,17 +345,10 @@ async def compose_pnm_card(
     # Start from bottom and work up
     current_y = H - SAFE_BOTTOM
     
-    # Fun fact (if present) - draw first (bottommost)
-    if fun_fact and fun_fact.strip():
-        # Truncate if too long
-        display_fact = _truncate_text(draw, fun_fact, fun_fact_font, max_content_width)
-        bbox = draw.textbbox((0, 0), display_fact, font=fun_fact_font)
-        fact_h = bbox[3] - bbox[1]
-        current_y -= fact_h
-        draw.text((content_x, current_y), display_fact, font=fun_fact_font, fill=WHITE)
-        current_y -= 16  # Gap above fun fact
+    # Note: fun_fact (celebrity crush) is now displayed as a pill, not as separate text
     
-    # Info chips row (Major, Year, Hometown)
+    # Info chips row (Major, Year, Hometown, Crush)
+    # Order: Major → Year → Hometown → Crush
     chips_data = []
     if major and major.strip():
         chips_data.append(major.strip())
@@ -351,17 +356,21 @@ async def compose_pnm_card(
         chips_data.append(year.strip())
     if hometown and hometown.strip():
         chips_data.append(hometown.strip())
+    # Add celebrity crush as a pill (fun_fact field stores crush data)
+    if fun_fact and fun_fact.strip():
+        chips_data.append(f"Crush: {fun_fact.strip()}")
     
     if chips_data:
         # Calculate chip layout (may need to wrap)
         chip_gap = 12
+        PILL_HEIGHT = 44  # Fixed pill height
         chip_rows: List[List[Tuple[str, int]]] = []  # List of rows, each containing (text, width)
         current_row: List[Tuple[str, int]] = []
         current_row_width = 0
         
         for chip_text in chips_data:
             bbox = draw.textbbox((0, 0), chip_text, font=chip_font)
-            chip_w = (bbox[2] - bbox[0]) + 36  # +36 for padding
+            chip_w = (bbox[2] - bbox[0]) + 36  # +36 for padding (18px each side)
             
             if current_row and (current_row_width + chip_gap + chip_w > max_content_width):
                 # Start new row
@@ -377,19 +386,18 @@ async def compose_pnm_card(
         if current_row:
             chip_rows.append(current_row)
         
-        # Draw chips from bottom to top
-        chip_height = 52  # Approximate chip height
+        # Draw chips from bottom to top with fixed pill height
         for row in reversed(chip_rows):
-            current_y -= chip_height
+            current_y -= PILL_HEIGHT
             chip_x = content_x
             for chip_text, chip_w in row:
                 _draw_chip(canvas, draw, chip_text, chip_font, chip_x, current_y)
                 chip_x += chip_w + chip_gap
-            current_y -= 8  # Gap between rows
+            current_y -= chip_gap  # Gap between rows (12px)
         
         # Recreate draw after chip compositing
         draw = ImageDraw.Draw(canvas)
-        current_y -= 8  # Extra gap above chips
+        current_y -= 10  # 10px margin between name and pill row
     
     # Name (large, bold) - topmost text element
     display_name, adjusted_name_font = _fit_text_to_width(
