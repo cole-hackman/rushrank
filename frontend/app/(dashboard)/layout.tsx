@@ -4,7 +4,7 @@ import { SubframeCore } from "@/components/SubframeCore";
 import { DropdownMenu } from "@/components/DropdownMenu";
 import { IconButton } from "@/ui/components/IconButton";
 import { Avatar } from "@/ui/components/Avatar";
-import { Bell, User, Settings, LogOut, Shield, Tag, Users, BarChart3 } from "lucide-react";
+import { Download, User, Settings, LogOut, Shield, Tag, Users, BarChart3 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
@@ -168,10 +168,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             }
             rightSlot={
               <>
-                <IconButton
-                  icon={<Bell className="h-5 w-5" />}
-                  onClick={() => { }}
-                />
                 <SubframeCore.DropdownMenu.Root>
                   <SubframeCore.DropdownMenu.Trigger asChild={true}>
                     <button className="cursor-pointer">
@@ -206,6 +202,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         Theme
                       </SubframeCore.DropdownMenu.Label>
                       <ThemeToggleItems />
+                      <DropdownMenu.DropdownItem
+                        icon={<Download className="h-4 w-4" />}
+                        onClick={() => router.push("/exports")}
+                      >
+                        Export Center
+                      </DropdownMenu.DropdownItem>
                       <SubframeCore.DropdownMenu.Separator />
                       <DropdownMenu.DropdownItem
                         icon={<LogOut className="h-4 w-4" />}
