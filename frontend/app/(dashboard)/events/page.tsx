@@ -103,10 +103,24 @@ function RushRankEventPage() {
       }
     } catch (e: any) {
       console.error("Failed to load events:", e);
-      toast({
-        title: "Failed to load events",
-        description: e?.message || "Unable to fetch events. Please try again.",
-      });
+      const errorMsg = e?.message || "Unable to fetch events. Please try again.";
+      
+      if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
+        toast({
+          title: "Cannot connect to backend",
+          description: `Backend server is not reachable. Please check if the server is running at ${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"}.`
+        });
+      } else if (errorMsg.includes("Authentication failed") || errorMsg.includes("401")) {
+        toast({
+          title: "Authentication failed",
+          description: "Your session may have expired. Please try logging out and back in."
+        });
+      } else {
+        toast({
+          title: "Failed to load events",
+          description: errorMsg,
+        });
+      }
     } finally {
       setLoading(false);
     }
