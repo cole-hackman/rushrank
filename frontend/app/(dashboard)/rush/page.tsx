@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { UserPlus, CheckCircle2, Search, Calendar, Plus, AlertCircle } from "lucide-react";
 import { AddPnmView } from "@/components/rush/AddPnmView";
 import { CheckInView } from "@/components/rush/CheckInView";
+import { ActionCard } from "@/components/rush/ActionCard";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
@@ -216,63 +217,25 @@ export default function RushPage() {
 
       {/* Main Action Buttons */}
       <div className="flex flex-col gap-3 w-full md:grid md:grid-cols-2 md:gap-4">
-        <button
+        <ActionCard
+          title="Add PNM"
+          subtitle="Hand phone to PNM for quick intake"
+          icon={<UserPlus className="h-6 w-6" />}
+          variant="primary"
           onClick={() => setCurrentView("add-pnm")}
           disabled={!activeEventId}
-          className={cn(
-            "flex items-center justify-center gap-4 p-5 rounded-xl border-2",
-            "transition-all shadow-sm",
-            "min-h-[100px] md:min-h-[140px]",
-            "focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-            activeEventId
-              ? "border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20 hover:bg-brand-100 dark:hover:bg-brand-900/40 hover:border-brand-300 cursor-pointer"
-              : "border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 opacity-60 cursor-not-allowed"
-          )}
-        >
-          <div className="w-12 h-12 rounded-full bg-brand-100 dark:bg-brand-800 flex items-center justify-center">
-            <UserPlus className={cn("h-6 w-6", activeEventId ? "text-brand-600 dark:text-brand-400" : "text-neutral-400")} />
-          </div>
-          <div className="text-left">
-            <h3 className={cn(
-              "text-lg font-semibold mb-1",
-              activeEventId ? "text-brand-700 dark:text-brand-300" : "text-neutral-400"
-            )}>
-              Add PNM
-            </h3>
-            <p className="text-sm text-subtext-color">
-              Hand phone to PNM for quick intake
-            </p>
-          </div>
-        </button>
+          testId="add-pnm-card"
+        />
 
-        <button
+        <ActionCard
+          title="Check In"
+          subtitle="Scan QR or search by name"
+          icon={<CheckCircle2 className="h-6 w-6" />}
+          variant="secondary"
           onClick={() => setCurrentView("check-in")}
           disabled={!activeEventId}
-          className={cn(
-            "flex items-center justify-center gap-4 p-5 rounded-xl border-2",
-            "transition-all shadow-sm",
-            "min-h-[100px] md:min-h-[140px]",
-            "focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-            activeEventId
-              ? "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:border-neutral-300 cursor-pointer"
-              : "border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 opacity-60 cursor-not-allowed"
-          )}
-        >
-          <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center">
-            <CheckCircle2 className={cn("h-6 w-6", activeEventId ? "text-neutral-600 dark:text-neutral-300" : "text-neutral-400")} />
-          </div>
-          <div className="text-left">
-            <h3 className={cn(
-              "text-lg font-semibold mb-1",
-              activeEventId ? "text-default-font" : "text-neutral-400"
-            )}>
-              Check In
-            </h3>
-            <p className="text-sm text-subtext-color">
-              Scan QR or search by name
-            </p>
-          </div>
-        </button>
+          testId="check-in-card"
+        />
       </div>
 
       {/* Quick Search Section */}
