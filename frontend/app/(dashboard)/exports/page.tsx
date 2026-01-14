@@ -303,7 +303,7 @@ export default function ExportsPage() {
         <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
-              <IconWithBackground variant="neutral" size="small" icon={<ImageIcon className="h-5 w-5" />} />
+              <IconWithBackground variant="neutral" size="small" icon={<ImageIcon className="h-5 w-5" strokeWidth={2} />} />
               <div>
                 <h2 className="text-lg font-semibold text-beta-navy">PNM Graphics</h2>
                 <p className="text-sm text-beta-gray">Generate 4:5 ratio (1080x1350) PNG share cards</p>

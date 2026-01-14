@@ -44,7 +44,7 @@ export async function checkBackendHealth(): Promise<{ reachable: boolean; error?
 export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: any; headers?: Record<string, string>; timeout?: number }): Promise<T> {
   const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
   const token = getToken();
-  const timeout = opts?.timeout || 10000; // 10 second default timeout
+  const timeout = opts?.timeout || 20000; // 20 second default timeout (increased for Render free tier)
   
   // Debug: log the URL being called (always log API_BASE in production for debugging)
   if (typeof window !== "undefined") {
