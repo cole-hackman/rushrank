@@ -44,9 +44,18 @@ export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: 
   const token = getToken();
   const timeout = opts?.timeout || 10000; // 10 second default timeout
   
-  // Debug: log the URL being called (only in development)
-  if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-    console.log(`[API] ${opts?.method || "GET"} ${url}`);
+  // Debug: log the URL being called (always log API_BASE in production for debugging)
+  if (typeof window !== "undefined") {
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[API] ${opts?.method || "GET"} ${url}`);
+    } else {
+      // In production, log API_BASE on first call to help debug
+      if (!(window as any).__API_BASE_LOGGED) {
+        console.log(`[API] Using backend URL: ${API_BASE}`);
+        console.log(`[API] Env vars - NEXT_PUBLIC_API_BASE_URL: ${process.env.NEXT_PUBLIC_API_BASE_URL || 'not set'}, NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL || 'not set'}`);
+        (window as any).__API_BASE_LOGGED = true;
+      }
+    }
   }
   
   // Create abort controller for timeout
