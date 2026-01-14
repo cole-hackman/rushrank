@@ -316,7 +316,7 @@ export default function AnalyticsPage() {
 
   const handleExportAll = async () => {
     if (!chapterId) {
-      toast({ title: "Error", description: "No chapter selected" });
+      toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
       return;
     }
     try {
@@ -329,7 +329,7 @@ export default function AnalyticsPage() {
 
   const handleExportVotingAnalytics = async () => {
     if (!chapterId) {
-      toast({ title: "Error", description: "No chapter selected" });
+      toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
       return;
     }
     try {
@@ -368,7 +368,7 @@ export default function AnalyticsPage() {
 
   const handleExportEventAttendance = async () => {
     if (!chapterId) {
-      toast({ title: "Error", description: "No chapter selected" });
+      toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
       return;
     }
     try {
@@ -789,8 +789,8 @@ export default function AnalyticsPage() {
                         pattern.pattern === "Supportive"
                           ? "success"
                           : pattern.pattern === "Harsh"
-                          ? "error"
-                          : "neutral"
+                            ? "error"
+                            : "neutral"
                       }
                     >
                       {pattern.pattern}
@@ -893,7 +893,7 @@ export default function AnalyticsPage() {
                   {Math.round(
                     (events.reduce((sum, e) => sum + (e.attendeeCount || 0), 0) /
                       events.reduce((sum, e) => sum + (e.capacity || e.attendeeCount || 1), 0)) *
-                      100
+                    100
                   )}
                   %
                 </span>
