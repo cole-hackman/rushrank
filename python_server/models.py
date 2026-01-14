@@ -73,6 +73,8 @@ class PNM(BaseModel):
     fun_fact: Optional[str]
     chick_fil_a_order: Optional[str]
     created_at: datetime
+    attendance_count: Optional[int] = None
+    total_events: Optional[int] = None
 
 class PNMWithVotes(PNM):
     vote_count: int
