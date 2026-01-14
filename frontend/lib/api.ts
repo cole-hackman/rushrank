@@ -5,8 +5,10 @@ export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 function getApiBase(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL;
   if (envUrl) {
+    // Remove any trailing slashes first
+    const cleanUrl = envUrl.replace(/\/+$/, '');
     // If it already ends with /api, use as-is, otherwise append /api
-    return envUrl.endsWith('/api') ? envUrl : `${envUrl}/api`;
+    return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
   }
   return "http://localhost:8000/api";
 }
