@@ -1534,14 +1534,14 @@ class ExportService:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         bucket = os.getenv("SUPABASE_EXPORTS_BUCKET", "exports")
-        filename = f"cards/{pnm_id}.jpg"
+        filename = f"cards/{pnm_id}.png"
         
         if supabase_url and supabase_key:
             # Use PUT method for Supabase Storage uploads
             upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{filename}"
             headers = {
                 "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": "image/jpeg",
+                "Content-Type": "image/png",
                 "x-upsert": "true"  # Allow overwriting if file exists
             }
             async with httpx.AsyncClient(timeout=20) as client:
@@ -1623,7 +1623,7 @@ class ExportService:
                     
                     # Sanitize filename
                     safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in row["name"])
-                    filename = f"{safe_name}_{row['id']}.jpg"
+                    filename = f"{safe_name}_{row['id']}.png"
                     
                     # Add to ZIP
                     zip_file.writestr(filename, image_bytes)
