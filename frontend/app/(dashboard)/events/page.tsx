@@ -14,6 +14,8 @@ import { TextField } from "@/ui/components/TextField";
 import { Dialog } from "@/ui/components/Dialog";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useActiveEvent } from "@/hooks/useActiveEvent";
+import { SkeletonTable } from "@/components/ui/SkeletonTable";
 import { FeatherAward } from "@subframe/core";
 import { FeatherCalendar } from "@subframe/core";
 import { FeatherClock } from "@subframe/core";
@@ -27,6 +29,7 @@ import { FeatherHome } from "@subframe/core";
 import { FeatherMapPin } from "@subframe/core";
 import { FeatherMoreHorizontal } from "@subframe/core";
 import { FeatherPlus } from "@subframe/core";
+import { FeatherPlay } from "@subframe/core";
 import { FeatherSave } from "@subframe/core";
 import { FeatherSearch } from "@subframe/core";
 import { FeatherTrash } from "@subframe/core";
@@ -57,6 +60,7 @@ type EventWithAttendance = Event & {
 function RushRankEventPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { setActiveEventId } = useActiveEvent();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventWithAttendance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +75,12 @@ function RushRankEventPage() {
     description: "",
     capacity: "",
   });
+
+  // Handler for "Open Check-in" button
+  const handleOpenCheckIn = (eventId: string) => {
+    setActiveEventId(eventId);
+    router.push("/rush");
+  };
 
   useEffect(() => {
     loadData();
@@ -104,7 +114,7 @@ function RushRankEventPage() {
     } catch (e: any) {
       console.error("Failed to load events:", e);
       const errorMsg = e?.message || "Unable to fetch events. Please try again.";
-      
+
       if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
         toast({
           title: "Cannot connect to backend",
@@ -293,261 +303,286 @@ function RushRankEventPage() {
 
   return (
     <div className="flex w-full flex-col gap-6">
-        <Breadcrumbs>
-          <Breadcrumbs.Item>Home</Breadcrumbs.Item>
-          <Breadcrumbs.Divider />
-          <Breadcrumbs.Item active={true}>Events</Breadcrumbs.Item>
-        </Breadcrumbs>
-        <div className="flex w-full flex-col items-start gap-1">
-          <span className="text-heading-1 font-heading-1 text-default-font">Events</span>
-          <span className="text-body font-body text-subtext-color">
-            Manage rush events and track attendance
-          </span>
-        </div>
-        <div className="flex w-full items-center gap-2">
-          <Button
-            variant="neutral-secondary"
-            icon={<FeatherDownload />}
-            onClick={handleExportAttendance}
-          >
-            Export Attendance
-          </Button>
-          <Button
-            variant="brand-primary"
-            icon={<FeatherPlus />}
-            onClick={() => setShowCreateForm(true)}
-          >
-            Add Event
-          </Button>
-        </div>
-        <div className="flex w-full flex-col items-start gap-8">
+      <Breadcrumbs>
+        <Breadcrumbs.Item>Home</Breadcrumbs.Item>
+        <Breadcrumbs.Divider />
+        <Breadcrumbs.Item active={true}>Events</Breadcrumbs.Item>
+      </Breadcrumbs>
+      <div className="flex w-full flex-col items-start gap-1">
+        <span className="text-heading-1 font-heading-1 text-default-font">Events</span>
+        <span className="text-body font-body text-subtext-color">
+          Manage rush events and track attendance
+        </span>
+      </div>
+      <div className="flex w-full items-center gap-2">
+        <Button
+          variant="neutral-secondary"
+          icon={<FeatherDownload />}
+          onClick={handleExportAttendance}
+        >
+          Export Attendance
+        </Button>
+        <Button
+          variant="brand-primary"
+          icon={<FeatherPlus />}
+          onClick={() => setShowCreateForm(true)}
+        >
+          Add Event
+        </Button>
+      </div>
+      <div className="flex w-full flex-col items-start gap-8">
 
-          {/* Stats Cards */}
-          <div className="flex w-full items-start gap-4 flex-wrap mobile:flex-col mobile:flex-nowrap mobile:gap-4">
-            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-neutral-100 px-6 py-6">
-              <div className="flex w-full items-center gap-2">
-                <IconWithBackground
-                  variant="neutral"
-                  size="small"
-                  icon={<FeatherCalendar />}
-                />
-                <span className="text-caption-bold font-caption-bold text-subtext-color">
-                  TOTAL EVENTS
-                </span>
-              </div>
-              <span className="text-heading-1 font-heading-1 text-default-font">
-                {loading ? "..." : stats.totalEvents}
+        {/* Stats Cards */}
+        <div className="flex w-full items-start gap-4 flex-wrap mobile:flex-col mobile:flex-nowrap mobile:gap-4">
+          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-neutral-100 px-6 py-6">
+            <div className="flex w-full items-center gap-2">
+              <IconWithBackground
+                variant="neutral"
+                size="small"
+                icon={<FeatherCalendar />}
+              />
+              <span className="text-caption-bold font-caption-bold text-subtext-color">
+                TOTAL EVENTS
               </span>
             </div>
-            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-success-100 px-6 py-6">
-              <div className="flex w-full items-center gap-2">
-                <IconWithBackground
-                  variant="success"
-                  size="small"
-                  icon={<FeatherUsers />}
-                />
-                <span className="text-caption-bold font-caption-bold text-success-700">
-                  TOTAL ATTENDANCE
-                </span>
-              </div>
-              <span className="text-heading-1 font-heading-1 text-success-700">
-                {loading ? "..." : stats.totalAttendance}
-              </span>
-            </div>
-            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-brand-100 px-6 py-6">
-              <div className="flex w-full items-center gap-2">
-                <IconWithBackground size="small" icon={<FeatherTrendingUp />} />
-                <span className="text-caption-bold font-caption-bold text-brand-700">
-                  AVG ATTENDANCE
-                </span>
-              </div>
-              <span className="text-heading-1 font-heading-1 text-brand-700">
-                {loading ? "..." : stats.avgAttendance}
-              </span>
-            </div>
-            <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-warning-100 px-6 py-6">
-              <div className="flex w-full items-center gap-2">
-                <IconWithBackground
-                  variant="warning"
-                  size="small"
-                  icon={<FeatherClock />}
-                />
-                <span className="text-caption-bold font-caption-bold text-warning-700">
-                  UPCOMING
-                </span>
-              </div>
-              <span className="text-heading-1 font-heading-1 text-warning-700">
-                {loading ? "..." : stats.upcoming}
-              </span>
-            </div>
+            <span className="text-heading-1 font-heading-1 text-default-font">
+              {loading ? "..." : stats.totalEvents}
+            </span>
           </div>
-
-          {/* Search and Filter */}
-          <div className="flex w-full flex-col items-start gap-4">
-            <div className="flex w-full items-center gap-4 mobile:flex-col mobile:flex-nowrap mobile:gap-4">
-              <TextField
-                className="h-auto grow shrink-0 basis-0"
-                variant="filled"
-                label=""
-                helpText=""
-                icon={<FeatherSearch />}
-              >
-                <TextField.Input
-                  placeholder="Search events..."
-                  value={search}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setSearch(e.target.value)
-                  }
-                />
-              </TextField>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="neutral-tertiary"
-                  icon={<FeatherFilter />}
-                  onClick={() => {
-                    // TODO: Implement filter dropdown
-                    toast({ title: "Filter", description: "Filter options coming soon" });
-                  }}
-                >
-                  Filter
-                </Button>
-              </div>
+          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-success-100 px-6 py-6">
+            <div className="flex w-full items-center gap-2">
+              <IconWithBackground
+                variant="success"
+                size="small"
+                icon={<FeatherUsers />}
+              />
+              <span className="text-caption-bold font-caption-bold text-success-700">
+                TOTAL ATTENDANCE
+              </span>
             </div>
+            <span className="text-heading-1 font-heading-1 text-success-700">
+              {loading ? "..." : stats.totalAttendance}
+            </span>
           </div>
+          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-brand-100 px-6 py-6">
+            <div className="flex w-full items-center gap-2">
+              <IconWithBackground size="small" icon={<FeatherTrendingUp />} />
+              <span className="text-caption-bold font-caption-bold text-brand-700">
+                AVG ATTENDANCE
+              </span>
+            </div>
+            <span className="text-heading-1 font-heading-1 text-brand-700">
+              {loading ? "..." : stats.avgAttendance}
+            </span>
+          </div>
+          <div className="flex grow shrink-0 basis-0 flex-col items-start gap-2 rounded-md bg-warning-100 px-6 py-6">
+            <div className="flex w-full items-center gap-2">
+              <IconWithBackground
+                variant="warning"
+                size="small"
+                icon={<FeatherClock />}
+              />
+              <span className="text-caption-bold font-caption-bold text-warning-700">
+                UPCOMING
+              </span>
+            </div>
+            <span className="text-heading-1 font-heading-1 text-warning-700">
+              {loading ? "..." : stats.upcoming}
+            </span>
+          </div>
+        </div>
 
-          {/* Events Table */}
-          <div className="flex w-full flex-col items-start gap-4 overflow-hidden overflow-x-auto">
-            {loading ? (
-              <div className="flex h-48 items-center justify-center text-subtext-color">
-                Loading events...
-              </div>
-            ) : filteredEvents.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-subtext-color">
-                {search ? "No events match your search." : "No events found."}
-              </div>
-            ) : (
-              <Table
-                header={
-                  <Table.HeaderRow>
-                    <Table.HeaderCell>EVENT NAME</Table.HeaderCell>
-                    <Table.HeaderCell>DATE &amp; TIME</Table.HeaderCell>
-                    <Table.HeaderCell>LOCATION</Table.HeaderCell>
-                    <Table.HeaderCell>ATTENDANCE</Table.HeaderCell>
-                    <Table.HeaderCell>STATUS</Table.HeaderCell>
-                    <Table.HeaderCell>{""}</Table.HeaderCell>
-                  </Table.HeaderRow>
+        {/* Search and Filter */}
+        <div className="flex w-full flex-col items-start gap-4">
+          <div className="flex w-full items-center gap-4 mobile:flex-col mobile:flex-nowrap mobile:gap-4">
+            <TextField
+              className="h-auto grow shrink-0 basis-0"
+              variant="filled"
+              label=""
+              helpText=""
+              icon={<FeatherSearch />}
+            >
+              <TextField.Input
+                placeholder="Search events..."
+                value={search}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setSearch(e.target.value)
                 }
+              />
+            </TextField>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="neutral-tertiary"
+                icon={<FeatherFilter />}
+                onClick={() => {
+                  // TODO: Implement filter dropdown
+                  toast({ title: "Filter", description: "Filter options coming soon" });
+                }}
               >
-                {filteredEvents.map((event) => {
-                  const status = getEventStatus(event);
-                  const attendancePercent = event.capacity
-                    ? Math.round(((event.attendeeCount || 0) / event.capacity) * 100)
-                    : 0;
-                  return (
-                    <Table.Row key={event.id}>
-                      <Table.Cell>
-                        <div className="flex items-center gap-2">
-                          <IconWithBackground size="small" icon={getEventIcon(event.name)} />
-                          <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
-                            {event.name}
-                          </span>
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <div className="flex flex-col items-start">
-                          <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
-                            {formatDate(event.date)}
-                          </span>
-                          <span className="text-caption font-caption text-subtext-color">
-                            {formatTime(event.date)}
-                          </span>
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className="whitespace-nowrap text-body font-body text-subtext-color">
-                          {event.location || "—"}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <div className="flex items-center gap-2">
-                          {event.capacity ? (
-                            <>
-                              <Progress
-                                className="h-auto w-16 flex-none"
-                                value={attendancePercent}
-                              />
-                              <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
-                                {event.attendeeCount || 0}/{event.capacity}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
-                              {event.attendeeCount || 0}
-                            </span>
-                          )}
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Badge variant={status.variant}>{status.label}</Badge>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <div className="flex items-center justify-end gap-2">
-                          <IconButton
-                            size="small"
-                            icon={<FeatherUserCheck />}
-                            onClick={() => router.push(`/events/${event.id}/checkin`)}
-                          />
-                          <SubframeCore.DropdownMenu.Root>
-                            <SubframeCore.DropdownMenu.Trigger asChild={true}>
-                              <IconButton
-                                size="small"
-                                icon={<FeatherMoreHorizontal />}
-                                onClick={() => {}}
-                              />
-                            </SubframeCore.DropdownMenu.Trigger>
-                            <SubframeCore.DropdownMenu.Portal>
-                              <SubframeCore.DropdownMenu.Content
-                                side="bottom"
-                                align="end"
-                                sideOffset={4}
-                              >
-                                <DropdownMenu.DropdownItem
-                                  icon={<FeatherEye />}
-                                  onClick={() => router.push(`/events/${event.id}/checkin`)}
-                                >
-                                  View Details
-                                </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem icon={<FeatherEdit />}>
-                                  Edit Event
-                                </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem
-                                  icon={<FeatherDownload />}
-                                  onClick={handleExportAttendance}
-                                >
-                                  Export Attendance
-                                </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem
-                                  icon={<FeatherTrash />}
-                                  onClick={() => handleDeleteEvent(event.id)}
-                                >
-                                  Delete
-                                </DropdownMenu.DropdownItem>
-                              </SubframeCore.DropdownMenu.Content>
-                            </SubframeCore.DropdownMenu.Portal>
-                          </SubframeCore.DropdownMenu.Root>
-                        </div>
-                      </Table.Cell>
-                    </Table.Row>
-                  );
-                })}
-              </Table>
-            )}
+                Filter
+              </Button>
+            </div>
           </div>
+        </div>
 
-          {/* Create Event Modal */}
-          {showCreateForm && (
-            <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
-              <Dialog.Content className="max-w-2xl">
+        {/* Events Table */}
+        <div className="flex w-full flex-col items-start gap-4 overflow-hidden overflow-x-auto">
+          {loading ? (
+            <div className="rounded-xl border border-neutral-border bg-white dark:bg-neutral-800 overflow-hidden w-full">
+              <SkeletonTable rows={5} columns={5} showCheckbox={false} />
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="flex flex-col h-64 w-full items-center justify-center gap-4 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900">
+              <FeatherCalendar className="h-12 w-12 text-neutral-400" />
+              <div className="text-center">
+                <p className="text-body-bold font-body-bold text-default-font mb-1">
+                  {search ? "No events match your search" : "No events yet"}
+                </p>
+                <p className="text-caption text-subtext-color">
+                  {search ? "Try a different search term" : "Create your first event to get started"}
+                </p>
+              </div>
+              {!search && (
+                <Button
+                  variant="brand-primary"
+                  icon={<FeatherPlus />}
+                  onClick={() => setShowCreateForm(true)}
+                >
+                  Create Event
+                </Button>
+              )}
+            </div>
+          ) : (
+            <Table
+              header={
+                <Table.HeaderRow>
+                  <Table.HeaderCell>EVENT NAME</Table.HeaderCell>
+                  <Table.HeaderCell>DATE &amp; TIME</Table.HeaderCell>
+                  <Table.HeaderCell>LOCATION</Table.HeaderCell>
+                  <Table.HeaderCell>ATTENDANCE</Table.HeaderCell>
+                  <Table.HeaderCell>STATUS</Table.HeaderCell>
+                  <Table.HeaderCell>{""}</Table.HeaderCell>
+                </Table.HeaderRow>
+              }
+            >
+              {filteredEvents.map((event) => {
+                const status = getEventStatus(event);
+                const attendancePercent = event.capacity
+                  ? Math.round(((event.attendeeCount || 0) / event.capacity) * 100)
+                  : 0;
+                return (
+                  <Table.Row key={event.id}>
+                    <Table.Cell>
+                      <div className="flex items-center gap-2">
+                        <IconWithBackground size="small" icon={getEventIcon(event.name)} />
+                        <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                          {event.name}
+                        </span>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex flex-col items-start">
+                        <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                          {formatDate(event.date)}
+                        </span>
+                        <span className="text-caption font-caption text-subtext-color">
+                          {formatTime(event.date)}
+                        </span>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="whitespace-nowrap text-body font-body text-subtext-color">
+                        {event.location || "—"}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex items-center gap-2">
+                        {event.capacity ? (
+                          <>
+                            <Progress
+                              className="h-auto w-16 flex-none"
+                              value={attendancePercent}
+                            />
+                            <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                              {event.attendeeCount || 0}/{event.capacity}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="whitespace-nowrap text-body-bold font-body-bold text-default-font">
+                            {event.attendeeCount || 0}
+                          </span>
+                        )}
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="small"
+                          variant="brand-secondary"
+                          icon={<FeatherPlay />}
+                          onClick={() => handleOpenCheckIn(event.id)}
+                        >
+                          Open Check-in
+                        </Button>
+                        <IconButton
+                          size="small"
+                          icon={<FeatherUserCheck />}
+                          onClick={() => router.push(`/events/${event.id}/checkin`)}
+                        />
+                        <SubframeCore.DropdownMenu.Root>
+                          <SubframeCore.DropdownMenu.Trigger asChild={true}>
+                            <IconButton
+                              size="small"
+                              icon={<FeatherMoreHorizontal />}
+                              onClick={() => { }}
+                            />
+                          </SubframeCore.DropdownMenu.Trigger>
+                          <SubframeCore.DropdownMenu.Portal>
+                            <SubframeCore.DropdownMenu.Content
+                              side="bottom"
+                              align="end"
+                              sideOffset={4}
+                            >
+                              <DropdownMenu.DropdownItem
+                                icon={<FeatherEye />}
+                                onClick={() => router.push(`/events/${event.id}/checkin`)}
+                              >
+                                View Details
+                              </DropdownMenu.DropdownItem>
+                              <DropdownMenu.DropdownItem icon={<FeatherEdit />}>
+                                Edit Event
+                              </DropdownMenu.DropdownItem>
+                              <DropdownMenu.DropdownItem
+                                icon={<FeatherDownload />}
+                                onClick={handleExportAttendance}
+                              >
+                                Export Attendance
+                              </DropdownMenu.DropdownItem>
+                              <DropdownMenu.DropdownItem
+                                icon={<FeatherTrash />}
+                                onClick={() => handleDeleteEvent(event.id)}
+                              >
+                                Delete
+                              </DropdownMenu.DropdownItem>
+                            </SubframeCore.DropdownMenu.Content>
+                          </SubframeCore.DropdownMenu.Portal>
+                        </SubframeCore.DropdownMenu.Root>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              })}
+            </Table>
+          )}
+        </div>
+
+        {/* Create Event Modal */}
+        {showCreateForm && (
+          <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+            <Dialog.Content className="max-w-2xl">
               <div className="flex w-full flex-col items-start gap-6 p-6">
                 <div className="flex w-full items-center justify-between">
                   <span className="text-heading-2 font-heading-2 text-default-font">
@@ -674,11 +709,11 @@ function RushRankEventPage() {
                   </Button>
                 </div>
               </div>
-              </Dialog.Content>
-            </Dialog>
-          )}
-        </div>
+            </Dialog.Content>
+          </Dialog>
+        )}
       </div>
+    </div>
   );
 }
 

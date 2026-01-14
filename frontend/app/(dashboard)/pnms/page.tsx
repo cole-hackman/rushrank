@@ -15,6 +15,7 @@ import { FeatherUsers } from "@subframe/core";
 import { FeatherArrowLeftRight } from "@subframe/core";
 import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
+import { FeatherUserPlus } from "@subframe/core";
 import { api, API_BASE } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
@@ -27,6 +28,7 @@ import { Checkbox } from "@/ui/components/Checkbox";
 import { Badge } from "@/ui/components/Badge";
 import { Avatar } from "@/ui/components/Avatar";
 import { BulkTagModal } from "@/components/admin/BulkTagModal";
+import { SkeletonTable } from "@/components/ui/SkeletonTable";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +65,7 @@ export default function PNMsPage() {
   const [selectedPnmIds, setSelectedPnmIds] = useState<string[]>([]);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [photoFilter, setPhotoFilter] = useState<"all" | "has-photo" | "no-photo">("all");
 
   useEffect(() => {
     (async () => {
@@ -83,7 +86,7 @@ export default function PNMsPage() {
       } catch (e: any) {
         const errorMsg = e?.message || "Unable to fetch chapters";
         console.error("Failed to load chapters:", e);
-        
+
         if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
           toast({
             title: "Cannot connect to backend",
@@ -145,8 +148,14 @@ export default function PNMsPage() {
     if (selectedTags.length) {
       data = data.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
     }
+    // Photo filter
+    if (photoFilter === "has-photo") {
+      data = data.filter((p) => p.photo_url);
+    } else if (photoFilter === "no-photo") {
+      data = data.filter((p) => !p.photo_url);
+    }
     return data;
-  }, [pnms, search, selectedTags]);
+  }, [pnms, search, selectedTags, photoFilter]);
 
   const stats = useMemo(() => {
     const total = pnms.length;
@@ -363,187 +372,233 @@ export default function PNMsPage() {
             <span className="text-caption-bold font-caption-bold">Filters</span>
           </div>
         </div>
-        {allTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => toggleTag(tag)}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
-                  selectedTags.includes(tag)
-                    ? "border-brand-600 bg-brand-600 text-white"
-                    : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
-                )}
-              >
-                {tag}
-              </button>
-            ))}
-            {selectedTags.length > 0 && (
-              <Button
-                variant="neutral-tertiary"
-                size="small"
-                onClick={() => setSelectedTags([])}
-              >
-                Clear filters
-              </Button>
+        {/* Quick filter chips */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setPhotoFilter(photoFilter === "has-photo" ? "all" : "has-photo")}
+            className={cn(
+              "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
+              photoFilter === "has-photo"
+                ? "border-success-600 bg-success-600 text-white"
+                : "border-neutral-border bg-white dark:bg-neutral-800 text-default-font hover:bg-neutral-50 dark:hover:bg-neutral-700"
             )}
-          </div>
-        )}
-      </div>
+          >
+            Has Photo
+          </button>
+          <button
+            onClick={() => setPhotoFilter(photoFilter === "no-photo" ? "all" : "no-photo")}
+            className={cn(
+              "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
+              photoFilter === "no-photo"
+                ? "border-warning-600 bg-warning-600 text-white"
+                : "border-neutral-border bg-white dark:bg-neutral-800 text-default-font hover:bg-neutral-50 dark:hover:bg-neutral-700"
+            )}
+          >
+            No Photo
+          </button>
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => toggleTag(tag)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
+                    selectedTags.includes(tag)
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
+                  )}
+                >
+                  {tag}
+                </button>
+              ))}
+              {selectedTags.length > 0 && (
+                <Button
+                  variant="neutral-tertiary"
+                  size="small"
+                  onClick={() => setSelectedTags([])}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
 
-      <div className="mt-4 w-full rounded-xl border border-solid border-neutral-border bg-white shadow-sm overflow-hidden">
-        {loading && (
-          <div className="flex h-48 items-center justify-center text-subtext-color">
-            <span className="text-body font-body">Loading PNMs...</span>
-          </div>
-        )}
-        {error && !loading && (
-          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-subtext-color">
-            <span className="text-body font-body">{error}</span>
-            <Button variant="neutral-secondary" onClick={loadPnms}>
-              Retry
-            </Button>
-          </div>
-        )}
-        {!loading && !error && (
-          <div className="overflow-x-auto -mx-6 px-6">
-            <Table
-              className="min-w-[1200px] w-full"
-              header={
-                <Table.HeaderRow>
-                  <Table.HeaderCell className="w-[40px] min-w-[40px] text-center">
-                    <input
-                      type="checkbox"
-                      checked={filteredPnms.length > 0 && selectedPnmIds.length === filteredPnms.length}
-                      onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
-                    />
-                  </Table.HeaderCell>
-                  <Table.HeaderCell className="w-[200px] min-w-[200px]">PNM</Table.HeaderCell>
-                  <Table.HeaderCell className="w-[140px] min-w-[140px]">Major</Table.HeaderCell>
-                  <Table.HeaderCell className="w-[140px] min-w-[140px]">Hometown</Table.HeaderCell>
-                  {showEmail && <Table.HeaderCell className="w-[180px] min-w-[180px]">Email</Table.HeaderCell>}
-                  {showPhone && <Table.HeaderCell className="w-[160px] min-w-[160px]">Phone</Table.HeaderCell>}
-                  <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
-                  <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
-                  <Table.HeaderCell className="w-[100px] min-w-[100px] text-right">Actions</Table.HeaderCell>
-                </Table.HeaderRow>
-              }
-            >
-              {filteredPnms.map((pnm) => (
-                <Table.Row key={pnm.id} className="h-14">
-                  <Table.Cell className="w-[40px] min-w-[40px] text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedPnmIds.includes(pnm.id)}
-                      onChange={() => togglePnmSelection(pnm.id)}
-                      className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
-                    />
-                  </Table.Cell>
-                  <Table.Cell className="w-[200px] min-w-[200px] !whitespace-normal">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar image={pnm.photo_url || undefined} size="small">
-                        {pnm.name.slice(0, 2).toUpperCase()}
-                      </Avatar>
-                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                        <span className="text-body-bold font-body-bold text-default-font leading-tight truncate">{pnm.name}</span>
-                        {pnm.year && (
-                          <span className="text-caption font-caption text-subtext-color leading-tight">{pnm.year}</span>
+        <div className="mt-4 w-full rounded-xl border border-solid border-neutral-border bg-white dark:bg-neutral-800 shadow-sm overflow-hidden">
+          {loading && (
+            <SkeletonTable rows={8} columns={6} showCheckbox={true} />
+          )}
+          {error && !loading && (
+            <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-subtext-color">
+              <span className="text-body font-body">{error}</span>
+              <Button variant="neutral-secondary" onClick={loadPnms}>
+                Retry
+              </Button>
+            </div>
+          )}
+          {!loading && !error && (
+            <div className="overflow-x-auto -mx-6 px-6">
+              <Table
+                className="min-w-[1200px] w-full"
+                header={
+                  <Table.HeaderRow>
+                    <Table.HeaderCell className="w-[40px] min-w-[40px] text-center">
+                      <input
+                        type="checkbox"
+                        checked={filteredPnms.length > 0 && selectedPnmIds.length === filteredPnms.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
+                      />
+                    </Table.HeaderCell>
+                    <Table.HeaderCell className="w-[200px] min-w-[200px]">PNM</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[140px] min-w-[140px]">Major</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[140px] min-w-[140px]">Hometown</Table.HeaderCell>
+                    {showEmail && <Table.HeaderCell className="w-[180px] min-w-[180px]">Email</Table.HeaderCell>}
+                    {showPhone && <Table.HeaderCell className="w-[160px] min-w-[160px]">Phone</Table.HeaderCell>}
+                    <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[100px] min-w-[100px] text-right">Actions</Table.HeaderCell>
+                  </Table.HeaderRow>
+                }
+              >
+                {filteredPnms.map((pnm) => (
+                  <Table.Row key={pnm.id} className="h-14">
+                    <Table.Cell className="w-[40px] min-w-[40px] text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedPnmIds.includes(pnm.id)}
+                        onChange={() => togglePnmSelection(pnm.id)}
+                        className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
+                      />
+                    </Table.Cell>
+                    <Table.Cell className="w-[200px] min-w-[200px] !whitespace-normal">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar image={pnm.photo_url || undefined} size="small">
+                          {pnm.name.slice(0, 2).toUpperCase()}
+                        </Avatar>
+                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                          <span className="text-body-bold font-body-bold text-default-font leading-tight truncate">{pnm.name}</span>
+                          {pnm.year && (
+                            <span className="text-caption font-caption text-subtext-color leading-tight">{pnm.year}</span>
+                          )}
+                        </div>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell className="w-[140px] min-w-[140px] text-subtext-color whitespace-nowrap truncate" title={pnm.major || undefined}>
+                      {pnm.major || "—"}
+                    </Table.Cell>
+                    <Table.Cell className="w-[140px] min-w-[140px] text-subtext-color whitespace-nowrap truncate" title={pnm.hometown || undefined}>
+                      {pnm.hometown || "—"}
+                    </Table.Cell>
+                    {showEmail && (
+                      <Table.Cell className="w-[180px] min-w-[180px] text-subtext-color whitespace-nowrap truncate" title={pnm.email || undefined}>
+                        {pnm.email || "—"}
+                      </Table.Cell>
+                    )}
+                    {showPhone && (
+                      <Table.Cell className="w-[160px] min-w-[160px] text-subtext-color whitespace-nowrap truncate" title={pnm.phone || undefined}>
+                        {pnm.phone || "—"}
+                      </Table.Cell>
+                    )}
+                    <Table.Cell className="w-[180px] min-w-[180px] !whitespace-normal">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(pnm.tags || []).slice(0, 3).map((tag) => (
+                          <Badge key={tag}>{tag}</Badge>
+                        ))}
+                        {(pnm.tags?.length || 0) > 3 && (
+                          <Badge variant="neutral">+{(pnm.tags?.length || 0) - 3}</Badge>
+                        )}
+                        {(!pnm.tags || pnm.tags.length === 0) && (
+                          <span className="text-caption font-caption text-subtext-color">—</span>
                         )}
                       </div>
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="w-[140px] min-w-[140px] text-subtext-color whitespace-nowrap truncate" title={pnm.major || undefined}>
-                    {pnm.major || "—"}
-                  </Table.Cell>
-                  <Table.Cell className="w-[140px] min-w-[140px] text-subtext-color whitespace-nowrap truncate" title={pnm.hometown || undefined}>
-                    {pnm.hometown || "—"}
-                  </Table.Cell>
-                  {showEmail && (
-                    <Table.Cell className="w-[180px] min-w-[180px] text-subtext-color whitespace-nowrap truncate" title={pnm.email || undefined}>
-                      {pnm.email || "—"}
                     </Table.Cell>
-                  )}
-                  {showPhone && (
-                    <Table.Cell className="w-[160px] min-w-[160px] text-subtext-color whitespace-nowrap truncate" title={pnm.phone || undefined}>
-                      {pnm.phone || "—"}
+                    <Table.Cell className="w-[120px] min-w-[120px] text-subtext-color whitespace-nowrap">
+                      {pnm.attendance_count || 0} / {pnm.total_events || 0}
                     </Table.Cell>
-                  )}
-                  <Table.Cell className="w-[180px] min-w-[180px] !whitespace-normal">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {(pnm.tags || []).slice(0, 3).map((tag) => (
-                        <Badge key={tag}>{tag}</Badge>
-                      ))}
-                      {(pnm.tags?.length || 0) > 3 && (
-                        <Badge variant="neutral">+{(pnm.tags?.length || 0) - 3}</Badge>
-                      )}
-                      {(!pnm.tags || pnm.tags.length === 0) && (
-                        <span className="text-caption font-caption text-subtext-color">—</span>
-                      )}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell className="w-[120px] min-w-[120px] text-subtext-color whitespace-nowrap">
-                    {pnm.attendance_count || 0} / {pnm.total_events || 0}
-                  </Table.Cell>
-                  <Table.Cell className="w-[100px] min-w-[100px] text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <IconButton
-                        size="small"
-                        icon={<FeatherImage />}
-                        onClick={() => handleExportGraphic(pnm.id, pnm.name)}
-                        aria-label={`Export graphic for ${pnm.name}`}
-                      />
-                      <Link href={`/pnms/${pnm.id}`}>
+                    <Table.Cell className="w-[100px] min-w-[100px] text-right">
+                      <div className="flex items-center justify-end gap-2">
                         <IconButton
                           size="small"
-                          icon={<FeatherEye />}
-                          aria-label={`View ${pnm.name}`}
+                          icon={<FeatherImage />}
+                          onClick={() => handleExportGraphic(pnm.id, pnm.name)}
+                          aria-label={`Export graphic for ${pnm.name}`}
                         />
-                      </Link>
-                      {isAdmin && (
-                        <IconButton
-                          size="small"
-                          variant="destructive-secondary"
-                          icon={<FeatherTrash2 />}
-                          onClick={() => handleDeletePnm(pnm.id, pnm.name)}
-                          aria-label={`Delete ${pnm.name}`}
-                        />
-                      )}
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              ))}
-              {filteredPnms.length === 0 && (
-                <Table.Row>
-                  <Table.Cell
-                    colSpan={7 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
-                    className="py-10 text-center text-subtext-color"
-                  >
-                    <span className="text-body font-body">
-                      {search || selectedTags.length
-                        ? "No PNMs match your filters."
-                        : "No PNMs yet. Add one to get started."}
-                    </span>
-                  </Table.Cell>
-                </Table.Row>
-              )}
-            </Table>
-          </div>
-        )}
-      </div>
+                        <Link href={`/pnms/${pnm.id}`}>
+                          <IconButton
+                            size="small"
+                            icon={<FeatherEye />}
+                            aria-label={`View ${pnm.name}`}
+                          />
+                        </Link>
+                        {isAdmin && (
+                          <IconButton
+                            size="small"
+                            variant="destructive-secondary"
+                            icon={<FeatherTrash2 />}
+                            onClick={() => handleDeletePnm(pnm.id, pnm.name)}
+                            aria-label={`Delete ${pnm.name}`}
+                          />
+                        )}
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+                {filteredPnms.length === 0 && pnms.length === 0 && (
+                  <Table.Row>
+                    <Table.Cell
+                      colSpan={7 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
+                      className="py-12"
+                    >
+                      <div className="flex flex-col items-center justify-center gap-4">
+                        <FeatherUsers className="h-12 w-12 text-neutral-400" />
+                        <div className="text-center">
+                          <p className="text-body-bold font-body-bold text-default-font mb-1">
+                            No PNMs yet
+                          </p>
+                          <p className="text-caption text-subtext-color">
+                            Add your first PNM to get started
+                          </p>
+                        </div>
+                        <Link href="/rush">
+                          <Button icon={<FeatherUserPlus />}>
+                            Add PNM
+                          </Button>
+                        </Link>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                )}
+                {filteredPnms.length === 0 && pnms.length > 0 && (
+                  <Table.Row>
+                    <Table.Cell
+                      colSpan={7 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
+                      className="py-10 text-center text-subtext-color"
+                    >
+                      <span className="text-body font-body">
+                        No PNMs match your filters.
+                      </span>
+                    </Table.Cell>
+                  </Table.Row>
+                )}
+              </Table>
+            </div>
+          )}
+        </div>
 
-      <div className="text-caption font-caption text-subtext-color">
-        Showing {filteredPnms.length} of {pnms.length} PNMs
-      </div>
+        <div className="text-caption font-caption text-subtext-color">
+          Showing {filteredPnms.length} of {pnms.length} PNMs
+        </div>
 
-      <BulkTagModal
-        open={showBulkTagModal}
-        onClose={() => setShowBulkTagModal(false)}
-        selectedPnmIds={selectedPnmIds}
-        chapterId={chapterId}
-        onComplete={handleBulkTagComplete}
-      />
+        <BulkTagModal
+          open={showBulkTagModal}
+          onClose={() => setShowBulkTagModal(false)}
+          selectedPnmIds={selectedPnmIds}
+          chapterId={chapterId}
+          onComplete={handleBulkTagComplete}
+        />
+      </div>
     </div>
   );
 }
