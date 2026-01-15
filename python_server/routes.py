@@ -9,6 +9,8 @@ import secrets
 import string
 import asyncpg
 import os
+import re
+import json
 
 from .auth import get_current_user, get_optional_user
 from .models import *
@@ -2086,6 +2088,155 @@ async def generate_pnm_cards_bulk(
     
     url = await export_service.generate_pnm_cards_bulk(chapter_id=chapter_id, pnm_ids=pnm_ids)
     return {"url": url, "message": "Bulk export completed successfully"}
+
+# Link Resolver endpoints
+@router.post("/link-resolver/soundcloud")
+async def resolve_soundcloud_playlist(
+    payload: Dict[str, str],
+    current_user: dict = Depends(get_current_user)
+):
+    """Extract track information from a SoundCloud playlist URL"""
+    url = payload.get("url", "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+    
+    if "soundcloud.com" not in url:
+        raise HTTPException(status_code=400, detail="Invalid SoundCloud URL")
+    
+    try:
+        from bs4 import BeautifulSoup
+        import httpx
+        
+        # Fetch the playlist page
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            html = response.text
+        
+        # Parse the HTML
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # SoundCloud embeds track data in JSON-LD or script tags
+        tracks = []
+        playlist_title = ""
+        
+        # Try to find JSON-LD data
+        json_ld = soup.find("script", type="application/ld+json")
+        if json_ld:
+            try:
+                data = json.loads(json_ld.string)
+                if isinstance(data, list):
+                    data = data[0] if data else {}
+                
+                # Extract playlist title
+                playlist_title = data.get("name", "")
+                
+                # Extract tracks from trackList
+                track_list = data.get("track", [])
+                if not isinstance(track_list, list):
+                    track_list = [track_list] if track_list else []
+                
+                for track_data in track_list:
+                    if isinstance(track_data, dict):
+                        title = track_data.get("name", "")
+                        # Artist might be in byArtist or creator
+                        artist_data = track_data.get("byArtist") or track_data.get("creator", {})
+                        if isinstance(artist_data, dict):
+                            artist = artist_data.get("name", "Unknown Artist")
+                        else:
+                            artist = str(artist_data) if artist_data else "Unknown Artist"
+                        
+                        if title:
+                            tracks.append({
+                                "title": title,
+                                "artist": artist,
+                                "url": track_data.get("url", "")
+                            })
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning(f"Failed to parse JSON-LD: {e}")
+        
+        # Fallback: Try to extract from script tags with window.__sc_hydration
+        if not tracks:
+            scripts = soup.find_all("script")
+            for script in scripts:
+                if script.string and "__sc_hydration" in script.string:
+                    try:
+                        # Extract the JSON data
+                        match = re.search(r'window\.__sc_hydration\s*=\s*(\[.*?\]);', script.string, re.DOTALL)
+                        if match:
+                            hydration_data = json.loads(match.group(1))
+                            # Navigate through the hydration data to find tracks
+                            for item in hydration_data:
+                                if isinstance(item, dict):
+                                    # Look for track data
+                                    data = item.get("data", {})
+                                    if "tracks" in data:
+                                        track_list = data["tracks"]
+                                        for track_data in track_list:
+                                            title = track_data.get("title", "")
+                                            user = track_data.get("user", {})
+                                            artist = user.get("username", "Unknown Artist") if user else "Unknown Artist"
+                                            if title:
+                                                tracks.append({
+                                                    "title": title,
+                                                    "artist": artist,
+                                                    "url": track_data.get("permalink_url", "")
+                                                })
+                                    # Look for playlist title
+                                    if "title" in data and not playlist_title:
+                                        playlist_title = data["title"]
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        logger.warning(f"Failed to parse hydration data: {e}")
+                        continue
+        
+        # Another fallback: Try to find track elements in the HTML
+        if not tracks:
+            # Look for track links or titles in the HTML
+            track_elements = soup.find_all("a", href=re.compile(r"/tracks/"))
+            for elem in track_elements:
+                title = elem.get_text(strip=True)
+                if title and len(title) > 0:
+                    # Try to find artist in parent or sibling elements
+                    parent = elem.find_parent()
+                    artist = "Unknown Artist"
+                    if parent:
+                        artist_elem = parent.find("a", href=re.compile(r"/users/|/.*/"))
+                        if artist_elem:
+                            artist = artist_elem.get_text(strip=True)
+                    
+                    tracks.append({
+                        "title": title,
+                        "artist": artist,
+                        "url": elem.get("href", "")
+                    })
+        
+        if not tracks:
+            raise HTTPException(
+                status_code=404,
+                detail="Could not extract tracks from this playlist. The playlist may be private or the URL format may have changed."
+            )
+        
+        return {
+            "tracks": tracks,
+            "playlist_title": playlist_title,
+            "track_count": len(tracks)
+        }
+        
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error fetching SoundCloud playlist: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch playlist: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error parsing SoundCloud playlist: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse playlist: {str(e)}"
+        )
 
 # Health check
 @router.get("/health")
