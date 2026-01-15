@@ -55,6 +55,28 @@ export default function RushPage() {
     })();
   }, []);
 
+  // Auto-select event for current day if no event is selected
+  useEffect(() => {
+    if (events.length === 0 || eventLoading) return;
+    
+    // Only auto-select if no event is currently selected
+    if (!activeEventId) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day
+      
+      // Find event that matches today's date
+      const todayEvent = events.find((event) => {
+        const eventDate = new Date(event.date);
+        eventDate.setHours(0, 0, 0, 0); // Reset time to start of day
+        return eventDate.getTime() === today.getTime();
+      });
+      
+      if (todayEvent) {
+        setActiveEventId(todayEvent.id);
+      }
+    }
+  }, [events, activeEventId, eventLoading, setActiveEventId]);
+
   // Load attendance when active event changes
   useEffect(() => {
     if (!activeEventId) {
@@ -94,7 +116,7 @@ export default function RushPage() {
       {/* Header */}
       <div className="flex w-full flex-col items-start gap-1">
         <span className="text-heading-1 font-heading-1 text-default-font">
-          RUSH
+          Rush
         </span>
         <span className="text-body font-body text-subtext-color">
           Use during rush events for quick PNM intake and check-in
