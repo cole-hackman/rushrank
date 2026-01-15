@@ -533,7 +533,7 @@ function RushRankEventPage() {
                       <Badge variant={status.variant}>{status.label}</Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 relative">
                         <Button
                           size="small"
                           variant="brand-secondary"
@@ -560,6 +560,7 @@ function RushRankEventPage() {
                               side="bottom"
                               align="end"
                               sideOffset={4}
+                              className="z-[100]"
                             >
                               <DropdownMenu.DropdownItem
                                 icon={<FeatherEye />}
