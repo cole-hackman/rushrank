@@ -113,9 +113,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <TopbarWithLeftNav.NavItem selected={pathname === "/events"} href="/events">
                     Events
                   </TopbarWithLeftNav.NavItem>
-                  <TopbarWithLeftNav.NavItem selected={pathname === "/link-resolver"} href="/link-resolver">
-                    Link Resolver
-                  </TopbarWithLeftNav.NavItem>
                   {/* ADMIN DROPDOWN HIDDEN - See docs/archive/REIMPLEMENTATION.md */}
                   {/*
                   {adminCheckReady && isAdmin && (
