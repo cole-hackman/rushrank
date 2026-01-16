@@ -15,6 +15,42 @@ import { ThemeToggleItems } from "@/components/ThemeToggle";
 import Link from "next/link";
 import { BottomNav } from "@/components/BottomNav";
 
+const ADMIN_STATUS_CACHE_KEY = "rushapp_admin_status";
+const ADMIN_STATUS_CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
+
+function getCachedAdminStatus(): boolean | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const cached = localStorage.getItem(ADMIN_STATUS_CACHE_KEY);
+    if (!cached) return null;
+    
+    const { isAdmin, timestamp } = JSON.parse(cached);
+    const now = Date.now();
+    
+    // Check if cache is expired
+    if (now - timestamp > ADMIN_STATUS_CACHE_EXPIRY) {
+      localStorage.removeItem(ADMIN_STATUS_CACHE_KEY);
+      return null;
+    }
+    
+    return isAdmin;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedAdminStatus(isAdmin: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(ADMIN_STATUS_CACHE_KEY, JSON.stringify({
+      isAdmin,
+      timestamp: Date.now()
+    }));
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -22,15 +58,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [adminCheckReady, setAdminCheckReady] = useState(false);
 
   useEffect(() => {
+    // Check cache first
+    const cached = getCachedAdminStatus();
+    if (cached !== null) {
+      setIsAdmin(cached);
+      setAdminCheckReady(true);
+      return;
+    }
+
+    // Fetch from API if not cached
     (async () => {
       try {
         const profile = await api<{ memberships: Array<{ role: string }> }>("/me", { timeout: 15000 });
         const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
         setIsAdmin(hasAdminRole);
+        setCachedAdminStatus(hasAdminRole);
       } catch (e: any) {
         console.error("Failed to check admin status:", e);
         // Don't show error toast for admin check - it's not critical
         setIsAdmin(false);
+        setCachedAdminStatus(false);
       } finally {
         setAdminCheckReady(true);
       }

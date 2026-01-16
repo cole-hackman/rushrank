@@ -18,9 +18,15 @@ async def get_db_pool() -> asyncpg.Pool:
     # Log that we have a database URL configured (without exposing the actual value)
     logger.info("DATABASE_URL configured, creating connection pool...")
     
+    # Check if using transaction pooler (recommended for serverless/persistent servers)
+    if ":6543" in database_url or "transaction" in database_url.lower():
+        logger.info("Using Supabase transaction pooler connection (recommended)")
+    elif ":5432" in database_url:
+        logger.warning("Using direct database connection. For better reliability, consider using transaction pooler (port 6543)")
+    
     # Retry logic with exponential backoff
-    max_retries = 3
-    base_delay = 2  # seconds
+    max_retries = 5  # Increased from 3 to 5
+    base_delay = 3  # Increased from 2 to 3 seconds
     
     for attempt in range(max_retries):
         try:
@@ -30,8 +36,14 @@ async def get_db_pool() -> asyncpg.Pool:
                 min_size=1,
                 max_size=10,
                 command_timeout=60,
-                timeout=30,  # Connection timeout in seconds (increased from default 5s)
-                statement_cache_size=0  # Required for Supabase transaction pooler
+                timeout=60,  # Increased from 30 to 60 seconds for Render/Supabase connectivity
+                statement_cache_size=0,  # Required for Supabase transaction pooler
+                server_settings={
+                    "application_name": "rushrank_backend",
+                    "tcp_keepalives_idle": "600",
+                    "tcp_keepalives_interval": "30",
+                    "tcp_keepalives_count": "3",
+                }
             )
             logger.info("Database pool created successfully")
             return pool
@@ -39,17 +51,19 @@ async def get_db_pool() -> asyncpg.Pool:
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
                 logger.warning(f"Database connection timeout (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
+                logger.warning("If this persists, check: 1) DATABASE_URL is correct, 2) Using transaction pooler (port 6543), 3) Supabase allows connections from Render IPs")
                 await asyncio.sleep(delay)
             else:
                 logger.error(f"Failed to create database pool after {max_retries} attempts: {e}")
+                logger.error("Troubleshooting: Ensure DATABASE_URL uses Supabase transaction pooler (port 6543) and Supabase allows connections from all IPs")
                 raise
         except Exception as e:
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
-                logger.warning(f"Failed to create database pool (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {delay}s...")
+                logger.warning(f"Failed to create database pool (attempt {attempt + 1}/{max_retries}): {type(e).__name__}: {str(e)}. Retrying in {delay}s...")
                 await asyncio.sleep(delay)
             else:
-                logger.error(f"Failed to create database pool after {max_retries} attempts: {e}")
+                logger.error(f"Failed to create database pool after {max_retries} attempts: {type(e).__name__}: {str(e)}")
                 raise
 
 async def close_db_pool(pool: asyncpg.Pool):

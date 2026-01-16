@@ -33,7 +33,7 @@ import { Progress } from "@/ui/components/Progress";
 import { Table } from "@/ui/components/Table";
 import { Tabs } from "@/ui/components/Tabs";
 import { DefaultPageLayout } from "@/ui/layouts/DefaultPageLayout";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { exportAllPnms, exportRoundResults } from "@/lib/export";
 
@@ -119,9 +119,8 @@ export default function AnalyticsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const chapters = await api<{ id: string; name: string }[]>("/chapters");
-      const cid = chapters[0]?.id;
-      setChapterId(cid || null);
+      const cid = await getChapterId();
+      setChapterId(cid);
 
       if (cid) {
         await Promise.all([

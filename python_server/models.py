@@ -163,6 +163,7 @@ class Event(BaseModel):
     check_in_code: Optional[str]
     is_active: bool
     created_at: datetime
+    attendee_count: Optional[int] = None
 
 class AttendanceCreate(BaseModel):
     event_id: str

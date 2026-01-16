@@ -11,7 +11,7 @@ import { UserPlus, CheckCircle2, Calendar, Plus, AlertCircle } from "lucide-reac
 import { AddPnmView } from "@/components/rush/AddPnmView";
 import { CheckInView } from "@/components/rush/CheckInView";
 import { ActionCard } from "@/components/rush/ActionCard";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useActiveEvent } from "@/hooks/useActiveEvent";
 import { Button } from "@/ui/components/Button";
 
@@ -42,8 +42,7 @@ export default function RushPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string }[]>("/chapters");
-        const cid = chapters[0]?.id || null;
+        const cid = await getChapterId();
         setChapterId(cid);
         if (cid) {
           const eventsData = await api<Event[]>(`/events?chapter_id=${cid}`);

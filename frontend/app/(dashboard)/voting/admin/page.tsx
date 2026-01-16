@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { Button } from "@/ui/components/Button";
 import { useToast } from "@/components/ToastProvider";
 
@@ -18,8 +18,7 @@ export default function VotingAdminPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<Chapter[]>("/chapters");
-        const cid = chapters[0]?.id || null;
+        const cid = await getChapterId();
         setChapterId(cid);
         if (cid) {
           const list = await api<any[]>(`/pnms?chapter_id=${cid}`);

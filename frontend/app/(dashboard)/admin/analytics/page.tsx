@@ -23,7 +23,7 @@ import { IconButton } from "@/ui/components/IconButton";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Table } from "@/ui/components/Table";
 import { TextField } from "@/ui/components/TextField";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import AdminProtected from "@/components/AdminProtected";
 
@@ -48,8 +48,8 @@ function AnalyticsAndReports() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        setChapterId(chapters[0]?.id || null);
+        const cid = await getChapterId();
+        setChapterId(cid);
       } catch (e: any) {
         toast({ title: "Failed to load chapter", description: e?.message });
       }

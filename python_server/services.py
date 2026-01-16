@@ -1251,15 +1251,20 @@ class EventService:
     """Event management service"""
     
     async def get_chapter_events(self, chapter_id: str) -> List[Event]:
-        """Get events for a chapter"""
+        """Get events for a chapter with attendance counts"""
         db = get_db()
         
         query = """
-            SELECT id, chapter_id, name, description, date, type, location,
-                   check_in_code, is_active, created_at
-            FROM events
-            WHERE chapter_id = $1 AND is_active = true
-            ORDER BY date
+            SELECT 
+                e.id, e.chapter_id, e.name, e.description, e.date, e.type, e.location,
+                e.check_in_code, e.is_active, e.created_at,
+                COUNT(DISTINCT ea.pnm_id) as attendee_count
+            FROM events e
+            LEFT JOIN event_attendance ea ON ea.event_id = e.id
+            WHERE e.chapter_id = $1 AND e.is_active = true
+            GROUP BY e.id, e.chapter_id, e.name, e.description, e.date, e.type, 
+                     e.location, e.check_in_code, e.is_active, e.created_at
+            ORDER BY e.date
         """
         
         rows = await db.execute_query(query, chapter_id)
@@ -1275,20 +1280,26 @@ class EventService:
                 location=row["location"],
                 check_in_code=row["check_in_code"],
                 is_active=row["is_active"],
-                created_at=row["created_at"]
+                created_at=row["created_at"],
+                attendee_count=row["attendee_count"] if row["attendee_count"] else 0
             )
             for row in rows
         ]
     
     async def get_event(self, event_id: str) -> Optional[Event]:
-        """Get specific event"""
+        """Get specific event with attendance count"""
         db = get_db()
         
         query = """
-            SELECT id, chapter_id, name, description, date, type, location,
-                   check_in_code, is_active, created_at
-            FROM events
-            WHERE id = $1
+            SELECT 
+                e.id, e.chapter_id, e.name, e.description, e.date, e.type, e.location,
+                e.check_in_code, e.is_active, e.created_at,
+                COUNT(DISTINCT ea.pnm_id) as attendee_count
+            FROM events e
+            LEFT JOIN event_attendance ea ON ea.event_id = e.id
+            WHERE e.id = $1
+            GROUP BY e.id, e.chapter_id, e.name, e.description, e.date, e.type, 
+                     e.location, e.check_in_code, e.is_active, e.created_at
         """
         
         row = await db.execute_one(query, event_id)
@@ -1306,7 +1317,8 @@ class EventService:
             location=row["location"],
             check_in_code=row["check_in_code"],
             is_active=row["is_active"],
-            created_at=row["created_at"]
+            created_at=row["created_at"],
+            attendee_count=row["attendee_count"] if row["attendee_count"] else 0
         )
     
     async def create_event(self, event_data: EventCreate, chapter_id: str) -> Event:
@@ -1341,7 +1353,57 @@ class EventService:
             location=row["location"],
             check_in_code=row["check_in_code"],
             is_active=row["is_active"],
-            created_at=row["created_at"]
+            created_at=row["created_at"],
+            attendee_count=0  # New events have no attendees yet
+        )
+    
+    async def update_event(self, event_id: str, event_data: EventCreate) -> Event:
+        """Update an event"""
+        db = get_db()
+        
+        query = """
+            UPDATE events
+            SET name = $2, description = $3, date = $4, type = $5, location = $6, check_in_code = $7
+            WHERE id = $1
+            RETURNING id, chapter_id, name, description, date, type, location,
+                      check_in_code, is_active, created_at
+        """
+        
+        row = await db.execute_one(
+            query,
+            event_id,
+            event_data.name,
+            event_data.description,
+            event_data.date,
+            event_data.type.value,
+            event_data.location,
+            event_data.check_in_code
+        )
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Get attendee count
+        attendee_count_query = """
+            SELECT COUNT(DISTINCT pnm_id) as attendee_count
+            FROM event_attendance
+            WHERE event_id = $1
+        """
+        attendee_row = await db.execute_one(attendee_count_query, event_id)
+        attendee_count = attendee_row["attendee_count"] if attendee_row else 0
+        
+        return Event(
+            id=str(row["id"]),
+            chapter_id=str(row["chapter_id"]),
+            name=row["name"],
+            description=row["description"],
+            date=row["date"],
+            type=EventType(row["type"]),
+            location=row["location"],
+            check_in_code=row["check_in_code"],
+            is_active=row["is_active"],
+            created_at=row["created_at"],
+            attendee_count=attendee_count
         )
     
     async def export_attendance_csv(self, chapter_id: str) -> str:
