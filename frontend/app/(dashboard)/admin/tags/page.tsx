@@ -20,7 +20,7 @@ import { Button } from "@/ui/components/Button";
 import { DropdownMenu } from "@/ui/components/DropdownMenu";
 import { IconButton } from "@/ui/components/IconButton";
 import { TextField } from "@/ui/components/TextField";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { TagForm } from "@/components/admin/TagForm";
 import { BulkTagModal } from "@/components/admin/BulkTagModal";
@@ -94,8 +94,8 @@ export default function TagManagementPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        setChapterId(chapters[0]?.id || null);
+        const cid = await getChapterId();
+        setChapterId(cid);
       } catch (e: any) {
         toast({ title: "Failed to load chapter", description: e?.message });
       }

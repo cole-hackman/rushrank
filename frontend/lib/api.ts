@@ -20,6 +20,80 @@ function getToken() {
   return localStorage.getItem("access_token");
 }
 
+const CHAPTER_ID_CACHE_KEY = "rushapp_chapter_id";
+const CHAPTER_ID_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Get cached chapter ID from localStorage
+ */
+export function getCachedChapterId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const cached = localStorage.getItem(CHAPTER_ID_CACHE_KEY);
+    if (!cached) return null;
+    
+    const { chapterId, timestamp } = JSON.parse(cached);
+    const now = Date.now();
+    
+    // Check if cache is expired
+    if (now - timestamp > CHAPTER_ID_CACHE_EXPIRY) {
+      localStorage.removeItem(CHAPTER_ID_CACHE_KEY);
+      return null;
+    }
+    
+    return chapterId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cache chapter ID in localStorage
+ */
+export function setCachedChapterId(chapterId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CHAPTER_ID_CACHE_KEY, JSON.stringify({
+      chapterId,
+      timestamp: Date.now()
+    }));
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+/**
+ * Clear cached chapter ID
+ */
+export function clearCachedChapterId(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CHAPTER_ID_CACHE_KEY);
+}
+
+/**
+ * Get chapter ID - uses cache first, falls back to API call
+ */
+export async function getChapterId(): Promise<string | null> {
+  // Try cache first
+  const cached = getCachedChapterId();
+  if (cached) {
+    return cached;
+  }
+  
+  // Fetch from API
+  try {
+    const chapters = await api<{ id: string }[]>("/chapters", { timeout: 15000 });
+    const chapterId = chapters[0]?.id || null;
+    if (chapterId) {
+      setCachedChapterId(chapterId);
+    }
+    return chapterId;
+  } catch (e) {
+    console.error("Failed to fetch chapter ID:", e);
+    return null;
+  }
+}
+
 /**
  * Check if backend server is reachable
  */

@@ -19,7 +19,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { useSessionWebSocket } from "@/hooks/useSessionWebSocket";
 import { Tabs } from "@/ui/components/Tabs";
@@ -96,9 +96,9 @@ export default function VotingPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        if (chapters && chapters.length > 0) {
-          setChapterId(chapters[0].id);
+        const cid = await getChapterId();
+        if (cid) {
+          setChapterId(cid);
         } else {
           toast({ title: "No chapters found", description: "You need to be a member of a chapter to vote" });
           setChapterId(null);

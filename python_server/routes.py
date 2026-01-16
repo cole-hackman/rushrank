@@ -985,6 +985,20 @@ async def delete_event(
     
     return APIResponse(success=True, message="Event deleted successfully")
 
+@router.patch("/events/{event_id}", response_model=Event)
+async def update_event(
+    event_id: str,
+    event_data: EventCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update an event (admin only)"""
+    event = await event_service.get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    await chapter_service.verify_admin_access(current_user["user_id"], event.chapter_id)
+    return await event_service.update_event(event_id, event_data)
+
 @router.get("/events/{event_id}/attendance")
 async def get_event_attendance(
     event_id: str,

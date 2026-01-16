@@ -14,7 +14,7 @@ import { FeatherUsers } from "@subframe/core";
 import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
-import { api, API_BASE } from "@/lib/api";
+import { api, API_BASE, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
@@ -67,8 +67,7 @@ export default function PNMsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        const cid = chapters[0]?.id || null;
+        const cid = await getChapterId();
         setChapterId(cid);
 
         // Check admin status

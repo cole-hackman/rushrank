@@ -9,7 +9,7 @@
  * - Invite member functionality (stub)
  */
 import { useEffect, useState, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Button } from "@/ui/components/Button";
 import { TextField } from "@/ui/components/TextField";
@@ -47,8 +47,8 @@ export default function UsersPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        setChapterId(chapters[0]?.id || null);
+        const cid = await getChapterId();
+        setChapterId(cid);
       } catch (e: any) {
         toast({ title: "Failed to load chapter", description: e?.message });
       }

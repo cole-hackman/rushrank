@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Button } from "@/ui/components/Button";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
@@ -57,8 +57,7 @@ export default function ExportsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        const cid = chapters[0]?.id || null;
+        const cid = await getChapterId();
         setChapterId(cid);
         if (cid) {
           // Load events

@@ -12,9 +12,9 @@ import { Progress } from "@/ui/components/Progress";
 import { Table } from "@/ui/components/Table";
 import { TextField } from "@/ui/components/TextField";
 import { Dialog } from "@/ui/components/Dialog";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
-import { useActiveEvent } from "@/hooks/useActiveEvent";
+import { useActiveEvent, clearEventsCache } from "@/hooks/useActiveEvent";
 import { SkeletonTable } from "@/components/ui/SkeletonTable";
 import { FeatherAward } from "@subframe/core";
 import { FeatherCalendar } from "@subframe/core";
@@ -60,12 +60,15 @@ type EventWithAttendance = Event & {
 function RushRankEventPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { setActiveEventId } = useActiveEvent();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventWithAttendance[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Only get setActiveEventId when needed - pass chapterId to avoid duplicate API calls
+  const { setActiveEventId } = useActiveEvent({ chapterId });
   const [search, setSearch] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventWithAttendance | null>(null);
   const [createFormData, setCreateFormData] = useState({
     name: "",
     location: "",
@@ -82,6 +85,7 @@ function RushRankEventPage() {
     router.push("/rush");
   };
 
+  // Load events data
   useEffect(() => {
     loadData();
   }, []);
@@ -89,27 +93,30 @@ function RushRankEventPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const chapters = await api<{ id: string; name: string }[]>("/chapters");
-      const cid = chapters[0]?.id;
+      
+      // Get chapter ID (uses cache, should be instant)
+      const cid = await getChapterId();
       setChapterId(cid || null);
+      
       if (cid) {
-        const data = await api<Event[]>(`/events?chapter_id=${cid}`);
-        // Fetch attendance for each event
-        const eventsWithAttendance = await Promise.all(
-          data.map(async (event) => {
-            try {
-              const attendance = await api<any[]>(`/events/${event.id}/attendance`).catch(() => []);
-              return {
-                ...event,
-                attendeeCount: attendance.length,
-                capacity: undefined, // TODO: Add capacity field to Event model if needed
-              };
-            } catch {
-              return { ...event, attendeeCount: 0, capacity: undefined };
-            }
-          })
-        );
+        // Fetch events - should be fast now with attendee_count included (no N+1 queries)
+        // Add timestamp to bypass any browser caching
+        const timestamp = Date.now();
+        const data = await api<Event[]>(`/events?chapter_id=${cid}&_t=${timestamp}`);
+        
+        // Events now come with attendee_count from backend, map it to attendeeCount
+        const eventsWithAttendance = data.map((event: any) => ({
+          ...event,
+          attendeeCount: event.attendee_count || 0,
+          capacity: undefined, // TODO: Add capacity field to Event model if needed
+        }));
         setEvents(eventsWithAttendance);
+      } else {
+        // No chapter ID - show error but don't block UI
+        toast({ 
+          title: "No chapter found", 
+          description: "Please contact an administrator to join a chapter." 
+        });
       }
     } catch (e: any) {
       console.error("Failed to load events:", e);
@@ -126,10 +133,10 @@ function RushRankEventPage() {
           description: "Your session may have expired. Please try logging out and back in."
         });
       } else {
-      toast({
-        title: "Failed to load events",
+        toast({
+          title: "Failed to load events",
           description: errorMsg,
-      });
+        });
       }
     } finally {
       setLoading(false);
@@ -158,6 +165,25 @@ function RushRankEventPage() {
     );
   }, [events, search]);
 
+  const handleEditEvent = (event: EventWithAttendance) => {
+    // Parse the date to populate form
+    const eventDate = new Date(event.date);
+    const dateStr = eventDate.toISOString().split('T')[0];
+    const timeStr = eventDate.toTimeString().slice(0, 5); // HH:MM format
+    
+    setEditingEvent(event);
+    setCreateFormData({
+      name: event.name,
+      location: event.location || "",
+      date: dateStr,
+      startTime: timeStr,
+      endTime: "", // Events don't have end time stored separately
+      description: event.description || "",
+      capacity: "",
+    });
+    setShowCreateForm(true);
+  };
+
   const handleCreateEvent = async () => {
     if (!chapterId) {
       toast({ title: "Error", description: "No chapter available. Please contact an administrator to join a chapter." });
@@ -175,19 +201,36 @@ function RushRankEventPage() {
         ? new Date(`${createFormData.date}T${createFormData.endTime}`)
         : null;
 
-      await api<Event>(`/events?chapter_id=${chapterId}`, {
-        method: "POST",
-        body: {
-          name: createFormData.name,
-          description: createFormData.description || null,
-          date: dateTime.toISOString(),
-          location: createFormData.location || null,
-          type: "optional", // Default to optional
-        },
-      });
+      if (editingEvent) {
+        // Update existing event
+        await api<Event>(`/events/${editingEvent.id}`, {
+          method: "PATCH",
+          body: {
+            name: createFormData.name,
+            description: createFormData.description || null,
+            date: dateTime.toISOString(),
+            location: createFormData.location || null,
+            type: editingEvent.type || "optional",
+          },
+        });
+        toast({ title: "Success", description: "Event updated successfully" });
+      } else {
+        // Create new event
+        await api<Event>(`/events?chapter_id=${chapterId}`, {
+          method: "POST",
+          body: {
+            name: createFormData.name,
+            description: createFormData.description || null,
+            date: dateTime.toISOString(),
+            location: createFormData.location || null,
+            type: "optional", // Default to optional
+          },
+        });
+        toast({ title: "Success", description: "Event created successfully" });
+      }
 
-      toast({ title: "Success", description: "Event created successfully" });
       setShowCreateForm(false);
+      setEditingEvent(null);
       setCreateFormData({
         name: "",
         location: "",
@@ -197,11 +240,13 @@ function RushRankEventPage() {
         description: "",
         capacity: "",
       });
+      // Clear events cache to ensure fresh data
+      clearEventsCache();
       await loadData();
     } catch (e: any) {
       toast({
-        title: "Failed to create event",
-        description: e?.message || "Unable to create event. Please try again.",
+        title: editingEvent ? "Failed to update event" : "Failed to create event",
+        description: e?.message || `Unable to ${editingEvent ? "update" : "create"} event. Please try again.`,
       });
     }
   };
@@ -253,6 +298,8 @@ function RushRankEventPage() {
     try {
       await api(`/events/${eventId}`, { method: "DELETE" });
       toast({ title: "Success", description: "Event deleted successfully" });
+      // Clear events cache to ensure fresh data
+      clearEventsCache();
       await loadData();
     } catch (e: any) {
       toast({
@@ -568,7 +615,10 @@ function RushRankEventPage() {
                                 >
                                   View Details
                                 </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem icon={<FeatherEdit />}>
+                                <DropdownMenu.DropdownItem 
+                                  icon={<FeatherEdit />}
+                                  onClick={() => handleEditEvent(event)}
+                                >
                                   Edit Event
                                 </DropdownMenu.DropdownItem>
                                 <DropdownMenu.DropdownItem
@@ -595,14 +645,28 @@ function RushRankEventPage() {
             )}
           </div>
 
-          {/* Create Event Modal */}
+          {/* Create/Edit Event Modal */}
           {showCreateForm && (
-            <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+            <Dialog open={showCreateForm} onOpenChange={(open) => {
+              setShowCreateForm(open);
+              if (!open) {
+                setEditingEvent(null);
+                setCreateFormData({
+                  name: "",
+                  location: "",
+                  date: "",
+                  startTime: "",
+                  endTime: "",
+                  description: "",
+                  capacity: "",
+                });
+              }
+            }}>
             <Dialog.Content className="max-w-2xl w-[95vw] mobile:w-full overflow-y-auto max-h-[90vh] z-[100]">
               <div className="flex w-full flex-col items-start gap-6 p-6 mobile:p-4 mobile:pb-24">
                 <div className="flex w-full items-center justify-between">
                   <span className="text-heading-2 font-heading-2 text-default-font">
-                    Create New Event
+                    {editingEvent ? "Edit Event" : "Create New Event"}
                   </span>
                   <IconButton
                     size="small"
@@ -721,7 +785,7 @@ function RushRankEventPage() {
                     Cancel
                   </Button>
                   <Button variant="brand-primary" icon={<FeatherSave />} onClick={handleCreateEvent}>
-                    Add Event
+                    {editingEvent ? "Update Event" : "Add Event"}
                   </Button>
                 </div>
               </div>

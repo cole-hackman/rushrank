@@ -12,7 +12,7 @@ import { FeatherThumbsDown } from "@subframe/core";
 import { FeatherThumbsUp } from "@subframe/core";
 import { FeatherTrendingUp } from "@subframe/core";
 import { FeatherUsers } from "@subframe/core";
-import { api, API_BASE } from "@/lib/api";
+import { api, API_BASE, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { useRouter } from "next/navigation";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
@@ -73,8 +73,8 @@ export default function ResultsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const chapters = await api<{ id: string; name: string }[]>("/chapters");
-        setChapterId(chapters[0]?.id || null);
+        const cid = await getChapterId();
+        setChapterId(cid);
       } catch (e: any) {
         toast({ title: "Failed to load chapter", description: e?.message });
       }

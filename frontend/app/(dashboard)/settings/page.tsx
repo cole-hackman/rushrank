@@ -9,7 +9,7 @@ import { Button } from "@/ui/components/Button";
 import { Checkbox } from "@/ui/components/Checkbox";
 import { IconButton } from "@/ui/components/IconButton";
 import { TextField } from "@/ui/components/TextField";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import AdminProtected from "@/components/AdminProtected";
 
@@ -50,9 +50,8 @@ export default function SettingsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const chapters = await api<{ id: string; name: string }[]>("/chapters");
-      const cid = chapters[0]?.id;
-      setChapterId(cid || null);
+      const cid = await getChapterId();
+      setChapterId(cid);
 
       if (cid) {
         await loadQuestionnaires(cid);

@@ -14,7 +14,7 @@ import { MoreHorizontal, ChevronRight } from "lucide-react";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Button } from "@/ui/components/Button";
 import { SkeletonCard } from "@/components/ui/SkeletonTable";
-import { api } from "@/lib/api";
+import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { useActiveEvent } from "@/hooks/useActiveEvent";
 import {
@@ -28,13 +28,15 @@ import {
 export default function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { activeEvent, loading: eventLoading } = useActiveEvent();
-  const [loading, setLoading] = useState(true);
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [totalPnms, setTotalPnms] = useState(0);
   const [totalEvents, setTotalEvents] = useState(0);
   const [upcomingEvents, setUpcomingEvents] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  
+  // Use activeEvent hook with chapterId once we have it
+  const { activeEvent, loading: eventLoading } = useActiveEvent({ chapterId });
 
   useEffect(() => {
     loadDashboardData();
@@ -42,54 +44,17 @@ export default function DashboardPage() {
 
   const loadDashboardData = async () => {
     try {
-      setLoading(true);
+      setDataLoading(true);
       setError(null);
 
-      // Get chapter
-      let cid: string | null = null;
-      try {
-        const chapters = await api<{ id: string }[]>("/chapters", { timeout: 15000 });
-        cid = chapters[0]?.id || null;
-        if (!cid) {
-          toast({ title: "No chapter found", description: "Please create a chapter first" });
-          setLoading(false);
-          return;
-        }
-        setChapterId(cid);
-      } catch (e: any) {
-        console.error("Failed to load chapters:", e);
-        const errorMsg = e?.message || "Unable to fetch chapters";
-        setError(errorMsg);
-        const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
-
-        if (errorMsg.includes("timed out") || errorMsg.includes("timeout")) {
-          if (isProduction) {
-            toast({
-              title: "Backend server not responding",
-              description: `Request timed out. Please check if your Render backend service is running and healthy.`
-            });
-          } else {
-            toast({
-              title: "Backend server not responding",
-              description: "Please make sure the backend server is running on port 8000"
-            });
-          }
-        } else if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
-          toast({
-            title: "Cannot connect to backend",
-            description: errorMsg
-          });
-        } else if (errorMsg.includes("Authentication failed") || errorMsg.includes("401")) {
-          toast({
-            title: "Authentication failed",
-            description: "Your session may have expired. Please try logging out and back in."
-          });
-        } else {
-          toast({ title: "Failed to load chapter", description: errorMsg });
-        }
-        setLoading(false);
+      // Get chapter ID (uses cache first)
+      const cid = await getChapterId();
+      if (!cid) {
+        toast({ title: "No chapter found", description: "Please create a chapter first" });
+        setDataLoading(false);
         return;
       }
+      setChapterId(cid);
 
       // Load all data in parallel with error handling
       let pnmsData: any[] = [];
@@ -130,8 +95,9 @@ export default function DashboardPage() {
       console.error("Failed to load dashboard:", e);
       const errorMessage = e?.message || e?.toString() || "Unknown error occurred";
       toast({ title: "Failed to load dashboard", description: errorMessage });
+      setError(errorMessage);
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   };
 
@@ -155,9 +121,10 @@ export default function DashboardPage() {
   };
 
   const isNewChapter = totalPnms === 0 && totalEvents === 0;
+  const loading = dataLoading;
 
   // Loading state with skeletons
-  if (loading) {
+  if (loading && !chapterId) {
     return (
       <div className="container max-w-none flex h-full w-full flex-col items-start gap-6 bg-default-background px-4 py-6 sm:px-6">
         <div className="flex w-full flex-col items-start gap-1">
