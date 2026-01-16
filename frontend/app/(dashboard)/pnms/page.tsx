@@ -405,7 +405,7 @@ export default function PNMsPage() {
                     <Table.HeaderCell className="w-[40px] min-w-[40px] text-center">
                       <input
                         type="checkbox"
-                        checked={filteredPnms.length > 0 && selectedPnmIds.length === filteredPnms.length}
+                        checked={filteredPnms.length > 0 && filteredPnms.every((p) => selectedPnmIds.includes(p.id))}
                         onChange={toggleSelectAll}
                         className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
                       />
