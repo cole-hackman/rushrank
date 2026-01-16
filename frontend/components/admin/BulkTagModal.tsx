@@ -31,10 +31,16 @@ export function BulkTagModal({ open, onClose, selectedPnmIds, chapterId, onCompl
   const [operation, setOperation] = useState<"add" | "remove">("add");
   const [processing, setProcessing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [showCreateTag, setShowCreateTag] = useState(false);
+  const [creatingTag, setCreatingTag] = useState(false);
 
   useEffect(() => {
     if (open && chapterId) {
       loadTags();
+      setSelectedTags([]);
+      setNewTagLabel("");
+      setShowCreateTag(false);
     }
   }, [open, chapterId]);
 
@@ -48,6 +54,26 @@ export function BulkTagModal({ open, onClose, selectedPnmIds, chapterId, onCompl
       toast({ title: "Failed to load tags", description: e?.message });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateTag = async () => {
+    if (!chapterId || !newTagLabel.trim()) return;
+    setCreatingTag(true);
+    try {
+      const newTag = await api<Tag>(`/tags?chapter_id=${chapterId}`, {
+        method: "POST",
+        body: { label: newTagLabel.trim(), color: "#6366f1" },
+      });
+      setTags([...tags, newTag]);
+      setSelectedTags([...selectedTags, newTag.id]);
+      setNewTagLabel("");
+      setShowCreateTag(false);
+      toast({ title: "Tag created", description: `Created tag "${newTag.label}"` });
+    } catch (e: any) {
+      toast({ title: "Failed to create tag", description: e?.message || "Unable to create tag" });
+    } finally {
+      setCreatingTag(false);
     }
   };
 
@@ -142,11 +168,64 @@ export function BulkTagModal({ open, onClose, selectedPnmIds, chapterId, onCompl
           </div>
 
           <div>
-            <label className="text-sm font-semibold text-beta-navy mb-2 block">Select Tags</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-beta-navy">Select Tags</label>
+              <button
+                onClick={() => setShowCreateTag(!showCreateTag)}
+                className="text-xs text-beta-navy hover:text-beta-navy/80 font-medium"
+              >
+                {showCreateTag ? "Cancel" : "+ Create Tag"}
+              </button>
+            </div>
+            
+            {showCreateTag && (
+              <div className="mb-3 p-3 rounded-lg border border-beta-gray/30 bg-beta-navy/5">
+                <input
+                  type="text"
+                  value={newTagLabel}
+                  onChange={(e) => setNewTagLabel(e.target.value)}
+                  placeholder="Enter tag name..."
+                  className="w-full px-3 py-2 rounded border border-beta-gray/30 bg-white text-beta-navy text-sm focus:outline-none focus:ring-2 focus:ring-beta-navy focus:border-beta-navy"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newTagLabel.trim()) {
+                      handleCreateTag();
+                    }
+                  }}
+                />
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      setShowCreateTag(false);
+                      setNewTagLabel("");
+                    }}
+                    className="text-xs text-beta-gray hover:text-beta-navy"
+                    disabled={creatingTag}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateTag}
+                    disabled={creatingTag || !newTagLabel.trim()}
+                    className="px-3 py-1 text-xs font-semibold rounded bg-beta-navy text-white hover:bg-beta-navy/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creatingTag ? "Creating..." : "Create"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <div className="text-center py-4 text-beta-gray">Loading tags...</div>
             ) : tags.length === 0 ? (
-              <div className="text-center py-4 text-beta-gray">No tags available. Create tags first.</div>
+              <div className="text-center py-4 text-beta-gray">
+                <p className="mb-2">No tags available.</p>
+                <button
+                  onClick={() => setShowCreateTag(true)}
+                  className="text-xs text-beta-navy hover:text-beta-navy/80 font-medium underline"
+                >
+                  Create your first tag
+                </button>
+              </div>
             ) : (
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {tags.map((tag) => (
