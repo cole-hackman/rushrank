@@ -96,13 +96,16 @@ function RushRankEventPage() {
       
       // Get chapter ID (uses cache, should be instant)
       const cid = await getChapterId();
+      console.log("[EventsPage] Chapter ID:", cid);
       setChapterId(cid || null);
       
       if (cid) {
         // Fetch events - should be fast now with attendee_count included (no N+1 queries)
         // Add timestamp to bypass any browser caching
         const timestamp = Date.now();
+        console.log("[EventsPage] Fetching events for chapter_id:", cid);
         const data = await api<Event[]>(`/events?chapter_id=${cid}&_t=${timestamp}`);
+        console.log("[EventsPage] Received events:", data?.length || 0, data);
         
         // Events now come with attendee_count from backend, map it to attendeeCount
         const eventsWithAttendance = data.map((event: any) => ({
@@ -111,15 +114,20 @@ function RushRankEventPage() {
           capacity: undefined, // TODO: Add capacity field to Event model if needed
         }));
         setEvents(eventsWithAttendance);
+        
+        if (data.length === 0) {
+          console.warn("[EventsPage] No events returned - this might be expected if no events exist");
+        }
       } else {
         // No chapter ID - show error but don't block UI
+        console.error("[EventsPage] No chapter ID found");
         toast({ 
           title: "No chapter found", 
-          description: "Please contact an administrator to join a chapter." 
+          description: "Please contact an administrator to join a chapter. If you just logged in, try refreshing the page." 
         });
       }
     } catch (e: any) {
-      console.error("Failed to load events:", e);
+      console.error("[EventsPage] Failed to load events:", e);
       const errorMsg = e?.message || "Unable to fetch events. Please try again.";
 
       if (errorMsg.includes("Cannot connect to backend") || errorMsg.includes("Failed to fetch")) {
@@ -131,6 +139,12 @@ function RushRankEventPage() {
         toast({
           title: "Authentication failed",
           description: "Your session may have expired. Please try logging out and back in."
+        });
+      } else if (errorMsg.includes("Access denied") || errorMsg.includes("403")) {
+        console.error("[EventsPage] Access denied - membership issue");
+        toast({
+          title: "Access denied",
+          description: "You don't have access to this chapter's events. You may need to be added to the chapter by an administrator. Try clearing your cache and refreshing."
         });
       } else {
         toast({
@@ -298,6 +312,23 @@ function RushRankEventPage() {
     try {
       await api(`/events/${eventId}`, { method: "DELETE" });
       toast({ title: "Success", description: "Event deleted successfully" });
+      
+      // Clear form state if the deleted event was being edited, or if form is open
+      // This prevents old data from persisting when creating a new event after delete
+      if (editingEvent?.id === eventId || showCreateForm) {
+        setEditingEvent(null);
+        setShowCreateForm(false);
+        setCreateFormData({
+          name: "",
+          location: "",
+          date: "",
+          startTime: "",
+          endTime: "",
+          description: "",
+          capacity: "",
+        });
+      }
+      
       // Clear events cache to ensure fresh data
       clearEventsCache();
       await loadData();
@@ -480,7 +511,7 @@ function RushRankEventPage() {
           </div>
 
           {/* Events Table */}
-          <div className="flex w-full flex-col items-start gap-4 overflow-hidden overflow-x-auto">
+          <div className="flex w-full flex-col items-start gap-4 overflow-hidden overflow-x-auto relative">
             {loading ? (
             <div className="rounded-xl border border-neutral-border bg-white dark:bg-neutral-800 overflow-hidden w-full">
               <SkeletonTable rows={5} columns={5} showCheckbox={false} />
@@ -580,7 +611,7 @@ function RushRankEventPage() {
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </Table.Cell>
                       <Table.Cell>
-                      <div className="flex items-center justify-end gap-2 relative">
+                      <div className="flex items-center justify-end gap-2 relative z-0">
                         <Button
                           size="small"
                           variant="brand-secondary"
@@ -607,7 +638,8 @@ function RushRankEventPage() {
                                 side="bottom"
                                 align="end"
                                 sideOffset={4}
-                              className="z-[100]"
+                                collisionPadding={8}
+                                className="!z-[9999]"
                               >
                                 <DropdownMenu.DropdownItem
                                   icon={<FeatherEye />}

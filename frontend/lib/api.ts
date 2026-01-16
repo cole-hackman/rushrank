@@ -68,28 +68,59 @@ export function setCachedChapterId(chapterId: string): void {
 export function clearCachedChapterId(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(CHAPTER_ID_CACHE_KEY);
+  console.log("[ChapterID] Cache cleared");
+}
+
+/**
+ * Debug function to check chapter ID cache status
+ */
+export function debugChapterIdCache(): { cached: string | null; valid: boolean } {
+  const cached = getCachedChapterId();
+  return {
+    cached,
+    valid: cached !== null
+  };
 }
 
 /**
  * Get chapter ID - uses cache first, falls back to API call
+ * @param forceRefresh - If true, bypass cache and fetch fresh from API
  */
-export async function getChapterId(): Promise<string | null> {
-  // Try cache first
-  const cached = getCachedChapterId();
-  if (cached) {
-    return cached;
+export async function getChapterId(forceRefresh: boolean = false): Promise<string | null> {
+  // Try cache first (unless forcing refresh)
+  if (!forceRefresh) {
+    const cached = getCachedChapterId();
+    if (cached) {
+      console.log("[ChapterID] Using cached chapter ID:", cached);
+      return cached;
+    }
+  } else {
+    console.log("[ChapterID] Force refresh - clearing cache");
+    clearCachedChapterId();
   }
   
   // Fetch from API
   try {
-    const chapters = await api<{ id: string }[]>("/chapters", { timeout: 15000 });
+    console.log("[ChapterID] Fetching chapters from API...");
+    const chapters = await api<{ id: string; name: string }[]>("/chapters", { timeout: 15000 });
+    console.log("[ChapterID] API returned chapters:", chapters);
+    
+    if (!chapters || chapters.length === 0) {
+      console.warn("[ChapterID] No chapters returned from API");
+      return null;
+    }
+    
     const chapterId = chapters[0]?.id || null;
     if (chapterId) {
+      console.log("[ChapterID] Caching chapter ID:", chapterId, "for chapter:", chapters[0]?.name);
       setCachedChapterId(chapterId);
+    } else {
+      console.warn("[ChapterID] Chapter ID is null");
     }
     return chapterId;
-  } catch (e) {
-    console.error("Failed to fetch chapter ID:", e);
+  } catch (e: any) {
+    console.error("[ChapterID] Failed to fetch chapter ID:", e);
+    console.error("[ChapterID] Error details:", e?.message || e);
     return null;
   }
 }
