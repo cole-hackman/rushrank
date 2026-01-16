@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/ui/components/Badge";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
-import { DropdownMenu } from "@/ui/components/DropdownMenu";
 import { IconButton } from "@/ui/components/IconButton";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Progress } from "@/ui/components/Progress";
@@ -27,18 +26,15 @@ import { FeatherFilter } from "@subframe/core";
 import { FeatherGamepad } from "@subframe/core";
 import { FeatherHome } from "@subframe/core";
 import { FeatherMapPin } from "@subframe/core";
-import { FeatherMoreHorizontal } from "@subframe/core";
 import { FeatherPlus } from "@subframe/core";
 import { FeatherPlay } from "@subframe/core";
 import { FeatherSave } from "@subframe/core";
 import { FeatherSearch } from "@subframe/core";
 import { FeatherTrash } from "@subframe/core";
 import { FeatherTrendingUp } from "@subframe/core";
-import { FeatherUserCheck } from "@subframe/core";
 import { FeatherUsers } from "@subframe/core";
 import { FeatherUtensils } from "@subframe/core";
 import { FeatherX } from "@subframe/core";
-import * as SubframeCore from "@subframe/core";
 
 type Event = {
   id: string;
@@ -554,7 +550,7 @@ function RushRankEventPage() {
                     <Table.HeaderCell>LOCATION</Table.HeaderCell>
                     <Table.HeaderCell>ATTENDANCE</Table.HeaderCell>
                     <Table.HeaderCell>STATUS</Table.HeaderCell>
-                    <Table.HeaderCell>{""}</Table.HeaderCell>
+                    <Table.HeaderCell>ACTIONS</Table.HeaderCell>
                   </Table.HeaderRow>
                 }
               >
@@ -611,63 +607,37 @@ function RushRankEventPage() {
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </Table.Cell>
                       <Table.Cell>
-                      <div className="flex items-center justify-end gap-2 relative z-0">
-                        <Button
-                          size="small"
-                          variant="brand-secondary"
-                          icon={<FeatherPlay />}
-                          onClick={() => handleOpenCheckIn(event.id)}
-                        >
-                          Open Check-in
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
                           <IconButton
                             size="small"
-                            icon={<FeatherUserCheck />}
-                            onClick={() => router.push(`/events/${event.id}/checkin`)}
+                            icon={<FeatherPlay />}
+                            onClick={() => handleOpenCheckIn(event.id)}
+                            title="Open Check-in"
                           />
-                          <SubframeCore.DropdownMenu.Root>
-                            <SubframeCore.DropdownMenu.Trigger asChild={true}>
-                              <IconButton
-                                size="small"
-                                icon={<FeatherMoreHorizontal />}
-                              onClick={() => { }}
-                              />
-                            </SubframeCore.DropdownMenu.Trigger>
-                            <SubframeCore.DropdownMenu.Portal>
-                              <SubframeCore.DropdownMenu.Content
-                                side="bottom"
-                                align="end"
-                                sideOffset={4}
-                                collisionPadding={8}
-                                className="!z-[9999]"
-                              >
-                                <DropdownMenu.DropdownItem
-                                  icon={<FeatherEye />}
-                                  onClick={() => router.push(`/events/${event.id}/checkin`)}
-                                >
-                                  View Details
-                                </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem 
-                                  icon={<FeatherEdit />}
-                                  onClick={() => handleEditEvent(event)}
-                                >
-                                  Edit Event
-                                </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem
-                                  icon={<FeatherDownload />}
-                                  onClick={handleExportAttendance}
-                                >
-                                  Export Attendance
-                                </DropdownMenu.DropdownItem>
-                                <DropdownMenu.DropdownItem
-                                  icon={<FeatherTrash />}
-                                  onClick={() => handleDeleteEvent(event.id)}
-                                >
-                                  Delete
-                                </DropdownMenu.DropdownItem>
-                              </SubframeCore.DropdownMenu.Content>
-                            </SubframeCore.DropdownMenu.Portal>
-                          </SubframeCore.DropdownMenu.Root>
+                          <IconButton
+                            size="small"
+                            icon={<FeatherEye />}
+                            onClick={() => router.push(`/events/${event.id}/checkin`)}
+                            title="View Details"
+                          />
+                          <IconButton
+                            size="small"
+                            icon={<FeatherEdit />}
+                            onClick={() => handleEditEvent(event)}
+                            title="Edit Event"
+                          />
+                          <IconButton
+                            size="small"
+                            icon={<FeatherDownload />}
+                            onClick={handleExportAttendance}
+                            title="Export Attendance"
+                          />
+                          <IconButton
+                            size="small"
+                            icon={<FeatherTrash />}
+                            onClick={() => handleDeleteEvent(event.id)}
+                            title="Delete Event"
+                          />
                         </div>
                       </Table.Cell>
                     </Table.Row>
