@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/ui/input";
 import { Button } from "@/ui/components/Button";
 import { ArrowLeft, CheckCircle2, QrCode, AlertCircle, Camera, Upload } from "lucide-react";
 import { cn, formatPhoneNumber } from "@/lib/utils";
+import { Progress } from "@/components/ui/progress";
 
 interface AddPnmViewProps {
   onBack: () => void;
@@ -30,6 +31,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
   const [questionnaireAnswers, setQuestionnaireAnswers] = useState<Record<string, string>>({});
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
   useEffect(() => {
     (async () => {
@@ -65,7 +67,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     }
   }, [file]);
 
-  const validate = (): boolean => {
+  const validateStep1 = (): boolean => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) {
       newErrors.name = "Name is required";
@@ -88,9 +90,6 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     if (!celebrityCrush.trim()) {
       newErrors.celebrityCrush = "Celebrity Crush is required";
     }
-    if (!file) {
-      newErrors.file = "Photo is required";
-    }
 
     // Validate questionnaire required fields
     questionnaireQuestions.forEach((q, idx) => {
@@ -106,8 +105,18 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Check if form is valid for button state
-  const isFormValid = (): boolean => {
+  const validateStep2 = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!file) {
+      newErrors.file = "Photo is required";
+      toast({ title: "Photo required", description: "Please upload a photo to continue" });
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Check if step 1 is valid for button state
+  const isStep1Valid = (): boolean => {
     if (!chapterId) return false;
     if (!name.trim()) return false;
     if (!email.trim() && !phone.trim()) return false;
@@ -116,7 +125,6 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     if (!year.trim()) return false;
     if (!hometown.trim()) return false;
     if (!celebrityCrush.trim()) return false;
-    if (!file) return false;
 
     // Check questionnaire required fields
     for (let idx = 0; idx < questionnaireQuestions.length; idx++) {
@@ -132,6 +140,23 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     return true;
   };
 
+  // Check if step 2 is valid for button state
+  const isStep2Valid = (): boolean => {
+    return !!file;
+  };
+
+  const handleNext = () => {
+    if (validateStep1()) {
+      setCurrentStep(2);
+      setErrors({});
+    }
+  };
+
+  const handleBack = () => {
+    setCurrentStep(1);
+    setErrors({});
+  };
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!chapterId) {
@@ -139,8 +164,14 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
       return;
     }
 
-    if (!validate()) {
-      toast({ title: "Please fill all required fields", description: "Photo and all fields are required." });
+    // Validate step 1 again
+    if (!validateStep1()) {
+      setCurrentStep(1);
+      return;
+    }
+
+    // Validate step 2
+    if (!validateStep2()) {
       return;
     }
 
@@ -239,7 +270,17 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     setSuccess(false);
     setCreatedPnmId(null);
     setErrors({});
+    setCurrentStep(1);
   };
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        onBack();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success, onBack]);
 
   if (success) {
     return (
@@ -255,6 +296,9 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
               </h2>
               <p className="text-beta-gray">
                 The PNM has been successfully added to the system.
+              </p>
+              <p className="text-sm text-beta-gray mt-2">
+                Returning to Rush page in 5 seconds...
               </p>
             </div>
             <div className="flex flex-col gap-3">
@@ -300,8 +344,24 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
           </p>
         </div>
 
+        {/* Progress Indicator */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-beta-navy">
+              Step {currentStep} of 2
+            </span>
+            <span className="text-xs text-beta-gray">
+              {currentStep === 1 ? "Personal Info" : "Photo & Details"}
+            </span>
+          </div>
+          <Progress value={(currentStep / 2) * 100} className="h-2" />
+        </div>
+
         <form className="space-y-6" onSubmit={onSubmit}>
-          <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-6 space-y-4">
+          {/* Step 1: Personal Info */}
+          {currentStep === 1 && (
+            <div className="space-y-6">
+              <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-6 space-y-4">
             <LabelInputContainer>
               <Label htmlFor="name">Full Name *</Label>
               <Input
@@ -534,10 +594,26 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                 })}
               </div>
             )}
-          </div>
+              </div>
 
-          {/* Photo Upload Section */}
-          <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-6 space-y-4">
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  onClick={handleNext}
+                  size="large"
+                  className="flex-1 min-h-[48px] text-base"
+                  disabled={!isStep1Valid()}
+                >
+                  Next: Photo & Details →
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Photo & Details */}
+          {currentStep === 2 && (
+            <div className="space-y-6">
+              <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-6 space-y-4">
             <LabelInputContainer>
               <Label htmlFor="photo">Photo *</Label>
               <div className="space-y-3">
@@ -628,27 +704,29 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                 )}
               </div>
             </LabelInputContainer>
-          </div>
+              </div>
 
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              onClick={onBack}
-              variant="neutral-secondary"
-              size="large"
-              className="flex-1 min-h-[48px] text-base"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={submitting || !chapterId || !isFormValid()}
-              size="large"
-              className="flex-1 min-h-[48px] text-base"
-            >
-              {submitting ? "Adding..." : "Add PNM"}
-            </Button>
-          </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  onClick={handleBack}
+                  variant="neutral-secondary"
+                  size="large"
+                  className="flex-1 min-h-[48px] text-base"
+                >
+                  ← Back
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={submitting || !chapterId || !isStep2Valid()}
+                  size="large"
+                  className="flex-1 min-h-[48px] text-base"
+                >
+                  {submitting ? "Adding..." : "Add PNM"}
+                </Button>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>

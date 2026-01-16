@@ -1415,31 +1415,52 @@ class EventService:
         """Mark PNM attendance at event"""
         db = get_db()
         
-        query = """
+        # Write to event_attendance table (used by PNMs page)
+        # Determine method based on notes or default to 'SEARCH'
+        method = 'QR' if attendance_data.notes and 'qr' in attendance_data.notes.lower() else 'SEARCH'
+        
+        event_attendance_query = """
+            INSERT INTO event_attendance (event_id, pnm_id, checked_in_by_user_id, method)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (event_id, pnm_id) DO NOTHING
+            RETURNING event_id, pnm_id, checked_in_at, checked_in_by_user_id
+        """
+        
+        event_row = await db.execute_one(
+            event_attendance_query,
+            attendance_data.event_id,
+            attendance_data.pnm_id,
+            checker_id,
+            method
+        )
+        
+        if not event_row:
+            raise HTTPException(status_code=400, detail="Attendance already marked")
+        
+        # Also write to attendance table for backwards compatibility
+        attendance_query = """
             INSERT INTO attendance (event_id, pnm_id, checked_in_by, notes)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (event_id, pnm_id) DO NOTHING
             RETURNING id, event_id, pnm_id, checked_in_at, checked_in_by, notes
         """
         
-        row = await db.execute_one(
-            query,
+        attendance_row = await db.execute_one(
+            attendance_query,
             attendance_data.event_id,
             attendance_data.pnm_id,
             checker_id,
             attendance_data.notes
         )
         
-        if not row:
-            raise HTTPException(status_code=400, detail="Attendance already marked")
-        
+        # Return using event_attendance data (primary source)
         return Attendance(
-            id=str(row["id"]),
-            event_id=str(row["event_id"]),
-            pnm_id=str(row["pnm_id"]),
-            checked_in_at=row["checked_in_at"],
-            checked_in_by=str(row["checked_in_by"]) if row["checked_in_by"] else None,
-            notes=row["notes"]
+            id=str(event_row["event_id"]) + "_" + str(event_row["pnm_id"]),  # Composite key for compatibility
+            event_id=str(event_row["event_id"]),
+            pnm_id=str(event_row["pnm_id"]),
+            checked_in_at=event_row["checked_in_at"],
+            checked_in_by=str(event_row["checked_in_by_user_id"]) if event_row["checked_in_by_user_id"] else None,
+            notes=attendance_data.notes
         )
 
 class ExportService:
