@@ -120,7 +120,7 @@ export function CheckInView({ onBack }: CheckInViewProps) {
     );
   });
 
-  const handleCheckIn = async (pnmId: string) => {
+  const handleCheckIn = async (pnmId: string, method: 'SEARCH' | 'QR' = 'SEARCH') => {
     if (!selectedEventId) {
       toast({ title: "No event selected", description: "Please select an event first" });
       return;
@@ -129,7 +129,11 @@ export function CheckInView({ onBack }: CheckInViewProps) {
     try {
       await api(`/events/${selectedEventId}/attendance`, {
         method: "POST",
-        body: { event_id: selectedEventId, pnm_id: pnmId },
+        body: { 
+          event_id: selectedEventId, 
+          pnm_id: pnmId,
+          notes: method === 'QR' ? 'Checked in via QR code' : undefined
+        },
       });
       toast({ title: "Checked in", description: "PNM successfully checked in" });
       setCheckedInIds(new Set([...checkedInIds, pnmId]));
@@ -174,7 +178,7 @@ export function CheckInView({ onBack }: CheckInViewProps) {
     }
     
     if (pnmId) {
-      handleCheckIn(pnmId);
+      handleCheckIn(pnmId, 'QR');
     } else {
       toast({ 
         title: "Invalid QR Code", 
