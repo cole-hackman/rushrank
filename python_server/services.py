@@ -66,6 +66,7 @@ class ChapterService:
     async def get_user_chapters(self, user_id: str) -> List[Chapter]:
         """Get chapters where user is a member"""
         db = get_db()
+        logger = logging.getLogger(__name__)
         
         query = """
             SELECT c.id, c.name, c.domain_allowlist, c.created_at
@@ -74,7 +75,9 @@ class ChapterService:
             WHERE m.user_id = $1
         """
         
+        logger.debug(f"Querying chapters for user_id={user_id}")
         rows = await db.execute_query(query, user_id)
+        logger.debug(f"Found {len(rows)} chapters for user_id={user_id}")
         
         return [
             Chapter(
@@ -121,16 +124,19 @@ class ChapterService:
     async def verify_membership(self, user_id: str, chapter_id: str):
         """Verify user is a member of the chapter"""
         db = get_db()
+        logger = logging.getLogger(__name__)
         
         query = """
             SELECT 1 FROM memberships
             WHERE user_id = $1 AND chapter_id = $2
         """
         
+        logger.debug(f"Verifying membership: user_id={user_id}, chapter_id={chapter_id}")
         result = await db.execute_one(query, user_id, chapter_id)
         
         if not result:
-            raise HTTPException(status_code=403, detail="Access denied")
+            logger.warning(f"Membership verification failed: user_id={user_id}, chapter_id={chapter_id}")
+            raise HTTPException(status_code=403, detail="Access denied: You are not a member of this chapter")
     
     async def verify_admin_access(self, user_id: str, chapter_id: str):
         """Verify user is an admin of the chapter"""
@@ -1253,6 +1259,7 @@ class EventService:
     async def get_chapter_events(self, chapter_id: str) -> List[Event]:
         """Get events for a chapter with attendance counts"""
         db = get_db()
+        logger = logging.getLogger(__name__)
         
         query = """
             SELECT 
@@ -1267,7 +1274,9 @@ class EventService:
             ORDER BY e.date
         """
         
+        logger.debug(f"Querying events for chapter_id={chapter_id}")
         rows = await db.execute_query(query, chapter_id)
+        logger.debug(f"Found {len(rows)} events for chapter_id={chapter_id}")
         
         return [
             Event(

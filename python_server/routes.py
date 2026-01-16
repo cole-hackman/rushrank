@@ -380,7 +380,14 @@ async def get_user_chapters(
     current_user: dict = Depends(get_current_user)
 ):
     """Get chapters where user is a member"""
-    return await chapter_service.get_user_chapters(current_user["user_id"])
+    user_id = current_user["user_id"]
+    email = current_user.get("email", "unknown")
+    logger.info(f"Getting chapters for user_id={user_id}, email={email}")
+    chapters = await chapter_service.get_user_chapters(user_id)
+    logger.info(f"Found {len(chapters)} chapters for user_id={user_id}")
+    if len(chapters) == 0:
+        logger.warning(f"User {email} (id={user_id}) has no chapter memberships")
+    return chapters
 
 @router.post("/chapters", response_model=Chapter)
 async def create_chapter(
@@ -954,8 +961,11 @@ async def get_events(
     current_user: dict = Depends(get_current_user)
 ):
     """Get events for a chapter"""
+    logger.info(f"Getting events for chapter_id={chapter_id}, user_id={current_user['user_id']}, email={current_user.get('email')}")
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
-    return await event_service.get_chapter_events(chapter_id)
+    events = await event_service.get_chapter_events(chapter_id)
+    logger.info(f"Found {len(events)} events for chapter_id={chapter_id}")
+    return events
 
 @router.post("/events", response_model=Event)
 async def create_event(
