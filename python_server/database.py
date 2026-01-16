@@ -5,31 +5,52 @@ import asyncpg
 import os
 from typing import Optional
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 async def get_db_pool() -> asyncpg.Pool:
-    """Create database connection pool"""
+    """Create database connection pool with retry logic"""
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL environment variable not set")
     
     # Log that we have a database URL configured (without exposing the actual value)
-    logger.debug("DATABASE_URL configured, creating connection pool...")
+    logger.info("DATABASE_URL configured, creating connection pool...")
     
-    try:
-        pool = await asyncpg.create_pool(
-            database_url,
-            min_size=1,
-            max_size=10,
-            command_timeout=60,
-            statement_cache_size=0  # Required for Supabase transaction pooler
-        )
-        logger.info("Database pool created successfully")
-        return pool
-    except Exception as e:
-        logger.error(f"Failed to create database pool: {e}")
-        raise
+    # Retry logic with exponential backoff
+    max_retries = 3
+    base_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempting to create database pool (attempt {attempt + 1}/{max_retries})...")
+            pool = await asyncpg.create_pool(
+                database_url,
+                min_size=1,
+                max_size=10,
+                command_timeout=60,
+                timeout=30,  # Connection timeout in seconds (increased from default 5s)
+                statement_cache_size=0  # Required for Supabase transaction pooler
+            )
+            logger.info("Database pool created successfully")
+            return pool
+        except (asyncio.TimeoutError, TimeoutError) as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"Database connection timeout (attempt {attempt + 1}/{max_retries}). Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"Failed to create database pool after {max_retries} attempts: {e}")
+                raise
+        except Exception as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"Failed to create database pool (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"Failed to create database pool after {max_retries} attempts: {e}")
+                raise
 
 async def close_db_pool(pool: asyncpg.Pool):
     """Close database connection pool"""
