@@ -417,7 +417,7 @@ export default function PNMsPage() {
                     {showPhone && <Table.HeaderCell className="w-[160px] min-w-[160px]">Phone</Table.HeaderCell>}
                     <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
-                    <Table.HeaderCell className="w-[100px] min-w-[100px] text-right">Actions</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[120px] min-w-[120px] max-w-[120px] text-right">Actions</Table.HeaderCell>
                   </Table.HeaderRow>
                 }
               >
@@ -476,8 +476,8 @@ export default function PNMsPage() {
                     <Table.Cell className="w-[120px] min-w-[120px] text-subtext-color whitespace-nowrap">
                       {pnm.attendance_count || 0} / {pnm.total_events || 0}
                     </Table.Cell>
-                    <Table.Cell className="w-[100px] min-w-[100px] text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <Table.Cell className="w-[120px] min-w-[120px] max-w-[120px] text-right">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         <IconButton
                           size="small"
                           icon={<FeatherImage />}

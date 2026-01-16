@@ -72,11 +72,13 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
     if (!name.trim()) {
       newErrors.name = "Name is required";
     }
-    if (!email.trim() && !phone.trim()) {
-      newErrors.email = "Email or phone is required";
-      newErrors.phone = "Email or phone is required";
-    } else if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       newErrors.email = "Please enter a valid email address";
+    }
+    if (!phone.trim()) {
+      newErrors.phone = "Phone number is required";
     }
     if (!major.trim()) {
       newErrors.major = "Major is required";
@@ -119,8 +121,9 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
   const isStep1Valid = (): boolean => {
     if (!chapterId) return false;
     if (!name.trim()) return false;
-    if (!email.trim() && !phone.trim()) return false;
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return false;
+    if (!email.trim()) return false;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return false;
+    if (!phone.trim()) return false;
     if (!major.trim()) return false;
     if (!year.trim()) return false;
     if (!hometown.trim()) return false;
@@ -413,7 +416,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
               </LabelInputContainer>
 
               <LabelInputContainer>
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">Phone *</Label>
                 <Input
                   id="phone"
                   placeholder=""
@@ -428,6 +431,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                     "h-12 text-base py-4",
                     errors.phone && "border-red-500 focus:border-red-500 focus:ring-red-500"
                   )}
+                  required
                 />
                 {errors.phone && (
                   <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
