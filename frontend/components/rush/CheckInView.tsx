@@ -230,24 +230,15 @@ export function CheckInView({ onBack }: CheckInViewProps) {
             <p className="text-beta-gray">Please select an event to begin checking in PNMs.</p>
           </div>
         ) : (
-          <Tabs defaultValue="qr" className="w-full">
+          <Tabs defaultValue="list" className="w-full">
             <TabsList className="w-full grid grid-cols-2">
-              <TabsTrigger value="qr" className="flex-1 min-h-[44px] text-base">
-                Scan QR
-              </TabsTrigger>
               <TabsTrigger value="list" className="flex-1 min-h-[44px] text-base">
                 Manual List
               </TabsTrigger>
+              <TabsTrigger value="qr" className="flex-1 min-h-[44px] text-base">
+                Scan QR
+              </TabsTrigger>
             </TabsList>
-
-            <TabsContent value="qr" className="mt-4">
-              <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-4">
-                <QrScanner
-                  onScanSuccess={handleQrScan}
-                  onClose={() => {}}
-                />
-              </div>
-            </TabsContent>
 
             <TabsContent value="list" className="mt-4">
               <div className="space-y-4">
@@ -311,6 +302,15 @@ export function CheckInView({ onBack }: CheckInViewProps) {
                     })}
                   </div>
                 )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="qr" className="mt-4">
+              <div className="rounded-xl border border-beta-gray/30 bg-white dark:bg-black p-4">
+                <QrScanner
+                  onScanSuccess={handleQrScan}
+                  onClose={() => {}}
+                />
               </div>
             </TabsContent>
           </Tabs>
