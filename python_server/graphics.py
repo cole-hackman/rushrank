@@ -397,7 +397,7 @@ async def compose_pnm_card(
         
         # Recreate draw after chip compositing
         draw = ImageDraw.Draw(canvas)
-        current_y -= 10  # 10px margin between name and pill row
+        current_y -= 20  # 20px margin between name and pill row (increased from 10px to move name up)
     
     # Name (large, bold) - topmost text element
     display_name, adjusted_name_font = _fit_text_to_width(

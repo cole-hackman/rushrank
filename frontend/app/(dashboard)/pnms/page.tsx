@@ -14,6 +14,7 @@ import { FeatherUsers } from "@subframe/core";
 import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
+import { FeatherArchive } from "@subframe/core";
 import { api, API_BASE, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
@@ -45,6 +46,7 @@ type PNM = {
   yes_percentage?: number;
   favorite_count?: number;
   is_favorite?: boolean;
+  archived?: boolean;
 };
 
 
@@ -63,6 +65,7 @@ export default function PNMsPage() {
   const [selectedPnmIds, setSelectedPnmIds] = useState<string[]>([]);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -105,7 +108,7 @@ export default function PNMsPage() {
       loadPnms();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, search, selectedTags]);
+  }, [chapterId, search, selectedTags, showArchived]);
 
   const loadPnms = async () => {
     if (!chapterId) return;
@@ -116,6 +119,7 @@ export default function PNMsPage() {
       query.set("chapter_id", chapterId);
       if (search.trim()) query.set("search", search.trim());
       if (selectedTags.length > 0) query.set("tags", selectedTags.join(","));
+      if (showArchived) query.set("include_archived", "true");
       const data = await api<PNM[]>(`/pnms?${query.toString()}`);
       setPnms(data);
 
@@ -133,6 +137,10 @@ export default function PNMsPage() {
 
   const filteredPnms = useMemo(() => {
     let data = pnms;
+    // Filter by archived status - if not showing archived, exclude archived PNMs
+    if (!showArchived) {
+      data = data.filter((p) => !p.archived);
+    }
     const term = search.trim().toLowerCase();
     if (term) {
       data = data.filter((p) =>
@@ -145,7 +153,7 @@ export default function PNMsPage() {
       data = data.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
     }
     return data;
-  }, [pnms, search, selectedTags]);
+  }, [pnms, search, selectedTags, showArchived]);
 
   const stats = useMemo(() => {
     const total = pnms.length;
@@ -197,6 +205,44 @@ export default function PNMsPage() {
       setSelectedPnmIds((prev) => prev.filter((id) => id !== pnmId));
     } catch (e: any) {
       toast({ title: "Failed to delete PNM", description: e?.message || "Unable to delete PNM" });
+    }
+  };
+
+  const handleBulkArchive = async (archived: boolean) => {
+    if (!isAdmin) {
+      toast({ title: "Access Denied", description: "Admin access required to archive PNMs" });
+      return;
+    }
+
+    if (selectedPnmIds.length === 0) {
+      toast({ title: "No selection", description: "Please select PNMs to archive" });
+      return;
+    }
+
+    const count = selectedPnmIds.length;
+    const action = archived ? "archive" : "unarchive";
+    if (!confirm(`Are you sure you want to ${action} ${count} PNM${count !== 1 ? "s" : ""}?`)) {
+      return;
+    }
+
+    try {
+      await api("/pnms/bulk-archive", {
+        method: "POST",
+        body: {
+          pnm_ids: selectedPnmIds,
+          archived: archived
+        }
+      });
+
+      toast({ 
+        title: "Success", 
+        description: `${count} PNM${count !== 1 ? "s" : ""} ${archived ? "archived" : "unarchived"}` 
+      });
+
+      await loadPnms();
+      setSelectedPnmIds([]);
+    } catch (e: any) {
+      toast({ title: "Archive failed", description: e?.message || "Unable to archive/unarchive PNMs" });
     }
   };
 
@@ -291,13 +337,28 @@ export default function PNMsPage() {
                 Bulk Tag ({selectedPnmIds.length})
               </Button>
               {isAdmin && (
-                <Button
-                  variant="destructive-secondary"
-                  icon={<FeatherTrash2 />}
-                  onClick={handleBulkDelete}
-                >
-                  Delete ({selectedPnmIds.length})
-                </Button>
+                <>
+                  <Button
+                    variant="neutral-secondary"
+                    icon={<FeatherArchive />}
+                    onClick={() => {
+                      const selectedPnms = pnms.filter(p => selectedPnmIds.includes(p.id));
+                      const allArchived = selectedPnms.every(p => p.archived);
+                      handleBulkArchive(!allArchived);
+                    }}
+                  >
+                    {pnms.filter(p => selectedPnmIds.includes(p.id)).every(p => p.archived) 
+                      ? `Unarchive (${selectedPnmIds.length})` 
+                      : `Archive (${selectedPnmIds.length})`}
+                  </Button>
+                  <Button
+                    variant="destructive-secondary"
+                    icon={<FeatherTrash2 />}
+                    onClick={handleBulkDelete}
+                  >
+                    Delete ({selectedPnmIds.length})
+                  </Button>
+                </>
               )}
             </>
           )}
@@ -330,6 +391,7 @@ export default function PNMsPage() {
           <div className="flex items-center gap-3">
             <Checkbox label="Show email" checked={showEmail} onCheckedChange={setShowEmail} />
             <Checkbox label="Show phone" checked={showPhone} onCheckedChange={setShowPhone} />
+            <Checkbox label="Show archived" checked={showArchived} onCheckedChange={setShowArchived} />
           </div>
         </div>
         {/* Quick filter chips */}

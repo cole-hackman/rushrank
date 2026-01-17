@@ -168,7 +168,7 @@ class PNMService:
                        JOIN tags t ON t.id = pt.tag_id
                        WHERE pt.pnm_id = p.id
                    ), ARRAY[]::text[]) AS tags,
-                   p.created_at
+                   p.created_at, p.archived
             FROM pnms p
             WHERE LOWER(p.email) = LOWER($1)
             ORDER BY p.created_at DESC
@@ -194,7 +194,8 @@ class PNMService:
             weirdest_talent=None,
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
-            created_at=row["created_at"]
+            created_at=row["created_at"],
+            archived=row.get("archived", False)
         )
 
     def get_qr_bytes(self, pnm_id: str) -> bytes:
@@ -658,7 +659,7 @@ class PNMService:
                        JOIN tags t ON t.id = pt.tag_id
                        WHERE pt.pnm_id = p.id
                    ), ARRAY[]::text[]) AS tags,
-                   p.created_at
+                   p.created_at, p.archived
             FROM pnms p
             WHERE p.chapter_id = $1
             ORDER BY p.name
@@ -681,7 +682,8 @@ class PNMService:
                 walkout_song=None,
                 weirdest_talent=None,
                 chick_fil_a_order=None,
-                created_at=row["created_at"]
+                created_at=row["created_at"],
+                archived=row.get("archived", False)
             )
             for row in rows
         ]
@@ -697,7 +699,7 @@ class PNMService:
                        JOIN tags t ON t.id = pt.tag_id
                        WHERE pt.pnm_id = p.id
                    ), ARRAY[]::text[]) AS tags,
-                   p.created_at
+                   p.created_at, p.archived
             FROM pnms p
             WHERE p.id = $1
         """
@@ -722,7 +724,8 @@ class PNMService:
             weirdest_talent=None,
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
-            created_at=row["created_at"]
+            created_at=row["created_at"],
+            archived=row.get("archived", False)
         )
     
     async def create_pnm(self, pnm_data: PNMCreate, chapter_id: str) -> PNM:
@@ -733,11 +736,15 @@ class PNMService:
         query = """
             INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at
+            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at, archived
         """
         
+        # Validate email is required and not empty
+        if not pnm_data.email or not pnm_data.email.strip():
+            raise HTTPException(status_code=400, detail="Email is required")
+        
         # Normalize optional string fields: strip if present, convert empty strings to None
-        email = pnm_data.email.strip() if pnm_data.email and pnm_data.email.strip() else None
+        email = pnm_data.email.strip()
         phone = pnm_data.phone.strip() if pnm_data.phone and pnm_data.phone.strip() else None
         major = pnm_data.major.strip() if pnm_data.major and pnm_data.major.strip() else None
         hometown = pnm_data.hometown.strip() if pnm_data.hometown and pnm_data.hometown.strip() else None
@@ -808,7 +815,8 @@ class PNMService:
             weirdest_talent=None,
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
-            created_at=row["created_at"]
+            created_at=row["created_at"],
+            archived=row.get("archived", False)
         )
         
         # Run email and attendance in background (don't block response)
