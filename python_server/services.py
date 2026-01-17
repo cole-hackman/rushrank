@@ -158,22 +158,47 @@ class PNMService:
     async def get_pnm_by_email(self, email: str) -> Optional[PNM]:
         """Get PNM by email (case-insensitive)"""
         db = get_db()
+        
+        # Check if archived column exists
+        column_check = await db.execute_one("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'pnms' AND column_name = 'archived'
+            ) as has_archived
+        """)
+        has_archived_column = column_check.get("has_archived", False) if column_check else False
+        
         # Using simple query to find latest PNM with this email
         # Ideally emails are unique per chapter, but might duplicate across chapters
         # We'll take the most recently created one
-        query = """
-            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
-                   COALESCE(ARRAY(
-                       SELECT t.label FROM pnm_tags pt
-                       JOIN tags t ON t.id = pt.tag_id
-                       WHERE pt.pnm_id = p.id
-                   ), ARRAY[]::text[]) AS tags,
-                   p.created_at, p.archived
-            FROM pnms p
-            WHERE LOWER(p.email) = LOWER($1)
-            ORDER BY p.created_at DESC
-            LIMIT 1
-        """
+        if has_archived_column:
+            query = """
+                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags,
+                       p.created_at, p.archived
+                FROM pnms p
+                WHERE LOWER(p.email) = LOWER($1)
+                ORDER BY p.created_at DESC
+                LIMIT 1
+            """
+        else:
+            query = """
+                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags,
+                       p.created_at
+                FROM pnms p
+                WHERE LOWER(p.email) = LOWER($1)
+                ORDER BY p.created_at DESC
+                LIMIT 1
+            """
         row = await db.execute_one(query, email)
         
         if not row:
@@ -195,7 +220,7 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row.get("archived", False)
+            archived=row.get("archived", False) if has_archived_column else False
         )
 
     def get_qr_bytes(self, pnm_id: str) -> bytes:
@@ -652,18 +677,41 @@ class PNMService:
         """Get all PNMs for a chapter"""
         db = get_db()
         
-        query = """
-            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
-                   COALESCE(ARRAY(
-                       SELECT t.label FROM pnm_tags pt
-                       JOIN tags t ON t.id = pt.tag_id
-                       WHERE pt.pnm_id = p.id
-                   ), ARRAY[]::text[]) AS tags,
-                   p.created_at, p.archived
-            FROM pnms p
-            WHERE p.chapter_id = $1
-            ORDER BY p.name
-        """
+        # Check if archived column exists
+        column_check = await db.execute_one("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'pnms' AND column_name = 'archived'
+            ) as has_archived
+        """)
+        has_archived_column = column_check.get("has_archived", False) if column_check else False
+        
+        if has_archived_column:
+            query = """
+                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags,
+                       p.created_at, p.archived
+                FROM pnms p
+                WHERE p.chapter_id = $1
+                ORDER BY p.name
+            """
+        else:
+            query = """
+                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags,
+                       p.created_at
+                FROM pnms p
+                WHERE p.chapter_id = $1
+                ORDER BY p.name
+            """
         
         rows = await db.execute_query(query, chapter_id)
         
@@ -683,7 +731,7 @@ class PNMService:
                 weirdest_talent=None,
                 chick_fil_a_order=None,
                 created_at=row["created_at"],
-                archived=row.get("archived", False)
+                archived=row.get("archived", False) if has_archived_column else False
             )
             for row in rows
         ]
@@ -692,17 +740,39 @@ class PNMService:
         """Get specific PNM"""
         db = get_db()
         
-        query = """
-            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
-                   COALESCE(ARRAY(
-                       SELECT t.label FROM pnm_tags pt
-                       JOIN tags t ON t.id = pt.tag_id
-                       WHERE pt.pnm_id = p.id
-                   ), ARRAY[]::text[]) AS tags,
-                   p.created_at, p.archived
-            FROM pnms p
-            WHERE p.id = $1
-        """
+        # Check if archived column exists
+        column_check = await db.execute_one("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'pnms' AND column_name = 'archived'
+            ) as has_archived
+        """)
+        has_archived_column = column_check.get("has_archived", False) if column_check else False
+        
+        if has_archived_column:
+            query = """
+                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags,
+                       p.created_at, p.archived
+                FROM pnms p
+                WHERE p.id = $1
+            """
+        else:
+            query = """
+                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                       COALESCE(ARRAY(
+                           SELECT t.label FROM pnm_tags pt
+                           JOIN tags t ON t.id = pt.tag_id
+                           WHERE pt.pnm_id = p.id
+                       ), ARRAY[]::text[]) AS tags,
+                       p.created_at
+                FROM pnms p
+                WHERE p.id = $1
+            """
         
         row = await db.execute_one(query, pnm_id)
         
@@ -725,19 +795,35 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row.get("archived", False)
+            archived=row.get("archived", False) if has_archived_column else False
         )
     
     async def create_pnm(self, pnm_data: PNMCreate, chapter_id: str) -> PNM:
         """Create new PNM"""
         db = get_db()
         
+        # Check if archived column exists
+        column_check = await db.execute_one("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'pnms' AND column_name = 'archived'
+            ) as has_archived
+        """)
+        has_archived_column = column_check.get("has_archived", False) if column_check else False
+        
         # Insert into pnms table (only columns that exist in the migration)
-        query = """
-            INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at, archived
-        """
+        if has_archived_column:
+            query = """
+                INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at, archived
+            """
+        else:
+            query = """
+                INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at
+            """
         
         # Validate email is required and not empty
         if not pnm_data.email or not pnm_data.email.strip():
@@ -816,7 +902,7 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row.get("archived", False)
+            archived=row.get("archived", False) if has_archived_column else False
         )
         
         # Run email and attendance in background (don't block response)
