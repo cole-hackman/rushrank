@@ -409,49 +409,96 @@ async def get_pnms(
     
     db = get_db()
     
+    # Check if archived column exists
+    column_check = await db.execute_one("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'pnms' AND column_name = 'archived'
+        ) as has_archived
+    """)
+    has_archived_column = column_check.get("has_archived", False) if column_check else False
+    
     # Enhanced query with stats - using junction table for tags
-    query = """
-        SELECT 
-            p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-            p.photo_url, p.created_at, p.archived,
-            COALESCE(ARRAY(
-                SELECT t.label FROM pnm_tags pt
-                JOIN tags t ON t.id = pt.tag_id
-                WHERE pt.pnm_id = p.id
-            ), ARRAY[]::text[]) AS tags,
-            (
-                SELECT COUNT(DISTINCT ea.event_id) 
-                FROM event_attendance ea 
-                JOIN events e ON e.id = ea.event_id 
-                WHERE ea.pnm_id = p.id AND e.is_active = true
-            ) as attendance_count,
-            (
-                SELECT COUNT(DISTINCT e.id) 
-                FROM events e 
-                WHERE e.chapter_id = p.chapter_id AND e.is_active = true
-            ) as total_events,
-            COALESCE(
-                ROUND(
-                    (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric / 
-                     NULLIF(COUNT(v.id), 0) * 100)
-                ), 0
-            ) as yes_percentage,
-            COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
-            COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
-        FROM pnms p
-        LEFT JOIN votes v ON v.pnm_id = p.id
-        WHERE p.chapter_id = $1
-    """
-    
-    # Add archived filter if not including archived
-    if not include_archived:
-        query += " AND p.archived = false"
-    
-    query += """
-        GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-                 p.photo_url, p.created_at, p.archived
-        ORDER BY p.name
-    """
+    if has_archived_column:
+        query = """
+            SELECT 
+                p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
+                p.photo_url, p.created_at, p.archived,
+                COALESCE(ARRAY(
+                    SELECT t.label FROM pnm_tags pt
+                    JOIN tags t ON t.id = pt.tag_id
+                    WHERE pt.pnm_id = p.id
+                ), ARRAY[]::text[]) AS tags,
+                (
+                    SELECT COUNT(DISTINCT ea.event_id) 
+                    FROM event_attendance ea 
+                    JOIN events e ON e.id = ea.event_id 
+                    WHERE ea.pnm_id = p.id AND e.is_active = true
+                ) as attendance_count,
+                (
+                    SELECT COUNT(DISTINCT e.id) 
+                    FROM events e 
+                    WHERE e.chapter_id = p.chapter_id AND e.is_active = true
+                ) as total_events,
+                COALESCE(
+                    ROUND(
+                        (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric / 
+                         NULLIF(COUNT(v.id), 0) * 100)
+                    ), 0
+                ) as yes_percentage,
+                COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
+                COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
+            FROM pnms p
+            LEFT JOIN votes v ON v.pnm_id = p.id
+            WHERE p.chapter_id = $1
+        """
+        
+        # Add archived filter if not including archived
+        if not include_archived:
+            query += " AND p.archived = false"
+        
+        query += """
+            GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
+                     p.photo_url, p.created_at, p.archived
+            ORDER BY p.name
+        """
+    else:
+        # Fallback query without archived column
+        query = """
+            SELECT 
+                p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
+                p.photo_url, p.created_at,
+                COALESCE(ARRAY(
+                    SELECT t.label FROM pnm_tags pt
+                    JOIN tags t ON t.id = pt.tag_id
+                    WHERE pt.pnm_id = p.id
+                ), ARRAY[]::text[]) AS tags,
+                (
+                    SELECT COUNT(DISTINCT ea.event_id) 
+                    FROM event_attendance ea 
+                    JOIN events e ON e.id = ea.event_id 
+                    WHERE ea.pnm_id = p.id AND e.is_active = true
+                ) as attendance_count,
+                (
+                    SELECT COUNT(DISTINCT e.id) 
+                    FROM events e 
+                    WHERE e.chapter_id = p.chapter_id AND e.is_active = true
+                ) as total_events,
+                COALESCE(
+                    ROUND(
+                        (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric / 
+                         NULLIF(COUNT(v.id), 0) * 100)
+                    ), 0
+                ) as yes_percentage,
+                COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
+                COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
+            FROM pnms p
+            LEFT JOIN votes v ON v.pnm_id = p.id
+            WHERE p.chapter_id = $1
+            GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
+                     p.photo_url, p.created_at
+            ORDER BY p.name
+        """
     
     rows = await db.execute_query(query, chapter_id)
     
@@ -471,7 +518,7 @@ async def get_pnms(
             "weirdest_talent": None,
             "chick_fil_a_order": None,
             "created_at": row["created_at"],
-            "archived": row.get("archived", False),
+            "archived": row.get("archived", False) if has_archived_column else False,
             "attendance_count": row["attendance_count"],
             "total_events": row["total_events"],
             "yes_percentage": float(row["yes_percentage"]) if row["yes_percentage"] else None,
@@ -618,6 +665,21 @@ async def bulk_archive_pnms(
         raise HTTPException(status_code=400, detail="No PNM IDs provided")
     
     db = get_db()
+    
+    # Check if archived column exists
+    column_check = await db.execute_one("""
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'pnms' AND column_name = 'archived'
+        ) as has_archived
+    """)
+    has_archived_column = column_check.get("has_archived", False) if column_check else False
+    
+    if not has_archived_column:
+        raise HTTPException(
+            status_code=500, 
+            detail="Archive feature not available. Please run migration 0008_add_archived_to_pnms.sql"
+        )
     
     # Verify all PNMs belong to chapters the user has admin access to
     for pnm_id in request.pnm_ids:
