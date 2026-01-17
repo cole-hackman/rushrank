@@ -392,7 +392,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
 
             <div className="grid grid-cols-1 gap-4">
               <LabelInputContainer>
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Email *</Label>
                 <Input
                   id="email"
                   placeholder=""
@@ -406,6 +406,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                     "h-12 text-base py-4",
                     errors.email && "border-red-500 focus:border-red-500 focus:ring-red-500"
                   )}
+                  required
                 />
                 {errors.email && (
                   <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">

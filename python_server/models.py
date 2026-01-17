@@ -45,7 +45,7 @@ class Membership(BaseModel):
 # PNM Models
 class PNMCreate(BaseModel):
     name: str
-    email: Optional[str] = None
+    email: str
     phone: Optional[str] = None
     major: Optional[str] = None
     hometown: Optional[str] = None
@@ -75,11 +75,16 @@ class PNM(BaseModel):
     created_at: datetime
     attendance_count: Optional[int] = None
     total_events: Optional[int] = None
+    archived: bool = False
 
 class PNMWithVotes(PNM):
     vote_count: int
     yes_count: int
     no_count: int
+
+class BulkArchiveRequest(BaseModel):
+    pnm_ids: List[str]
+    archived: bool
     dont_know_count: int
     favorite_count: int
     yes_percentage: float

@@ -65,6 +65,7 @@ export interface PNM {
   yes_percentage?: number;
   favorite_count?: number;
   is_favorite?: boolean;
+  archived?: boolean;
 }
 
 export interface PNMCreateInput {

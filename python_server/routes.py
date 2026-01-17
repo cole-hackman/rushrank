@@ -401,6 +401,7 @@ async def create_chapter(
 @router.get("/pnms")
 async def get_pnms(
     chapter_id: str = Query(..., description="Chapter ID"),
+    include_archived: bool = Query(False, description="Include archived PNMs"),
     current_user: dict = Depends(get_current_user)
 ):
     """Get PNMs for a chapter with stats"""
@@ -412,7 +413,7 @@ async def get_pnms(
     query = """
         SELECT 
             p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-            p.photo_url, p.created_at,
+            p.photo_url, p.created_at, p.archived,
             COALESCE(ARRAY(
                 SELECT t.label FROM pnm_tags pt
                 JOIN tags t ON t.id = pt.tag_id
@@ -440,8 +441,15 @@ async def get_pnms(
         FROM pnms p
         LEFT JOIN votes v ON v.pnm_id = p.id
         WHERE p.chapter_id = $1
+    """
+    
+    # Add archived filter if not including archived
+    if not include_archived:
+        query += " AND p.archived = false"
+    
+    query += """
         GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-                 p.photo_url, p.created_at
+                 p.photo_url, p.created_at, p.archived
         ORDER BY p.name
     """
     
@@ -463,6 +471,7 @@ async def get_pnms(
             "weirdest_talent": None,
             "chick_fil_a_order": None,
             "created_at": row["created_at"],
+            "archived": row.get("archived", False),
             "attendance_count": row["attendance_count"],
             "total_events": row["total_events"],
             "yes_percentage": float(row["yes_percentage"]) if row["yes_percentage"] else None,
@@ -598,6 +607,42 @@ async def delete_pnm(
         raise HTTPException(status_code=500, detail="Failed to delete PNM")
     
     return APIResponse(success=True, message="PNM deleted successfully")
+
+@router.post("/pnms/bulk-archive", response_model=APIResponse)
+async def bulk_archive_pnms(
+    request: BulkArchiveRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Archive or unarchive multiple PNMs (admin only)"""
+    if not request.pnm_ids:
+        raise HTTPException(status_code=400, detail="No PNM IDs provided")
+    
+    db = get_db()
+    
+    # Verify all PNMs belong to chapters the user has admin access to
+    for pnm_id in request.pnm_ids:
+        pnm = await pnm_service.get_pnm(pnm_id)
+        if not pnm:
+            raise HTTPException(status_code=404, detail=f"PNM {pnm_id} not found")
+        await chapter_service.verify_admin_access(current_user["user_id"], pnm.chapter_id)
+    
+    # Update all PNMs
+    query = """
+        UPDATE pnms
+        SET archived = $1
+        WHERE id = ANY($2::uuid[])
+    """
+    
+    try:
+        await db.execute_command(query, request.archived, request.pnm_ids)
+        action = "archived" if request.archived else "unarchived"
+        return APIResponse(
+            success=True, 
+            message=f"Successfully {action} {len(request.pnm_ids)} PNM(s)"
+        )
+    except Exception as e:
+        logging.error(f"Error bulk archiving PNMs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to archive/unarchive PNMs")
 
 # PNM photo upload (signed URL)
 @router.post("/pnms/upload-url")
