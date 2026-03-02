@@ -1,44 +1,47 @@
 # RushRank
 
-A fraternity rush management application for organizing and tracking potential new members (PNMs) during rush events.
+A fraternity rush management application that helps chapters organize and track potential new members (PNMs) during rush events.
 
-## Tech Stack
+## 1. What Is the Project?
+
+RushRank is a fraternity rush management application that helps chapters organize and track potential new members (PNMs) during rush events. Users can create rush events, track PNM attendance, manage PNM profiles, and conduct live, anonymous voting sessions to determine bids.
+
+## 2. Why Was This Project Built?
+
+Fraternity recruitment often relies on disorganized spreadsheets, manual vote counting, and scattered notes about potential new members. Important evaluations get lost in the chaos of large rush events, and chapters struggle to make data-driven decisions on who to extend bids to. RushRank provides a structured, centralized platform to make recruitment efficient and organized.
+
+## 3. What Problems Did It Solve?
+
+One major challenge was managing live, anonymous voting for a huge number of PNMs concurrently during selection rounds. This was solved by implementing a heavily optimized, swipe-based voting interface with real-time database updates via FastAPI and Supabase, ensuring the system remains responsive even with the entire chapter voting simultaneously. Additionally, the system tackles the problem of tracking attendance by implementing dynamic QR code generation and scanning, allowing PNMs to check-in easily at the door.
+
+## 4. What Technologies Are Used?
 
 - **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
 - **Backend**: FastAPI (Python 3.11+)
-- **Database**: PostgreSQL via Supabase
+- **Database**: PostgreSQL (via Supabase)
 - **Authentication**: Supabase Auth with JWT tokens
+- **Styling**: Subframe, Radix UI
 
-## Features
+## 5. What Did You Implement?
 
-- **PNM Management**: Track potential new members with photos, majors, hometowns, and custom tags
-- **Voting System**: Anonymous or open voting with swipe-based interface for live sessions
-- **Event Management**: Create events and track PNM attendance with QR code check-in
-- **Analytics**: View voting results, rankings, and chapter participation statistics
-- **User Roles**: Admin, Executive, and Member roles with appropriate permissions
-- **Tag System**: Organize PNMs with custom tags for easy filtering
-- **Export**: Download data as CSV for external analysis
+- PNM management system with photos, majors, hometowns, and custom tags
+- Live voting system with anonymous or open voting and a mobile-friendly swipe interface
+- Event management with dynamic QR code creation and scanning for attendance tracking
+- Analytics dashboards for viewing voting results, rankings, and chapter participation statistics
+- Role-based access control (Admin, Executive, Member)
+- Export functionality to download data as CSV for external analysis
 
-## Project Structure
+## 6. How Can Someone Run It Locally?
 
-```
-rushrank-0.0/
-├── frontend/          # Next.js frontend application
-├── python_server/     # FastAPI backend server
-├── supabase/          # Database schema and migrations
-├── docs/              # Documentation and archived notes
-└── db/                # Database seed files
-```
-
-## Prerequisites
+### Prerequisites
 
 - Node.js v20+
 - Python 3.11+
 - Supabase account (for database and auth)
 
-## Environment Setup
+### 1. Environment Setup
 
-### Frontend (`frontend/.env.local`)
+Create `.env.local` in the `frontend` directory:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -46,7 +49,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-### Backend (`.env` in project root)
+Create `.env` in the project root:
 
 ```env
 DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
@@ -54,12 +57,9 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_JWKS_URL=https://your-project.supabase.co/auth/v1/.well-known/jwks.json
-MAILERLITE_API_KEY=your-mailerlite-key  # Optional, for email invitations
 ```
 
-## Running Locally
-
-### 1. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 # Frontend
@@ -71,7 +71,7 @@ pip install -r requirements.txt
 uv pip install -r requirements.txt
 ```
 
-### 2. Set Up Database
+### 3. Set Up Database
 
 Apply the schema to your Supabase database:
 
@@ -83,7 +83,7 @@ npx supabase db push
 psql "$DATABASE_URL" -f supabase/schema.sql
 ```
 
-### 3. Start the Servers
+### 4. Start the Servers
 
 ```bash
 # Terminal 1: Frontend (port 3000)
@@ -91,55 +91,12 @@ cd frontend && npm run dev
 
 # Terminal 2: Backend (port 8000)
 python run_fastapi.py
-# Or: uvicorn python_server.main:app --reload
 ```
 
-### 4. Access the App
+### 5. Access the App
 
-- Frontend: http://localhost:3000
-- API: http://localhost:8000/api
-- API Docs: http://localhost:8000/docs
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/me` | Get current user profile |
-| GET | `/api/chapters` | List user's chapters |
-| GET | `/api/pnms` | List PNMs with filters |
-| POST | `/api/pnms` | Create a new PNM |
-| GET | `/api/rounds` | List voting rounds |
-| POST | `/api/votes` | Submit a vote |
-| GET | `/api/events` | List events |
-| POST | `/api/events/{id}/attendance` | Check in a PNM |
-
-See `/docs` endpoint for full API documentation.
-
-## Development
-
-### Type Checking
-
-```bash
-# Frontend
-cd frontend && npm run build
-
-# Backend (Python type hints)
-mypy python_server/
-```
-
-### Testing
-
-```bash
-# Backend tests
-pytest python_server/
-```
-
-## Deployment
-
-The app is designed to be deployed with:
-- **Frontend**: Vercel or any Next.js-compatible host
-- **Backend**: Railway, Render, or any Python host
-- **Database**: Supabase (managed PostgreSQL)
+- Frontend: `http://localhost:3000`
+- API Docs: `http://localhost:8000/docs`
 
 ## License
 
