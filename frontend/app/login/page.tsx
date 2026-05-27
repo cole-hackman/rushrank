@@ -208,7 +208,7 @@ function LoginInner() {
             <img
               className="h-16 w-16 flex-none object-cover rounded-full"
               src="/logo.png"
-              alt="Beta Theta Pi"
+              alt="RushRank"
             />
             <span className="text-heading-1 font-heading-1 text-default-font">Reset Password</span>
             <span className="text-body font-body text-subtext-color text-center">
@@ -258,7 +258,7 @@ function LoginInner() {
             </div>
           </form>
           <span className="text-caption font-caption text-subtext-color">
-            Beta Theta Pi • Cal Poly SLO
+            RushRank
           </span>
         </div>
       </div>
@@ -272,7 +272,7 @@ function LoginInner() {
           <img
             className="h-16 w-16 flex-none object-cover rounded-full"
             src="/logo.png"
-            alt="Beta Theta Pi"
+            alt="RushRank"
           />
           <span className="text-heading-1 font-heading-1 text-default-font">RushRank</span>
           <span className="text-body font-body text-subtext-color text-center">
@@ -324,7 +324,7 @@ function LoginInner() {
           </span>
         )}
         <span className="text-caption font-caption text-subtext-color">
-          Beta Theta Pi • Cal Poly SLO
+          RushRank
         </span>
       </div>
     </div>

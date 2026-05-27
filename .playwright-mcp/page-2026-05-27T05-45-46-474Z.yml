@@ -1,0 +1,55 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]: ΒΘΠ
+      - paragraph [ref=e7]: PNM Intake
+      - heading "Inscribe Your Name" [level=1] [ref=e8]
+      - paragraph [ref=e9]: A few questions, a portrait, and you'll be on the books.
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - paragraph [ref=e12]: Step 1 of 2
+        - paragraph [ref=e13]: Personal Record
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]: Full Name *
+          - textbox "Full Name *" [ref=e20]
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e23]: Email *
+            - textbox "Email *" [ref=e24]
+          - generic [ref=e25]:
+            - generic [ref=e26]: Phone *
+            - textbox "Phone *" [ref=e27]
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - generic [ref=e30]: Major *
+            - textbox "Major *" [ref=e31]
+          - generic [ref=e32]:
+            - generic [ref=e33]: Year *
+            - generic [ref=e34]:
+              - combobox "Year *" [ref=e35]:
+                - option "Select year" [selected]
+                - option "1st Year"
+                - option "2nd Year"
+                - option "3rd Year"
+                - option "4th Year"
+              - img
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: Hometown *
+            - textbox "Hometown *" [ref=e39]
+          - generic [ref=e40]:
+            - generic [ref=e41]: Celebrity Crush *
+            - textbox "Celebrity Crush *" [ref=e42]
+        - button "Continue to Portrait" [ref=e44] [cursor=pointer]:
+          - text: Continue to Portrait
+          - img [ref=e45]
+    - generic [ref=e48]: Beta Θ Π · Cal Poly SLO
+  - generic [ref=e49]:
+    - generic [ref=e50]:
+      - generic [ref=e51]: Failed to load chapter
+      - generic [ref=e52]: "Cannot connect to backend server at http://localhost:8000/api. Please check: 1. Is the backend server running locally? 2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local? 3. Are there any CORS issues? 4. Check browser console for more details Current API URL: http://localhost:8000/api"
+    - generic [ref=e53]:
+      - generic [ref=e54]: Failed to load chapter
+      - generic [ref=e55]: "Cannot connect to backend server at http://localhost:8000/api. Please check: 1. Is the backend server running locally? 2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local? 3. Are there any CORS issues? 4. Check browser console for more details Current API URL: http://localhost:8000/api"
+  - alert [ref=e56]

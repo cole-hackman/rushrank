@@ -1,0 +1,327 @@
+[      66ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:186
+[    4954ms] [LOG] [Fast Refresh] done in 4889ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:43
+[    5205ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom.development.js:38559
+[    5251ms] [LOG] [API] GET http://localhost:8000/api/me @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[    5252ms] [LOG] [API] GET http://localhost:8000/api/me @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[    5254ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/me:0
+[    5255ms] [ERROR] Failed to check admin status: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/layout.tsx:88:33) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[    5287ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[    5287ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[    5288ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[    5288ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[    5291ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/me:0
+[    5291ms] [ERROR] Failed to check admin status: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/layout.tsx:88:33) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[    5336ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[    5337ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async loadDashboardData (webpack-internal:///(app-pages-browser)/./app/(dashboard)/page.tsx:54:25) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[    5337ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[    5337ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[    5337ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async loadDashboardData (webpack-internal:///(app-pages-browser)/./app/(dashboard)/page.tsx:54:25) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[    5337ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  134006ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:186
+[  134926ms] [LOG] [Fast Refresh] done in 920ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:43
+[  135094ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  135094ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  135095ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  135095ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  135097ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  135097ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/rush/page.tsx:42:29) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  135097ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  135097ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  135097ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/rush/page.tsx:42:29) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  135097ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  139226ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:186
+[  139583ms] [LOG] [Fast Refresh] done in 358ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:43
+[  139629ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  139629ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  139630ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  139630ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  139631ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  139631ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/pnms/page.tsx:61:29) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  139631ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  139631ms] [LOG] [API] GET http://localhost:8000/api/me @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  139631ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  139631ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/pnms/page.tsx:61:29) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  139631ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  139631ms] [LOG] [API] GET http://localhost:8000/api/me @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  139632ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/me:0
+[  139632ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/me:0
+[  143419ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:186
+[  143822ms] [LOG] [Fast Refresh] done in 402ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:43
+[  143875ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  143876ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  143876ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  143876ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  143878ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  143878ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async loadData (webpack-internal:///(app-pages-browser)/./app/(dashboard)/events/page.tsx:75:25) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  143878ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  143878ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  143878ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async loadData (webpack-internal:///(app-pages-browser)/./app/(dashboard)/events/page.tsx:75:25) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  143878ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  151745ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  151745ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  151746ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  151746ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  151749ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  151749ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async loadDashboardData (webpack-internal:///(app-pages-browser)/./app/(dashboard)/page.tsx:54:25) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  151749ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  151749ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  151749ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async loadDashboardData (webpack-internal:///(app-pages-browser)/./app/(dashboard)/page.tsx:54:25) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  151749ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  162652ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  162653ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  162653ms] [LOG] [ChapterID] Fetching chapters from API... @ webpack-internal:///(app-pages-browser)/./lib/api.ts:98
+[  162653ms] [LOG] [API] GET http://localhost:8000/api/chapters @ webpack-internal:///(app-pages-browser)/./lib/api.ts:150
+[  162655ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  162655ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/rush/page.tsx:42:29) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  162655ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  162655ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/chapters:0
+[  162655ms] [ERROR] [ChapterID] Failed to fetch chapter ID: Error: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api
+    at api (webpack-internal:///(app-pages-browser)/./lib/api.ts:218:19)
+    at async getChapterId (webpack-internal:///(app-pages-browser)/./lib/api.ts:100:26)
+    at async eval (webpack-internal:///(app-pages-browser)/./app/(dashboard)/rush/page.tsx:42:29) @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
+[  162655ms] [ERROR] [ChapterID] Error details: Cannot connect to backend server at http://localhost:8000/api. 
+
+Please check:
+1. Is the backend server running locally?
+2. Is NEXT_PUBLIC_API_BASE_URL set correctly in .env.local?
+3. Are there any CORS issues?
+4. Check browser console for more details
+
+Current API URL: http://localhost:8000/api @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:32
