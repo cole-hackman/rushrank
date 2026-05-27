@@ -12,6 +12,7 @@ import { TextField } from "@/ui/components/TextField";
 import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import AdminProtected from "@/components/AdminProtected";
+import { ChapterAppearanceCard } from "@/components/settings/ChapterAppearanceCard";
 
 type Questionnaire = {
   id: string;
@@ -181,6 +182,7 @@ export default function SettingsPage() {
   return (
     <AdminProtected>
       <div className="flex w-full flex-col gap-6">
+        <ChapterAppearanceCard />
         <div className="flex w-full flex-col items-start">
           <Breadcrumbs>
             <Breadcrumbs.Item>Home</Breadcrumbs.Item>
