@@ -269,3 +269,48 @@ export async function updateChapterTheme(patch: ChapterTheme): Promise<ChapterTh
 export async function getFraternityColors(): Promise<FraternityColor[]> {
   return api<FraternityColor[]>("/fraternity-colors");
 }
+
+// ── PPTX Export ────────────────────────────────────────────────────
+export interface PnmExportFilters {
+  search?: string;
+  tags?: string[];
+}
+
+export async function exportPnmsPptx(
+  filters: PnmExportFilters,
+  sort?: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const res = await fetch(`${API_BASE}/pnms/export/pptx`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ filters, sort: sort ?? null }),
+  });
+  if (!res.ok) {
+    let detail = `Export failed (${res.status})`;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = j.detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] || "pnms.pptx";
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
+export function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
