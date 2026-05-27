@@ -12,6 +12,7 @@ import Protected from "@/components/Protected";
 import ToastProvider from "@/components/ToastProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggleItems } from "@/components/ThemeToggle";
+import { ChapterThemeProvider } from "@/components/ChapterThemeProvider";
 import Link from "next/link";
 import { BottomNav } from "@/components/BottomNav";
 
@@ -124,8 +125,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <Protected>
       <ThemeProvider>
-        <ToastProvider>
-          <TopbarWithLeftNav
+        <ChapterThemeProvider>
+          <ToastProvider>
+            <TopbarWithLeftNav
             mobileNavItems={mobileNavItems}
             leftSlot={
               <>
@@ -271,8 +273,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="w-full p-6 pb-24 md:pb-6">{children}</div>
           </TopbarWithLeftNav>
           <BottomNav />
-        </ToastProvider>
-      </ThemeProvider>
-    </Protected>
+            </ToastProvider>
+          </ChapterThemeProvider>
+        </ThemeProvider>
+      </Protected>
   );
 }
