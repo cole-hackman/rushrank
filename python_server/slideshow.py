@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Protocol
+import asyncio
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
@@ -292,3 +293,54 @@ def build_deck(
     out = BytesIO()
     pres.save(out)
     return out.getvalue()
+
+
+class _StorageClient(Protocol):
+    async def fetch(self, path: str) -> bytes: ...
+
+
+class SlideshowService:
+    MAX_CONCURRENT_PHOTO_FETCH = 10
+
+    def __init__(self, storage):
+        self.storage = storage
+
+    async def _fetch_one(self, path: str | None, sem: asyncio.Semaphore) -> bytes | None:
+        if not path:
+            return None
+        async with sem:
+            try:
+                raw = await self.storage.fetch(path)
+                return prepare_photo_bytes(raw)
+            except Exception:
+                return None
+
+    async def build_pnm_deck(
+        self,
+        pnm_rows: list[dict],
+        chapter: dict,
+        theme: dict | None,
+        exported_at: str,
+    ) -> bytes:
+        sem = asyncio.Semaphore(self.MAX_CONCURRENT_PHOTO_FETCH)
+        photo_results = await asyncio.gather(
+            *(self._fetch_one(row.get("photo_path"), sem) for row in pnm_rows)
+        )
+
+        pnms: list[PnmSlideData] = []
+        for row, photo in zip(pnm_rows, photo_results):
+            pnms.append(PnmSlideData(
+                id=str(row["id"]),
+                name=row["name"],
+                year=row.get("year", ""),
+                major=row.get("major", ""),
+                gpa=float(row.get("gpa") or 0.0) if row.get("gpa") else None,
+                hometown=row.get("hometown", ""),
+                status=row.get("status", "active"),
+                vote_summary=row.get("vote_summary") or {"up": 0, "down": 0, "star": 0},
+                photo_bytes=photo,
+                tags=list(row.get("tags") or []),
+                latest_note=row.get("latest_note"),
+            ))
+
+        return build_deck(pnms, chapter=chapter, theme=theme, exported_at=exported_at)

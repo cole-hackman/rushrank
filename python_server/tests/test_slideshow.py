@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from io import BytesIO
 from PIL import Image
 from pptx import Presentation
@@ -10,6 +11,7 @@ from python_server.slideshow import (
     prepare_photo_bytes,
     build_deck,
     PnmSlideData,
+    SlideshowService,
 )
 
 
@@ -162,3 +164,43 @@ def test_build_deck_pnm_slide_contains_name_and_metadata():
     assert "Freshman" in full
     assert "CS" in full
     assert "3.91" in full
+
+
+class _StubStorage:
+    """Simulates Supabase storage fetch."""
+    def __init__(self, mapping):
+        self.mapping = mapping
+        self.calls = 0
+
+    async def fetch(self, path):
+        self.calls += 1
+        await asyncio.sleep(0)
+        if path not in self.mapping:
+            raise FileNotFoundError(path)
+        return self.mapping[path]
+
+
+@pytest.mark.asyncio
+async def test_slideshow_service_falls_back_on_missing_photo():
+    src = Image.new("RGB", (800, 1000))
+    buf = BytesIO()
+    src.save(buf, format="JPEG")
+    storage = _StubStorage({"pnms/1.jpg": buf.getvalue()})
+    svc = SlideshowService(storage=storage)
+
+    pnm_rows = [
+        {"id": "1", "name": "Has Photo", "photo_path": "pnms/1.jpg",
+         "year": "Fr", "major": "CS", "gpa": 3.5, "hometown": "BC",
+         "status": "active", "tags": [], "vote_summary": {"up": 1, "down": 0, "star": 0},
+         "latest_note": None},
+        {"id": "2", "name": "No Photo", "photo_path": "pnms/missing.jpg",
+         "year": "Fr", "major": "CS", "gpa": 3.5, "hometown": "BC",
+         "status": "active", "tags": [], "vote_summary": {"up": 1, "down": 0, "star": 0},
+         "latest_note": None},
+    ]
+    data = await svc.build_pnm_deck(
+        pnm_rows, chapter=CHAPTER_META, theme=THEME_OFF, exported_at="2026-05-27",
+    )
+    pres = Presentation(BytesIO(data))
+    # cover + 2 pnms + closing
+    assert len(pres.slides) == 4
