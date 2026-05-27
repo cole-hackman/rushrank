@@ -82,10 +82,11 @@ const config = {
         white: "rgb(255, 255, 255)",
         "default-background": "hsl(var(--background))",
         // Legacy beta colors (keep for backward compatibility)
+        // Rewired to semantic tokens; chapter-accent flows through hsl(var(--primary))
         beta: {
-          navy: "#013068",
-          gray: "#bebebe",
-          surface: "#fefefe",
+          navy: "hsl(var(--primary))",
+          gray: "hsl(var(--muted-foreground))",
+          surface: "hsl(var(--card))",
         },
         // shadcn/ui colors (keep for backward compatibility)
         border: "hsl(var(--border))",

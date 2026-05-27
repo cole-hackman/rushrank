@@ -18,10 +18,10 @@
     --danger: #B42318;
     --token-success: #1F7A4D;
 
-    /* ── Legacy beta vars: leave for compat, will be removed in sweep ── */
-    --beta-navy: #013068;
-    --beta-gray: #bebebe;
-    --beta-surface: #fefefe;
+    /* ── Legacy beta vars: rewired to semantic tokens ── */
+    --beta-navy: hsl(var(--primary));
+    --beta-gray: hsl(var(--muted-foreground));
+    --beta-surface: hsl(var(--card));
 
     /* ── shadcn HSL tokens, RETUNED to cream/black ──────────────── */
     --background: 43 56% 95%;
@@ -130,19 +130,19 @@ body {
 /* RushRank Custom Utilities */
 @layer utilities {
   .focus-beta {
-    @apply focus:outline-none focus:ring-2 focus:ring-beta-navy focus:ring-offset-2;
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
   }
 
   .card-beta {
-    @apply rounded-xl border border-beta-gray/30 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm;
+    @apply rounded-xl border border-border bg-card shadow-sm;
   }
 
   .btn-beta-primary {
-    @apply bg-beta-navy text-white hover:bg-beta-navy/90 focus:ring-beta-navy;
+    @apply bg-primary text-primary-foreground hover:opacity-90 focus:ring-ring;
   }
 
   .btn-beta-secondary {
-    @apply border border-beta-gray/50 text-beta-navy dark:text-white hover:bg-beta-navy/5;
+    @apply border border-border text-foreground hover:bg-secondary;
   }
 
   /* Dark mode surface utilities */
@@ -169,12 +169,4 @@ body {
     border-color: rgb(63, 63, 70);
   }
 
-  .dark .border-beta-gray\/30 {
-    border-color: rgba(63, 63, 70, 0.8);
-  }
-
-  /* Override text colors for dark mode */
-  .dark .text-beta-navy {
-    color: rgb(147, 197, 253);
-  }
 }
