@@ -261,4 +261,8 @@ export const queryKeys = {
   
   // Tags
   tags: (chapterId: string) => ["tags", chapterId] as const,
+
+  // Theme & Colors
+  chapterTheme: ["chapter-theme"] as const,
+  fraternityColors: ["fraternity-colors"] as const,
 } as const;
