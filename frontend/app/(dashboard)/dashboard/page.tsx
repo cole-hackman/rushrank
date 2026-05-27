@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FeatherCalendar } from "@subframe/core";
 import { FeatherDownload } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
@@ -27,6 +27,7 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const search = useSearchParams();
   const { toast } = useToast();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [totalPnms, setTotalPnms] = useState(0);
@@ -34,9 +35,19 @@ export default function DashboardPage() {
   const [upcomingEvents, setUpcomingEvents] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
-  
+
   // Use activeEvent hook with chapterId once we have it
   const { activeEvent, loading: eventLoading } = useActiveEvent({ chapterId });
+
+  useEffect(() => {
+    if (search?.get("welcome") === "1") {
+      toast({
+        title: "Welcome to RushRank",
+        description: "Invite your team from Settings."
+      });
+      router.replace("/dashboard");
+    }
+  }, [search, router, toast]);
 
   useEffect(() => {
     loadDashboardData();
