@@ -1,0 +1,137 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - link "Beta Theta Pi RushRank Beta Θ Π" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img "Beta Theta Pi" [ref=e7]
+          - generic [ref=e8]:
+            - generic [ref=e9]: RushRank
+            - generic [ref=e10]: Beta Θ Π
+        - generic [ref=e12]:
+          - link "Home" [ref=e13] [cursor=pointer]:
+            - /url: /
+            - text: Home
+          - link "Rush" [ref=e15] [cursor=pointer]:
+            - /url: /rush
+          - link "PNMs" [ref=e16] [cursor=pointer]:
+            - /url: /pnms
+          - link "Events" [ref=e17] [cursor=pointer]:
+            - /url: /events
+      - button "DE" [ref=e19] [cursor=pointer]:
+        - generic [ref=e21]: DE
+    - generic [ref=e24]:
+      - banner [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - heading "The Roster" [level=1] [ref=e28]
+            - generic [ref=e29]: · Vol. 26 ·
+          - paragraph [ref=e30]: Tuesday, May 26, 2026
+        - paragraph [ref=e31]: Overview of your chapter's rush activities — the room, the names, the calendar.
+      - region "No event currently in session" [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - paragraph [ref=e35]: No event currently in session
+            - heading "Awaiting next gathering" [level=2] [ref=e36]
+          - button "Open Rush Mode" [ref=e37] [cursor=pointer]:
+            - generic [ref=e38]: ◆
+            - text: Open Rush Mode
+            - img [ref=e39]
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - img [ref=e44]
+          - generic [ref=e47]:
+            - paragraph [ref=e48]: Inscribe the Roster · Three Steps
+            - heading "Welcome — let's begin." [level=3] [ref=e49]
+        - generic [ref=e50]:
+          - button "1 Create Event Set up your first rush gathering" [ref=e51] [cursor=pointer]:
+            - generic [ref=e52]: "1"
+            - generic [ref=e53]:
+              - paragraph [ref=e54]: Create Event
+              - paragraph [ref=e55]: Set up your first rush gathering
+            - img [ref=e56]
+          - button "2 Add PNMs Inscribe potential members" [ref=e58] [cursor=pointer]:
+            - generic [ref=e59]: "2"
+            - generic [ref=e60]:
+              - paragraph [ref=e61]: Add PNMs
+              - paragraph [ref=e62]: Inscribe potential members
+            - img [ref=e63]
+          - button "3 Start Check-in Track who walks through the door" [ref=e65] [cursor=pointer]:
+            - generic [ref=e66]: "3"
+            - generic [ref=e67]:
+              - paragraph [ref=e68]: Start Check-in
+              - paragraph [ref=e69]: Track who walks through the door
+            - img [ref=e70]
+      - region "The Tally" [ref=e72]:
+        - generic [ref=e73]:
+          - heading "The Tally" [level=3] [ref=e74]
+          - generic [ref=e75]: Chapter Counts · Real-Time
+        - generic [ref=e76]:
+          - button "Total PNMs 0" [ref=e77] [cursor=pointer]:
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - img [ref=e80]
+                - text: Total PNMs
+              - img [ref=e85]
+            - generic [ref=e89]: "0"
+          - button "Total Events 0" [ref=e90] [cursor=pointer]:
+            - generic [ref=e91]:
+              - generic [ref=e92]:
+                - img [ref=e93]
+                - text: Total Events
+              - img [ref=e95]
+            - generic [ref=e99]: "0"
+          - button "Upcoming 0" [ref=e100] [cursor=pointer]:
+            - generic [ref=e101]:
+              - generic [ref=e102]:
+                - img [ref=e103]
+                - text: Upcoming
+              - img [ref=e106]
+            - generic [ref=e110]: "0"
+      - region "Quick Order" [ref=e111]:
+        - generic [ref=e112]:
+          - heading "Quick Order" [level=3] [ref=e113]
+          - generic [ref=e114]: Common Rituals
+        - generic [ref=e115]:
+          - button "Add PNM Begin a new record" [ref=e116] [cursor=pointer]:
+            - img [ref=e118]
+            - generic [ref=e121]:
+              - generic [ref=e122]:
+                - paragraph [ref=e123]: Add PNM
+                - paragraph [ref=e124]: Begin a new record
+              - img [ref=e125]
+          - button "New Event Plan a gathering" [ref=e127] [cursor=pointer]:
+            - img [ref=e129]
+            - generic [ref=e130]:
+              - generic [ref=e131]:
+                - paragraph [ref=e132]: New Event
+                - paragraph [ref=e133]: Plan a gathering
+              - img [ref=e134]
+          - button "All PNMs Browse the roster" [ref=e136] [cursor=pointer]:
+            - img [ref=e138]
+            - generic [ref=e141]:
+              - generic [ref=e142]:
+                - paragraph [ref=e143]: All PNMs
+                - paragraph [ref=e144]: Browse the roster
+              - img [ref=e145]
+          - button "Export Download the ledger" [ref=e147] [cursor=pointer]:
+            - img [ref=e149]
+            - generic [ref=e152]:
+              - generic [ref=e153]:
+                - paragraph [ref=e154]: Export
+                - paragraph [ref=e155]: Download the ledger
+              - img [ref=e156]
+      - contentinfo [ref=e158]:
+        - generic [ref=e159]: Beta Θ Π
+        - generic [ref=e160]: ◆
+        - generic [ref=e161]: Cal Poly SLO
+        - generic [ref=e162]: ◆
+        - generic [ref=e163]: RushRank Vol. 26
+  - generic [ref=e164]:
+    - generic [ref=e165]:
+      - generic [ref=e166]: No chapter found
+      - generic [ref=e167]: Please create a chapter first
+    - generic [ref=e168]:
+      - generic [ref=e169]: No chapter found
+      - generic [ref=e170]: Please create a chapter first
+  - alert [ref=e171]

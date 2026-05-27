@@ -459,7 +459,7 @@ class PNMService:
                   Your RushRank QR Code
                 </h1>
                 <p style="margin:4px 0 0 0;font-size:14px;color:#ffffff;opacity:0.85;">
-                  Beta Theta Pi
+                  Your chapter
                 </p>
               </td>
             </tr>
@@ -504,7 +504,7 @@ class PNMService:
                   <span style="color:#013068">@betacalpoly</span>.
                 </p>
                 <p style="margin:8px 0 0 0;color:#9ca3af;">
-                  You're receiving this because you signed up as a PNM for Beta Theta Pi.
+                  You're receiving this because you signed up as a PNM for your chapter.
                 </p>
               </td>
             </tr>

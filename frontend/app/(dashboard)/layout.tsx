@@ -135,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <img
                     className="h-8 w-8 flex-none object-cover rounded-full"
                     src="/logo.png"
-                    alt="Beta Theta Pi"
+                    alt="RushRank"
                   />
                 </Link>
                 <div className="flex items-center gap-2">

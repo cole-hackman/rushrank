@@ -127,7 +127,7 @@ body {
   }
 }
 
-/* Beta ΘΠ Custom Utilities */
+/* RushRank Custom Utilities */
 @layer utilities {
   .focus-beta {
     @apply focus:outline-none focus:ring-2 focus:ring-beta-navy focus:ring-offset-2;
