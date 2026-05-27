@@ -4,6 +4,7 @@ FastAPI routes for RushRank
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse, Response, HTMLResponse
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 import logging
 import secrets
 import string
@@ -396,6 +397,43 @@ async def create_chapter(
 ):
     """Create new chapter (system admin only for now)"""
     return await chapter_service.create_chapter(chapter_data, current_user["user_id"])
+
+
+# Theme models
+class ThemePatch(BaseModel):
+    enabled: bool
+    accent_hex: Optional[str] = Field(default=None)
+    source: str = Field(default="manual")
+
+
+# Theme endpoints
+@router.get("/chapters/me/theme")
+async def get_my_theme(current_user: dict = Depends(get_current_user)):
+    """Get current user's chapter theme."""
+    chapter_id = await chapter_service.get_user_chapter_id(current_user["user_id"])
+    return await chapter_service.get_theme(chapter_id)
+
+
+@router.patch("/chapters/me/theme")
+async def patch_my_theme(
+    patch: ThemePatch,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update current user's chapter theme (admin only)."""
+    chapter_id = await chapter_service.get_user_chapter_id(current_user["user_id"])
+    try:
+        return await chapter_service.update_theme(
+            chapter_id, current_user["user_id"], patch.model_dump()
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/fraternity-colors")
+async def list_fraternity_colors():
+    """List all 30 fraternity colors for signup wizard / theme UI."""
+    return await chapter_service.list_fraternity_colors()
+
 
 # PNM endpoints
 @router.get("/pnms")
