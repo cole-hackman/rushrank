@@ -7,6 +7,8 @@ from fastapi import HTTPException
 import secrets
 import string
 import logging
+import re
+import json
 
 from .database import get_db
 from .models import *
@@ -19,6 +21,8 @@ from supabase import create_client
 import qrcode
 
 logger = logging.getLogger(__name__)
+
+_HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 class UserService:
     """User management service"""
@@ -141,16 +145,82 @@ class ChapterService:
     async def verify_admin_access(self, user_id: str, chapter_id: str):
         """Verify user is an admin of the chapter"""
         db = get_db()
-        
+
         query = """
             SELECT 1 FROM memberships
             WHERE user_id = $1 AND chapter_id = $2 AND role = 'admin'
         """
-        
+
         result = await db.execute_one(query, user_id, chapter_id)
-        
+
         if not result:
             raise HTTPException(status_code=403, detail="Admin access required")
+
+    async def get_theme(self, chapter_id: str) -> dict:
+        """Return chapters.theme JSONB for a chapter."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT theme FROM chapters WHERE id = $1", chapter_id
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Chapter not found")
+        theme = row["theme"]
+        # asyncpg may return JSONB as dict or as JSON string depending on codec setup
+        if isinstance(theme, str):
+            theme = json.loads(theme)
+        return dict(theme)
+
+    async def update_theme(self, chapter_id: str, user_id: str, patch: dict) -> dict:
+        """Admin-only: validate + persist new theme."""
+        await self.verify_admin_access(user_id, chapter_id)  # raises 403
+        accent = patch.get("accent_hex")
+        if accent is not None and not _HEX_RE.match(accent):
+            raise ValueError(f"Invalid accent_hex: {accent!r} (must be #RRGGBB)")
+        source = patch.get("source", "manual")
+        if source not in ("auto", "manual"):
+            raise ValueError(f"Invalid source: {source!r}")
+        new_theme = {
+            "enabled": bool(patch.get("enabled", False)),
+            "accent_hex": accent,
+            "source": source,
+        }
+        db = get_db()
+        await db.execute_command(
+            "UPDATE chapters SET theme = $1::jsonb WHERE id = $2",
+            json.dumps(new_theme), chapter_id,
+        )
+        return new_theme
+
+    async def autodetect_accent(self, fraternity_name: str) -> Optional[str]:
+        """Case-insensitive lookup against fraternity_colors with FIJI alias map."""
+        from .fraternity_colors_seed import ALIASES
+        normalized = fraternity_name.strip().lower()
+        canonical = ALIASES.get(normalized, fraternity_name).strip()
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT hex_primary FROM fraternity_colors WHERE lower(name) = lower($1)",
+            canonical,
+        )
+        return row["hex_primary"] if row else None
+
+    async def list_fraternity_colors(self) -> list[dict]:
+        """List 30 fraternity colors for signup wizard / autodetect UI."""
+        db = get_db()
+        rows = await db.execute_query(
+            "SELECT key, name, hex_primary FROM fraternity_colors ORDER BY rank"
+        )
+        return [dict(r) for r in rows]
+
+    async def get_user_chapter_id(self, user_id: str) -> str:
+        """Return the (first) chapter the user is a member of."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT chapter_id FROM memberships WHERE user_id = $1 LIMIT 1",
+            user_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="No chapter membership found")
+        return str(row["chapter_id"])
 
 class PNMService:
     """PNM management service"""
