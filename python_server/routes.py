@@ -10,6 +10,7 @@ import secrets
 import string
 import asyncpg
 import os
+from datetime import datetime, timezone
 
 from .auth import get_current_user, get_optional_user
 from .models import *
@@ -29,6 +30,7 @@ from .services import (
     InvitationService
 )
 from .websocket import manager as ws_manager
+from .slideshow import SlideshowService, HttpPhotoFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -743,6 +745,62 @@ async def bulk_archive_pnms(
     except Exception as e:
         logging.error(f"Error bulk archiving PNMs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to archive/unarchive PNMs")
+
+# PNM export route
+class ExportPptxRequest(BaseModel):
+    filters: dict = Field(default_factory=dict)
+    sort: Optional[str] = None
+
+EXPORT_MAX_PNMS = 200
+_LAST_EXPORT_AT: dict[str, float] = {}
+
+@router.post("/pnms/export/pptx")
+async def export_pnms_pptx(
+    body: ExportPptxRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    import time as _time
+    user_id = current_user["user_id"]
+    now = _time.monotonic()
+    last = _LAST_EXPORT_AT.get(user_id, 0.0)
+    if now - last < 30.0:
+        raise HTTPException(status_code=429, detail="Please wait before exporting again")
+    _LAST_EXPORT_AT[user_id] = now
+
+    chapter_id = await chapter_service.get_user_chapter_id(user_id)
+    role = await chapter_service.get_user_role(chapter_id, user_id)
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+
+    rows = await pnm_service.list_for_export(chapter_id, filters=body.filters, sort=body.sort)
+    if not rows:
+        raise HTTPException(status_code=400, detail="No PNMs match your filters")
+    if len(rows) > EXPORT_MAX_PNMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Filter to fewer than {EXPORT_MAX_PNMS} PNMs to export",
+        )
+
+    chapter = await chapter_service.get_chapter(chapter_id)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    theme = await chapter_service.get_theme(chapter_id)
+
+    svc = SlideshowService(storage=HttpPhotoFetcher())
+    data = await svc.build_pnm_deck(
+        rows,
+        chapter={"name": chapter["name"], "fraternity": ""},
+        theme=theme,
+        exported_at=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    )
+
+    slug = (chapter["name"] or "chapter").lower().replace(" ", "-").replace("/", "-")
+    filename = f"{slug}-pnms-{datetime.now(timezone.utc).strftime('%Y%m%d')}.pptx"
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 # PNM photo upload (signed URL)
 @router.post("/pnms/upload-url")

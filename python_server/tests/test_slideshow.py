@@ -189,11 +189,11 @@ async def test_slideshow_service_falls_back_on_missing_photo():
     svc = SlideshowService(storage=storage)
 
     pnm_rows = [
-        {"id": "1", "name": "Has Photo", "photo_path": "pnms/1.jpg",
+        {"id": "1", "name": "Has Photo", "photo_url": "pnms/1.jpg",
          "year": "Fr", "major": "CS", "gpa": 3.5, "hometown": "BC",
          "status": "active", "tags": [], "vote_summary": {"up": 1, "down": 0, "star": 0},
          "latest_note": None},
-        {"id": "2", "name": "No Photo", "photo_path": "pnms/missing.jpg",
+        {"id": "2", "name": "No Photo", "photo_url": "pnms/missing.jpg",
          "year": "Fr", "major": "CS", "gpa": 3.5, "hometown": "BC",
          "status": "active", "tags": [], "vote_summary": {"up": 1, "down": 0, "star": 0},
          "latest_note": None},
@@ -204,3 +204,9 @@ async def test_slideshow_service_falls_back_on_missing_photo():
     pres = Presentation(BytesIO(data))
     # cover + 2 pnms + closing
     assert len(pres.slides) == 4
+
+
+def test_http_photo_fetcher_importable():
+    from python_server.slideshow import HttpPhotoFetcher
+    f = HttpPhotoFetcher()
+    assert hasattr(f, "fetch")

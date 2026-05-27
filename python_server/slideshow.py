@@ -11,6 +11,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
+import httpx
 
 DEFAULT_ACCENT_RGB = (10, 10, 10)        # near-black
 CREAM_RGB = (250, 247, 240)
@@ -305,12 +306,12 @@ class SlideshowService:
     def __init__(self, storage):
         self.storage = storage
 
-    async def _fetch_one(self, path: str | None, sem: asyncio.Semaphore) -> bytes | None:
-        if not path:
+    async def _fetch_one(self, url: str | None, sem: asyncio.Semaphore) -> bytes | None:
+        if not url:
             return None
         async with sem:
             try:
-                raw = await self.storage.fetch(path)
+                raw = await self.storage.fetch(url)
                 return prepare_photo_bytes(raw)
             except Exception:
                 return None
@@ -324,7 +325,7 @@ class SlideshowService:
     ) -> bytes:
         sem = asyncio.Semaphore(self.MAX_CONCURRENT_PHOTO_FETCH)
         photo_results = await asyncio.gather(
-            *(self._fetch_one(row.get("photo_path"), sem) for row in pnm_rows)
+            *(self._fetch_one(row.get("photo_url"), sem) for row in pnm_rows)
         )
 
         pnms: list[PnmSlideData] = []
@@ -344,3 +345,21 @@ class SlideshowService:
             ))
 
         return build_deck(pnms, chapter=chapter, theme=theme, exported_at=exported_at)
+
+
+class HttpPhotoFetcher:
+    """Fetches photo bytes from arbitrary http(s) URLs.
+
+    `fetch(url)` returns bytes or raises. Compatible with SlideshowService's
+    storage Protocol (any object with async `fetch(path) -> bytes`).
+    """
+    def __init__(self, timeout_s: float = 8.0):
+        self.timeout_s = timeout_s
+
+    async def fetch(self, url: str) -> bytes:
+        if not url:
+            raise FileNotFoundError("empty url")
+        async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            return r.content

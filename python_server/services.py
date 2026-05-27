@@ -222,6 +222,24 @@ class ChapterService:
             raise HTTPException(status_code=404, detail="No chapter membership found")
         return str(row["chapter_id"])
 
+    async def get_user_role(self, chapter_id: str, user_id: str) -> Optional[str]:
+        """Return 'admin' / 'exec' / 'member' / None if not a member."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT role FROM memberships WHERE chapter_id = $1 AND user_id = $2",
+            chapter_id, user_id,
+        )
+        return row["role"] if row else None
+
+    async def get_chapter(self, chapter_id: str) -> Optional[dict]:
+        """Return raw chapter row as dict, or None."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT id, name, domain_allowlist, created_at FROM chapters WHERE id = $1",
+            chapter_id,
+        )
+        return dict(row) if row else None
+
 class PNMService:
     """PNM management service"""
     
@@ -1110,6 +1128,67 @@ class PNMService:
                 count = int(match.group(1))
                 return count > 0
         return False
+
+    async def list_for_export(self, chapter_id: str, *, filters: dict, sort: Optional[str] = None) -> list[dict]:
+        """Fetch PNMs with tags + vote summary + latest note for slideshow export.
+
+        Returns rows shaped for SlideshowService.build_pnm_deck:
+        {id, name, year, major, hometown, photo_url, tags, status,
+         vote_summary, latest_note, gpa}
+        `status` is always 'active' (no schema column for it).
+        `gpa` is None (no schema column).
+        """
+        db = get_db()
+        base = """
+          SELECT
+            p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+            COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
+            (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
+            (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
+            (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
+            (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+            (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+               WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
+          FROM pnms p
+          WHERE p.chapter_id = $1 AND COALESCE(p.archived, false) = false
+        """
+        args: list = [chapter_id]
+        if filters.get("search"):
+            args.append(f"%{filters['search'].lower()}%")
+            base += f" AND lower(p.name) LIKE ${len(args)}"
+        order = "p.name"
+        if sort == "name":
+            order = "p.name"
+        elif sort == "created":
+            order = "p.created_at DESC"
+        base += f" ORDER BY {order}"
+        rows = await db.execute_query(base, *args)
+        result = []
+        for r in rows:
+            latest_note = None
+            if r.get("latest_note_body"):
+                latest_note = {
+                    "author": r.get("latest_note_author") or "",
+                    "text": r["latest_note_body"],
+                }
+            result.append({
+                "id": str(r["id"]),
+                "name": r["name"],
+                "year": r.get("year") or "",
+                "major": r.get("major") or "",
+                "hometown": r.get("hometown") or "",
+                "photo_url": r.get("photo_url"),
+                "tags": list(r.get("tags") or []),
+                "status": "active",
+                "vote_summary": {
+                    "up": int(r.get("up_count") or 0),
+                    "down": int(r.get("down_count") or 0),
+                    "star": int(r.get("star_count") or 0),
+                },
+                "latest_note": latest_note,
+                "gpa": None,
+            })
+        return result
 
 class VotingService:
     """Voting management service"""
