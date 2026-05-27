@@ -15,7 +15,7 @@ import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
 import { FeatherArchive } from "@subframe/core";
-import { api, API_BASE, getChapterId } from "@/lib/api";
+import { api, API_BASE, getChapterId, exportPnmsPptx, triggerBlobDownload } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
@@ -66,6 +66,7 @@ export default function PNMsPage() {
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -314,6 +315,23 @@ export default function PNMsPage() {
     }
   };
 
+  const handleExportPptx = async () => {
+    setExporting(true);
+    toast({ title: "Building your deck…", description: "About 10s for 30 PNMs" });
+    try {
+      const { blob, filename } = await exportPnmsPptx({
+        search: search.trim() || undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
+      });
+      triggerBlobDownload(blob, filename);
+      toast({ title: "Deck ready", description: filename });
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e?.message || "Unable to build deck" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="container max-w-none flex h-full w-full flex-col items-start gap-6 bg-default-background py-6">
       <div className="flex w-full flex-col items-start gap-1">
@@ -347,8 +365,8 @@ export default function PNMsPage() {
                       handleBulkArchive(!allArchived);
                     }}
                   >
-                    {pnms.filter(p => selectedPnmIds.includes(p.id)).every(p => p.archived) 
-                      ? `Unarchive (${selectedPnmIds.length})` 
+                    {pnms.filter(p => selectedPnmIds.includes(p.id)).every(p => p.archived)
+                      ? `Unarchive (${selectedPnmIds.length})`
                       : `Archive (${selectedPnmIds.length})`}
                   </Button>
                   <Button
@@ -362,6 +380,14 @@ export default function PNMsPage() {
               )}
             </>
           )}
+          <Button
+            variant="neutral-secondary"
+            icon={<FeatherDownload />}
+            onClick={handleExportPptx}
+            disabled={exporting || filteredPnms.length === 0}
+          >
+            {exporting ? "Building…" : "Export → PowerPoint"}
+          </Button>
           <Link href="/intake">
             <Button variant="brand-primary">New PNM</Button>
           </Link>
