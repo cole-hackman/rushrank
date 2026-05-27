@@ -6,7 +6,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, getChapterTheme, updateChapterTheme, getFraternityColors, ChapterTheme, FraternityColor } from "@/lib/api";
 import {
   Chapter,
   PNM,
@@ -302,14 +302,43 @@ export function useTags(chapterId: string | null) {
 
 export function useCreateTag() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: { name: string; chapter_id: string; color?: string }) =>
       api<Tag>("/tags", { method: "POST", body: data }),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: queryKeys.tags(variables.chapter_id) 
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.tags(variables.chapter_id)
       });
     },
+  });
+}
+
+// =============================================================================
+// Theme Hooks
+// =============================================================================
+
+export function useChapterTheme() {
+  return useQuery({
+    queryKey: queryKeys.chapterTheme,
+    queryFn: getChapterTheme,
+    staleTime: 60 * 60 * 1000,
+    retry: false,  // theme is optional, don't spam logs if endpoint 401s
+  });
+}
+
+export function useUpdateChapterTheme() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: ChapterTheme) => updateChapterTheme(patch),
+    onSuccess: (data) => qc.setQueryData(queryKeys.chapterTheme, data),
+  });
+}
+
+export function useFraternityColors() {
+  return useQuery({
+    queryKey: queryKeys.fraternityColors,
+    queryFn: getFraternityColors,
+    staleTime: 24 * 60 * 60 * 1000,
   });
 }

@@ -244,3 +244,28 @@ export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: 
     throw error;
   }
 }
+
+// ── Chapter theme & fraternity colors ───────────────────────────
+export interface ChapterTheme {
+  enabled: boolean;
+  accent_hex: string | null;
+  source: "auto" | "manual";
+}
+
+export interface FraternityColor {
+  key: string;
+  name: string;
+  hex_primary: string;
+}
+
+export async function getChapterTheme(): Promise<ChapterTheme> {
+  return api<ChapterTheme>("/chapters/me/theme");
+}
+
+export async function updateChapterTheme(patch: ChapterTheme): Promise<ChapterTheme> {
+  return api<ChapterTheme>("/chapters/me/theme", { method: "PATCH", body: patch });
+}
+
+export async function getFraternityColors(): Promise<FraternityColor[]> {
+  return api<FraternityColor[]>("/fraternity-colors");
+}
