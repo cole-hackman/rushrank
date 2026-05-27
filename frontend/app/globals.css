@@ -4,57 +4,70 @@
 
 @layer base {
   :root {
-    /* Beta Theta Pi Brand Colors */
+    /* ── RushRank cream/black semantic tokens (NEW) ─────────────── */
+    --bg: #FAF7F0;
+    --surface: #FFFFFF;
+    --surface-muted: #F4F0E4;
+    --fg: #0A0A0A;
+    --fg-muted: #5C5C5C;
+    --border-token: #E8E3D6;
+    --accent-hex: #0A0A0A;
+    --accent-fg: #FFFFFF;
+    --accent-soft: rgba(10, 10, 10, 0.08);
+    --accent-fg-on-bg: #0A0A0A;
+    --danger: #B42318;
+    --token-success: #1F7A4D;
+
+    /* ── Legacy beta vars: leave for compat, will be removed in sweep ── */
     --beta-navy: #013068;
     --beta-gray: #bebebe;
     --beta-surface: #fefefe;
 
-    /* Base surfaces */
-    --background: 0 0% 99%;
-    /* #fefefe */
-    --foreground: 212 100% 20%;
-    /* near navy for text */
+    /* ── shadcn HSL tokens, RETUNED to cream/black ──────────────── */
+    --background: 43 56% 95%;
+    /* maps to ~#FAF7F0 cream */
+    --foreground: 0 0% 4%;
+    /* ~#0A0A0A near-black */
 
-    /* Primary - Beta Navy */
-    --primary: 212 100% 21%;
-    /* #013068 */
+    /* Primary - near-black; receives accent override at runtime */
+    --primary: 0 0% 4%;
+    /* near-black */
     --primary-foreground: 0 0% 100%;
 
     /* Secondary - Muted */
-    --secondary: 0 0% 94%;
-    --secondary-foreground: 212 100% 21%;
+    --secondary: 43 30% 92%;
+    --secondary-foreground: 0 0% 4%;
 
     /* Muted */
-    --muted: 0 0% 94%;
-    /* light gray backgrounds */
-    --muted-foreground: 0 0% 45%;
+    --muted: 43 30% 92%;
+    --muted-foreground: 0 0% 36%;
 
-    /* Accent - Navy */
-    --accent: 212 100% 21%;
+    /* Accent - near-black; overridden at runtime by ThemeProvider */
+    --accent: 0 0% 4%;
     --accent-foreground: 0 0% 100%;
 
     /* Borders & Inputs */
-    --border: 0 0% 75%;
-    /* #bebebe zone */
-    --input: 0 0% 75%;
-    --ring: 212 100% 21%;
-    /* navy focus rings */
+    --border: 41 30% 87%;
+    /* ~#E8E3D6 */
+    --input: 41 30% 87%;
+    --ring: 0 0% 4%;
 
     /* Cards */
-    --card: 0 0% 99%;
-    --card-foreground: 212 100% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
 
     /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 212 100% 20%;
+    --popover-foreground: 0 0% 4%;
 
     /* Utility */
     --radius: 0.75rem;
-    /* 12px - Beta ΘΠ standard */
 
     /* Status colors */
-    --success: 142 71% 45%;
-    --destructive: 0 84% 60%;
+    --success: 150 60% 30%;
+    /* ~#1F7A4D */
+    --destructive: 0 76% 40%;
+    /* ~#B42318 */
     --destructive-foreground: 0 0% 98%;
   }
 
