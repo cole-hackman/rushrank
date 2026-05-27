@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { api, getChapterId } from "@/lib/api";
+import { api, getChapterId, exportPnmsPptx, triggerBlobDownload } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Button } from "@/ui/components/Button";
 import { IconWithBackground } from "@/ui/components/IconWithBackground";
@@ -47,6 +47,7 @@ export default function ExportsPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
   const [graphicsLoading, setGraphicsLoading] = useState(false);
+  const [pptxExporting, setPptxExporting] = useState(false);
 
   // Get filters from URL params
   const filterTags = searchParams.get("tags")?.split(",").filter(Boolean) || [];
@@ -169,6 +170,20 @@ export default function ExportsPage() {
       toast({ title: "Export failed", description: e?.message || "Failed to export attendance" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportAllPptx = async () => {
+    setPptxExporting(true);
+    toast({ title: "Building your deck…", description: "About 10s for 30 PNMs" });
+    try {
+      const { blob, filename } = await exportPnmsPptx({});
+      triggerBlobDownload(blob, filename);
+      toast({ title: "Deck ready", description: filename });
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e?.message || "Unable to build deck" });
+    } finally {
+      setPptxExporting(false);
     }
   };
 
@@ -322,6 +337,34 @@ export default function ExportsPage() {
             </Button>
             <p className="text-xs text-beta-gray">
               Generates images for all PNMs in your chapter and downloads as a ZIP file. Each image includes name, major, hometown, year, and fun fact.
+            </p>
+          </div>
+        </div>
+
+        {/* PNM Slideshow (PowerPoint) */}
+        <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <IconWithBackground variant="neutral" size="small" icon={<FileText className="h-5 w-5" />} />
+              <div>
+                <h2 className="text-lg font-semibold text-beta-navy">PNM Slideshow (PowerPoint)</h2>
+                <p className="text-sm text-beta-gray">One slide per PNM with photo, info, votes, and latest note</p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <Button
+              variant="neutral-secondary"
+              icon={<Download className="h-4 w-4" />}
+              onClick={handleExportAllPptx}
+              disabled={pptxExporting || loading || !chapterId}
+              className="w-full"
+              type="button"
+            >
+              {pptxExporting ? "Building…" : "Download .pptx"}
+            </Button>
+            <p className="text-xs text-beta-gray">
+              Creates a PowerPoint presentation with one slide per PNM. Slide includes photo, major, hometown, year, voting stats, and the latest chapter note. Opens in PowerPoint, Keynote, or Google Slides.
             </p>
           </div>
         </div>
