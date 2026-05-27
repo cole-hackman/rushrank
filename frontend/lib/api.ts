@@ -314,3 +314,15 @@ export function triggerBlobDownload(blob: Blob, filename: string) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ── Chapter Provisioning ────────────────────────────────────────────────────
+export interface ProvisionRequest {
+  fraternity_name: string;
+  school: string;
+  chapter_name: string;
+  admin_name: string;
+}
+
+export async function provisionChapter(req: ProvisionRequest): Promise<{ chapter_id: string }> {
+  return api<{ chapter_id: string }>("/chapters/provision", { method: "POST", body: req });
+}
