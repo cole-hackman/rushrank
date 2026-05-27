@@ -3,6 +3,9 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from python_server.services import ChapterService
+from fastapi.testclient import TestClient
+from python_server.main import app
+from python_server.auth import get_current_user
 
 
 def _db(execute_one_seq=None, execute_command=None):
@@ -71,3 +74,30 @@ async def test_provision_unknown_fraternity_theme_has_null_accent():
         )
     assert "chapter_id" in result
     assert result["chapter_id"] == "chap-new"
+
+
+def test_provision_route_calls_service():
+    """Test that the POST /chapters/provision route calls the service."""
+    async def fake_user():
+        return {"user_id": "u-1", "email": "x@x.com"}
+
+    app.dependency_overrides[get_current_user] = fake_user
+    try:
+        with patch(
+            "python_server.routes.chapter_service.provision_chapter",
+            new=AsyncMock(return_value={"chapter_id": "chap-xyz"}),
+        ):
+            client = TestClient(app)
+            r = client.post(
+                "/api/v1/chapters/provision",
+                json={
+                    "fraternity_name": "Sigma Chi",
+                    "school": "Boston College",
+                    "chapter_name": "Sigma Chi at Boston College",
+                    "admin_name": "Test",
+                },
+            )
+            assert r.status_code == 200
+            assert r.json() == {"chapter_id": "chap-xyz"}
+    finally:
+        app.dependency_overrides.clear()

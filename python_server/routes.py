@@ -401,6 +401,28 @@ async def create_chapter(
     return await chapter_service.create_chapter(chapter_data, current_user["user_id"])
 
 
+class ProvisionRequest(BaseModel):
+    fraternity_name: str
+    school: str
+    chapter_name: str
+    admin_name: str
+
+
+@router.post("/chapters/provision")
+async def provision_chapter_route(
+    req: ProvisionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Idempotently provision a chapter for a user with auto-detected theme."""
+    return await chapter_service.provision_chapter(
+        user_id=current_user["user_id"],
+        fraternity_name=req.fraternity_name,
+        school=req.school,
+        chapter_name=req.chapter_name,
+        admin_name=req.admin_name,
+    )
+
+
 # Theme models
 class ThemePatch(BaseModel):
     enabled: bool
