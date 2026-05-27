@@ -1,0 +1,3 @@
+ALTER TABLE chapters
+  ADD COLUMN IF NOT EXISTS school TEXT,
+  ADD COLUMN IF NOT EXISTS fraternity TEXT;
