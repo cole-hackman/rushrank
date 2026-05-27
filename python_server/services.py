@@ -240,6 +240,49 @@ class ChapterService:
         )
         return dict(row) if row else None
 
+    async def provision_chapter(
+        self,
+        user_id: str,
+        fraternity_name: str,
+        school: str,
+        chapter_name: str,
+        admin_name: str,
+    ) -> dict:
+        """Idempotently create a chapter + admin membership for a user.
+
+        Looks up the fraternity in `fraternity_colors` to pre-seed `theme.accent_hex`
+        with source='auto', enabled=False. Caller flips enabled=True in Settings.
+        """
+        accent = await self.autodetect_accent(fraternity_name)
+        theme = {
+            "enabled": False,
+            "accent_hex": accent,
+            "source": "auto" if accent else "manual",
+        }
+        db = get_db()
+        # Idempotency: same user + chapter_name + school → return existing chapter
+        existing = await db.execute_one(
+            """SELECT c.id FROM chapters c
+               JOIN memberships m ON m.chapter_id = c.id
+               WHERE m.user_id = $1 AND c.name = $2 AND c.school = $3""",
+            user_id, chapter_name, school,
+        )
+        if existing:
+            return {"chapter_id": str(existing["id"])}
+        row = await db.execute_one(
+            """INSERT INTO chapters (name, fraternity, school, theme)
+               VALUES ($1, $2, $3, $4::jsonb)
+               RETURNING id""",
+            chapter_name, fraternity_name, school, json.dumps(theme),
+        )
+        chapter_id = row["id"]
+        await db.execute_command(
+            """INSERT INTO memberships (user_id, chapter_id, role)
+               VALUES ($1, $2, 'admin')""",
+            user_id, chapter_id,
+        )
+        return {"chapter_id": str(chapter_id)}
+
 class PNMService:
     """PNM management service"""
     
