@@ -16,10 +16,10 @@ from .auth import get_current_user, get_optional_user
 from .models import *
 from .database import get_db
 from .services import (
-    UserService, 
-    ChapterService, 
-    PNMService, 
-    VotingService, 
+    UserService,
+    ChapterService,
+    PNMService,
+    VotingService,
     EventService,
     ExportService,
     NoteService,
@@ -29,6 +29,7 @@ from .services import (
     QuestionnaireService,
     InvitationService
 )
+from .bid_list import BidListService
 from .websocket import manager as ws_manager
 from .slideshow import SlideshowService, HttpPhotoFetcher
 
@@ -49,6 +50,7 @@ session_service = SessionService()
 upload_service = UploadService()
 questionnaire_service = QuestionnaireService()
 invitation_service = InvitationService()
+bid_list_service = BidListService()
 
 # Auth endpoints
 @router.get("/me", response_model=UserProfile)
@@ -457,6 +459,132 @@ async def patch_my_theme(
 async def list_fraternity_colors():
     """List all 30 fraternity colors for signup wizard / theme UI."""
     return await chapter_service.list_fraternity_colors()
+
+
+# Bid list models
+class CreateBidListRequest(BaseModel):
+    source_round_id: str
+    name: str
+    bid_cap: Optional[int] = None
+
+
+class UpdateEntryRequest(BaseModel):
+    bucket: str
+    position: int
+
+
+# Bid list helper
+async def _require_admin_or_exec(current_user: dict) -> tuple[str, str]:
+    """Return (chapter_id, role). Raises 403 if not admin/exec."""
+    chapter_id = await chapter_service.get_user_chapter_id(current_user["user_id"])
+    role = await chapter_service.get_user_role(chapter_id, current_user["user_id"])
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+    return chapter_id, role
+
+
+# Bid list routes
+@router.get("/chapters/me/bid-list")
+async def get_my_bid_list(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.get_with_entries(active["id"])
+
+
+@router.post("/chapters/me/bid-list")
+async def create_my_bid_list(
+    req: CreateBidListRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    return await bid_list_service.create_from_round(
+        chapter_id=chapter_id,
+        source_round_id=req.source_round_id,
+        name=req.name,
+        bid_cap=req.bid_cap,
+        user_id=current_user["user_id"],
+    )
+
+
+@router.post("/chapters/me/bid-list/lock")
+async def acquire_my_bid_list_lock(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.acquire_lock(active["id"], current_user["user_id"])
+
+
+@router.post("/chapters/me/bid-list/lock/refresh")
+async def refresh_my_bid_list_lock(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.refresh_lock(active["id"], current_user["user_id"])
+
+
+@router.delete("/chapters/me/bid-list/lock")
+async def release_my_bid_list_lock(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        return {"ok": True}
+    await bid_list_service.release_lock(active["id"], current_user["user_id"])
+    return {"ok": True}
+
+
+@router.patch("/chapters/me/bid-list/entries/{pnm_id}")
+async def patch_my_bid_list_entry(
+    pnm_id: str,
+    req: UpdateEntryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.update_entry(
+        active["id"], pnm_id, req.bucket, req.position, current_user["user_id"],
+    )
+
+
+@router.post("/chapters/me/bid-list/finalize")
+async def finalize_my_bid_list(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.finalize(active["id"], current_user["user_id"])
+
+
+@router.get("/chapters/me/bid-list/export/csv")
+async def export_my_bid_list_csv(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    csv_text = await bid_list_service.export_csv(active["id"])
+    return PlainTextResponse(
+        csv_text, media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="bid-list.csv"'},
+    )
+
+
+@router.get("/chapters/me/bid-list/export/pdf")
+async def export_my_bid_list_pdf(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    pdf_bytes = await bid_list_service.export_pdf(active["id"])
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="bid-list.pdf"'},
+    )
 
 
 # PNM endpoints
