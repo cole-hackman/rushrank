@@ -174,3 +174,45 @@ async def test_release_lock_clears_fields():
     with patch("python_server.bid_list.get_db", return_value=db):
         await svc.release_lock("list-A", "u-1")
     db.execute_command.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_entry_requires_lock():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    db = _mock_db(execute_one_seq=[{"locked_by": "u-2", "locked_at": now}])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        with pytest.raises(HTTPException) as exc:
+            await svc.update_entry("list-A", "p-1", "bid", 0, "u-1")
+        assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_update_entry_persists_bucket_and_position():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    seq_one = [
+        {"locked_by": "u-1", "locked_at": now},  # _require_lock
+    ]
+    db = _mock_db(execute_one_seq=seq_one)
+    with patch("python_server.bid_list.get_db", return_value=db):
+        await svc.update_entry("list-A", "p-1", "bid", 2048, "u-1")
+    # one UPDATE on bid_list_entries
+    db.execute_command.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_finalize_stamps_finalized_at():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    seq_one = [
+        {"locked_by": "u-1", "locked_at": now},
+        {"finalized_at": now},
+    ]
+    db = _mock_db(execute_one_seq=seq_one)
+    with patch("python_server.bid_list.get_db", return_value=db):
+        out = await svc.finalize("list-A", "u-1")
+    assert out["finalized_at"] is not None
