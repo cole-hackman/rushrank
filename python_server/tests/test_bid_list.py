@@ -216,3 +216,58 @@ async def test_finalize_stamps_finalized_at():
     with patch("python_server.bid_list.get_db", return_value=db):
         out = await svc.finalize("list-A", "u-1")
     assert out["finalized_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_export_csv_groups_by_bucket_and_includes_header():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    list_row = {
+        "id": "list-A", "chapter_id": "c-1", "source_round_id": None,
+        "name": "Rush 2026", "bid_cap": 25,
+        "locked_by": None, "locked_at": None, "finalized_at": None,
+        "created_at": now, "updated_at": now,
+    }
+    entries = [
+        {"pnm_id": "p-1", "bucket": "bid",   "position": 0,
+         "name": "Alice", "year": "Fr", "major": "CS", "photo_url": None,
+         "up_count": 10, "down_count": 0, "star_count": 1},
+        {"pnm_id": "p-2", "bucket": "maybe", "position": 0,
+         "name": "Bob", "year": "So", "major": "ME", "photo_url": None,
+         "up_count": 5, "down_count": 2, "star_count": 0},
+        {"pnm_id": "p-3", "bucket": "cut",   "position": 0,
+         "name": "Cara", "year": "Fr", "major": "EE", "photo_url": None,
+         "up_count": 1, "down_count": 8, "star_count": 0},
+    ]
+    db = _mock_db(execute_one_seq=[list_row], execute_query_seq=[entries])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        out = await svc.export_csv("list-A")
+    lines = out.strip().split("\n")
+    assert "bucket,name,year,major,up,down,star" in lines[0]
+    assert any("bid,Alice" in l for l in lines)
+    assert any("maybe,Bob" in l for l in lines)
+    assert any("cut,Cara" in l for l in lines)
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_returns_pdf_bytes():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    list_row = {
+        "id": "list-A", "chapter_id": "c-1", "source_round_id": None,
+        "name": "Rush 2026", "bid_cap": 25,
+        "locked_by": None, "locked_at": None, "finalized_at": None,
+        "created_at": now, "updated_at": now,
+    }
+    entries = [
+        {"pnm_id": "p-1", "bucket": "bid", "position": 0,
+         "name": "Alice", "year": "Fr", "major": "CS", "photo_url": None,
+         "up_count": 10, "down_count": 0, "star_count": 1},
+    ]
+    db = _mock_db(execute_one_seq=[list_row], execute_query_seq=[entries])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        out = await svc.export_pdf("list-A")
+    assert isinstance(out, bytes)
+    assert out[:5] == b"%PDF-"
