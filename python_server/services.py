@@ -1175,36 +1175,62 @@ class PNMService:
     async def list_for_export(self, chapter_id: str, *, filters: dict, sort: Optional[str] = None) -> list[dict]:
         """Fetch PNMs with tags + vote summary + latest note for slideshow export.
 
-        Returns rows shaped for SlideshowService.build_pnm_deck:
+        Supports optional bid-list filtering. Returns rows shaped for SlideshowService.build_pnm_deck:
         {id, name, year, major, hometown, photo_url, tags, status,
          vote_summary, latest_note, gpa}
         `status` is always 'active' (no schema column for it).
         `gpa` is None (no schema column).
         """
         db = get_db()
-        base = """
-          SELECT
-            p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-            COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
-            (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
-            (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
-            (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
-            (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
-            (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
-               WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
-          FROM pnms p
-          WHERE p.chapter_id = $1 AND COALESCE(p.archived, false) = false
-        """
-        args: list = [chapter_id]
-        if filters.get("search"):
-            args.append(f"%{filters['search'].lower()}%")
-            base += f" AND lower(p.name) LIKE ${len(args)}"
-        order = "p.name"
-        if sort == "name":
+        bid_list_id = filters.get("bid_list_id")
+        bid_bucket = filters.get("bucket")
+
+        if bid_list_id:
+            base = """
+              SELECT
+                p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
+                (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+                (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+                   WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
+              FROM bid_list_entries e
+              JOIN pnms p ON p.id = e.pnm_id
+              WHERE e.bid_list_id = $1 AND p.chapter_id = $2
+                AND COALESCE(p.archived, false) = false
+            """
+            args: list = [bid_list_id, chapter_id]
+            if bid_bucket in ("bid", "maybe", "cut"):
+                args.append(bid_bucket)
+                base += f" AND e.bucket = ${len(args)}::bid_bucket"
+            base += " ORDER BY e.position"
+        else:
+            base = """
+              SELECT
+                p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
+                (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+                (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+                   WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
+              FROM pnms p
+              WHERE p.chapter_id = $1 AND COALESCE(p.archived, false) = false
+            """
+            args = [chapter_id]
+            if filters.get("search"):
+                args.append(f"%{filters['search'].lower()}%")
+                base += f" AND lower(p.name) LIKE ${len(args)}"
             order = "p.name"
-        elif sort == "created":
-            order = "p.created_at DESC"
-        base += f" ORDER BY {order}"
+            if sort == "name":
+                order = "p.name"
+            elif sort == "created":
+                order = "p.created_at DESC"
+            base += f" ORDER BY {order}"
+
         rows = await db.execute_query(base, *args)
         result = []
         for r in rows:
