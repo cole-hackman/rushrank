@@ -1,6 +1,7 @@
 """Unit tests for BidListService (mock-based)."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from fastapi import HTTPException
 
 from python_server.bid_list import BidListService
 
@@ -107,3 +108,69 @@ async def test_get_with_entries_groups_by_bucket():
     assert out["bid_list"]["id"] == "list-A"
     assert len(out["entries"]) == 2
     assert out["entries"][0]["bucket"] == "bid"
+
+
+@pytest.mark.asyncio
+async def test_acquire_lock_succeeds_when_unlocked():
+    svc = BidListService()
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    seq_one = [
+        {"locked_by": None, "locked_at": None},                # current lock state
+        {"locked_by": "u-1", "locked_at": now},  # after UPDATE
+    ]
+    db = _mock_db(execute_one_seq=seq_one)
+    with patch("python_server.bid_list.get_db", return_value=db):
+        out = await svc.acquire_lock("list-A", "u-1")
+    assert out["locked_by"] == "u-1"
+
+
+@pytest.mark.asyncio
+async def test_acquire_lock_409_when_held_by_other_recently():
+    svc = BidListService()
+    from datetime import datetime, timezone, timedelta
+    recent = datetime.now(timezone.utc) - timedelta(seconds=10)
+    db = _mock_db(execute_one_seq=[{"locked_by": "u-2", "locked_at": recent}])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        with pytest.raises(HTTPException) as exc:
+            await svc.acquire_lock("list-A", "u-1")
+        assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_acquire_lock_takeover_when_stale():
+    svc = BidListService()
+    from datetime import datetime, timezone, timedelta
+    stale = datetime.now(timezone.utc) - timedelta(seconds=601)
+    now = datetime.now(timezone.utc)
+    seq_one = [
+        {"locked_by": "u-2", "locked_at": stale},
+        {"locked_by": "u-1", "locked_at": now},
+    ]
+    db = _mock_db(execute_one_seq=seq_one)
+    with patch("python_server.bid_list.get_db", return_value=db):
+        out = await svc.acquire_lock("list-A", "u-1")
+    assert out["locked_by"] == "u-1"
+
+
+@pytest.mark.asyncio
+async def test_refresh_lock_requires_caller_holds_it():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    db = _mock_db(execute_one_seq=[{"locked_by": "u-2", "locked_at": now}])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        with pytest.raises(HTTPException) as exc:
+            await svc.refresh_lock("list-A", "u-1")
+        assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_release_lock_clears_fields():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    db = _mock_db(execute_one_seq=[{"locked_by": "u-1", "locked_at": now}])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        await svc.release_lock("list-A", "u-1")
+    db.execute_command.assert_awaited()
