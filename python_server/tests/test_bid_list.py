@@ -56,3 +56,54 @@ async def test_create_from_round_seeds_all_pnms_into_maybe():
     assert result["bid_cap"] == 25
     # 3 entry inserts (executemany or per-row)
     assert db.execute_command.await_count >= 3
+
+
+@pytest.mark.asyncio
+async def test_get_active_returns_most_recent_non_finalized():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    db = _mock_db(execute_one_seq=[{
+        "id": "list-A", "chapter_id": "c-1", "source_round_id": "r-1",
+        "name": "Rush 2026", "bid_cap": 25,
+        "locked_by": None, "locked_at": None, "finalized_at": None,
+        "created_at": now, "updated_at": now,
+    }])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        result = await svc.get_active("c-1")
+    assert result["id"] == "list-A"
+
+
+@pytest.mark.asyncio
+async def test_get_active_returns_none_when_no_list():
+    svc = BidListService()
+    db = _mock_db(execute_one_seq=[None])
+    with patch("python_server.bid_list.get_db", return_value=db):
+        assert await svc.get_active("c-1") is None
+
+
+@pytest.mark.asyncio
+async def test_get_with_entries_groups_by_bucket():
+    svc = BidListService()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    seq_one = [{
+        "id": "list-A", "chapter_id": "c-1", "source_round_id": "r-1",
+        "name": "Rush 2026", "bid_cap": 25,
+        "locked_by": None, "locked_at": None, "finalized_at": None,
+        "created_at": now, "updated_at": now,
+    }]
+    seq_q = [[
+        {"pnm_id": "p-1", "bucket": "bid",   "position": 0,
+         "name": "A", "year": "Fr", "major": "CS", "photo_url": None,
+         "up_count": 10, "down_count": 0, "star_count": 1},
+        {"pnm_id": "p-2", "bucket": "maybe", "position": 0,
+         "name": "B", "year": "So", "major": "ME", "photo_url": None,
+         "up_count": 5, "down_count": 2, "star_count": 0},
+    ]]
+    db = _mock_db(execute_one_seq=seq_one, execute_query_seq=seq_q)
+    with patch("python_server.bid_list.get_db", return_value=db):
+        out = await svc.get_with_entries("list-A")
+    assert out["bid_list"]["id"] == "list-A"
+    assert len(out["entries"]) == 2
+    assert out["entries"][0]["bucket"] == "bid"
