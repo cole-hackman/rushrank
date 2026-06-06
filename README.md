@@ -1,5 +1,7 @@
 # RushRank
 
+In active pilot with Beta Theta Pi at Cal Poly SLO, expanding to additional chapters and schools in Fall 2026.
+
 A fraternity rush management application that helps chapters organize and track potential new members (PNMs) during rush events.
 
 ## 1. What Is the Project?
@@ -12,15 +14,15 @@ Fraternity recruitment often relies on disorganized spreadsheets, manual vote co
 
 ## 3. What Problems Did It Solve?
 
-One major challenge was managing live, anonymous voting for a huge number of PNMs concurrently during selection rounds. This was solved by implementing a heavily optimized, swipe-based voting interface with real-time database updates via FastAPI and Supabase, ensuring the system remains responsive even with the entire chapter voting simultaneously. Additionally, the system tackles the problem of tracking attendance by implementing dynamic QR code generation and scanning, allowing PNMs to check-in easily at the door.
+One major challenge was managing live, anonymous voting for a huge number of PNMs concurrently during selection rounds. This was solved by implementing a heavily optimized, swipe-based voting interface with real-time updates over custom FastAPI WebSockets, ensuring the system stays responsive even with the whole chapter voting at once. Additionally, the system tackles the problem of tracking attendance by implementing dynamic QR code generation and scanning, allowing PNMs to check-in easily at the door.
 
 ## 4. What Technologies Are Used?
 
-- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
-- **Backend**: FastAPI (Python 3.11+)
-- **Database**: PostgreSQL (via Supabase)
-- **Authentication**: Supabase Auth with JWT tokens
-- **Styling**: Subframe, Radix UI
+- **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS 3, Subframe + Radix UI, TanStack React Query
+- **Backend**: FastAPI (Python 3.11), ~80+ REST endpoints, WebSockets for real-time voting
+- **Database**: PostgreSQL (Supabase), accessed via asyncpg with raw parameterized SQL (no ORM); 12 SQL migrations; row-level security policies; multi-tenant chapter_id schema
+- **Authentication**: Supabase Auth (email/password + magic-link OTP), JWT verified backend-side via JWKS
+- **Other**: Supabase Storage (PNM photos, QR codes), PPTX export (python-pptx), PDF export (reportlab), QR generation/scanning, CI via GitHub Actions
 
 ## 5. What Did You Implement?
 
