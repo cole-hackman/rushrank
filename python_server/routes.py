@@ -4,20 +4,22 @@ FastAPI routes for RushRank
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse, Response, HTMLResponse
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 import logging
 import secrets
 import string
 import asyncpg
 import os
+from datetime import datetime, timezone
 
 from .auth import get_current_user, get_optional_user
 from .models import *
 from .database import get_db
 from .services import (
-    UserService, 
-    ChapterService, 
-    PNMService, 
-    VotingService, 
+    UserService,
+    ChapterService,
+    PNMService,
+    VotingService,
     EventService,
     ExportService,
     NoteService,
@@ -27,7 +29,9 @@ from .services import (
     QuestionnaireService,
     InvitationService
 )
+from .bid_list import BidListService
 from .websocket import manager as ws_manager
+from .slideshow import SlideshowService, HttpPhotoFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ session_service = SessionService()
 upload_service = UploadService()
 questionnaire_service = QuestionnaireService()
 invitation_service = InvitationService()
+bid_list_service = BidListService()
 
 # Auth endpoints
 @router.get("/me", response_model=UserProfile)
@@ -397,6 +402,191 @@ async def create_chapter(
     """Create new chapter (system admin only for now)"""
     return await chapter_service.create_chapter(chapter_data, current_user["user_id"])
 
+
+class ProvisionRequest(BaseModel):
+    fraternity_name: str
+    school: str
+    chapter_name: str
+    admin_name: str
+
+
+@router.post("/chapters/provision")
+async def provision_chapter_route(
+    req: ProvisionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Idempotently provision a chapter for a user with auto-detected theme."""
+    return await chapter_service.provision_chapter(
+        user_id=current_user["user_id"],
+        fraternity_name=req.fraternity_name,
+        school=req.school,
+        chapter_name=req.chapter_name,
+        admin_name=req.admin_name,
+    )
+
+
+# Theme models
+class ThemePatch(BaseModel):
+    enabled: bool
+    accent_hex: Optional[str] = Field(default=None)
+    source: str = Field(default="manual")
+
+
+# Theme endpoints
+@router.get("/chapters/me/theme")
+async def get_my_theme(current_user: dict = Depends(get_current_user)):
+    """Get current user's chapter theme."""
+    chapter_id = await chapter_service.get_user_chapter_id(current_user["user_id"])
+    return await chapter_service.get_theme(chapter_id)
+
+
+@router.patch("/chapters/me/theme")
+async def patch_my_theme(
+    patch: ThemePatch,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update current user's chapter theme (admin only)."""
+    chapter_id = await chapter_service.get_user_chapter_id(current_user["user_id"])
+    try:
+        return await chapter_service.update_theme(
+            chapter_id, current_user["user_id"], patch.model_dump()
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/fraternity-colors")
+async def list_fraternity_colors():
+    """List all 30 fraternity colors for signup wizard / theme UI."""
+    return await chapter_service.list_fraternity_colors()
+
+
+# Bid list models
+class CreateBidListRequest(BaseModel):
+    source_round_id: str
+    name: str
+    bid_cap: Optional[int] = None
+
+
+class UpdateEntryRequest(BaseModel):
+    bucket: str
+    position: int
+
+
+# Bid list helper
+async def _require_admin_or_exec(current_user: dict) -> tuple[str, str]:
+    """Return (chapter_id, role). Raises 403 if not admin/exec."""
+    chapter_id = await chapter_service.get_user_chapter_id(current_user["user_id"])
+    role = await chapter_service.get_user_role(chapter_id, current_user["user_id"])
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+    return chapter_id, role
+
+
+# Bid list routes
+@router.get("/chapters/me/bid-list")
+async def get_my_bid_list(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.get_with_entries(active["id"])
+
+
+@router.post("/chapters/me/bid-list")
+async def create_my_bid_list(
+    req: CreateBidListRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    return await bid_list_service.create_from_round(
+        chapter_id=chapter_id,
+        source_round_id=req.source_round_id,
+        name=req.name,
+        bid_cap=req.bid_cap,
+        user_id=current_user["user_id"],
+    )
+
+
+@router.post("/chapters/me/bid-list/lock")
+async def acquire_my_bid_list_lock(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.acquire_lock(active["id"], current_user["user_id"])
+
+
+@router.post("/chapters/me/bid-list/lock/refresh")
+async def refresh_my_bid_list_lock(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.refresh_lock(active["id"], current_user["user_id"])
+
+
+@router.delete("/chapters/me/bid-list/lock")
+async def release_my_bid_list_lock(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        return {"ok": True}
+    await bid_list_service.release_lock(active["id"], current_user["user_id"])
+    return {"ok": True}
+
+
+@router.patch("/chapters/me/bid-list/entries/{pnm_id}")
+async def patch_my_bid_list_entry(
+    pnm_id: str,
+    req: UpdateEntryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.update_entry(
+        active["id"], pnm_id, req.bucket, req.position, current_user["user_id"],
+    )
+
+
+@router.post("/chapters/me/bid-list/finalize")
+async def finalize_my_bid_list(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    return await bid_list_service.finalize(active["id"], current_user["user_id"])
+
+
+@router.get("/chapters/me/bid-list/export/csv")
+async def export_my_bid_list_csv(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    csv_text = await bid_list_service.export_csv(active["id"])
+    return PlainTextResponse(
+        csv_text, media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="bid-list.csv"'},
+    )
+
+
+@router.get("/chapters/me/bid-list/export/pdf")
+async def export_my_bid_list_pdf(current_user: dict = Depends(get_current_user)):
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+    pdf_bytes = await bid_list_service.export_pdf(active["id"])
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="bid-list.pdf"'},
+    )
+
+
 # PNM endpoints
 @router.get("/pnms")
 async def get_pnms(
@@ -705,6 +895,62 @@ async def bulk_archive_pnms(
     except Exception as e:
         logging.error(f"Error bulk archiving PNMs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to archive/unarchive PNMs")
+
+# PNM export route
+class ExportPptxRequest(BaseModel):
+    filters: dict = Field(default_factory=dict)
+    sort: Optional[str] = None
+
+EXPORT_MAX_PNMS = 200
+_LAST_EXPORT_AT: dict[str, float] = {}
+
+@router.post("/pnms/export/pptx")
+async def export_pnms_pptx(
+    body: ExportPptxRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    import time as _time
+    user_id = current_user["user_id"]
+    now = _time.monotonic()
+    last = _LAST_EXPORT_AT.get(user_id, 0.0)
+    if now - last < 30.0:
+        raise HTTPException(status_code=429, detail="Please wait before exporting again")
+    _LAST_EXPORT_AT[user_id] = now
+
+    chapter_id = await chapter_service.get_user_chapter_id(user_id)
+    role = await chapter_service.get_user_role(chapter_id, user_id)
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+
+    rows = await pnm_service.list_for_export(chapter_id, filters=body.filters, sort=body.sort)
+    if not rows:
+        raise HTTPException(status_code=400, detail="No PNMs match your filters")
+    if len(rows) > EXPORT_MAX_PNMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Filter to fewer than {EXPORT_MAX_PNMS} PNMs to export",
+        )
+
+    chapter = await chapter_service.get_chapter(chapter_id)
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    theme = await chapter_service.get_theme(chapter_id)
+
+    svc = SlideshowService(storage=HttpPhotoFetcher())
+    data = await svc.build_pnm_deck(
+        rows,
+        chapter={"name": chapter["name"], "fraternity": ""},
+        theme=theme,
+        exported_at=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    )
+
+    slug = (chapter["name"] or "chapter").lower().replace(" ", "-").replace("/", "-")
+    filename = f"{slug}-pnms-{datetime.now(timezone.utc).strftime('%Y%m%d')}.pptx"
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 # PNM photo upload (signed URL)
 @router.post("/pnms/upload-url")

@@ -82,10 +82,11 @@ const config = {
         white: "rgb(255, 255, 255)",
         "default-background": "hsl(var(--background))",
         // Legacy beta colors (keep for backward compatibility)
+        // Rewired to semantic tokens; chapter-accent flows through hsl(var(--primary))
         beta: {
-          navy: "#013068",
-          gray: "#bebebe",
-          surface: "#fefefe",
+          navy: "hsl(var(--primary))",
+          gray: "hsl(var(--muted-foreground))",
+          surface: "hsl(var(--card))",
         },
         // shadcn/ui colors (keep for backward compatibility)
         border: "hsl(var(--border))",
@@ -121,6 +122,19 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // RushRank semantic tokens (NEW)
+        bg: "var(--bg)",
+        surface: "var(--surface)",
+        "surface-muted": "var(--surface-muted)",
+        fg: "var(--fg)",
+        "fg-muted": "var(--fg-muted)",
+        "border-token": "var(--border-token)",
+        "accent-hex": "var(--accent-hex)",
+        "accent-fg": "var(--accent-fg)",
+        "accent-soft": "var(--accent-soft)",
+        "accent-text": "var(--accent-fg-on-bg)",
+        danger: "var(--danger)",
+        "token-success": "var(--token-success)",
       },
       fontSize: {
         caption: [

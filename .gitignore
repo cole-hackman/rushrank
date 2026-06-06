@@ -1,15 +1,33 @@
+# Dependencies
 node_modules
+
+# Build artifacts
 dist
-.DS_Store
-server/public
-vite.config.ts.*
-*.tar.gz
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 .next
+*.tar.gz
+*.tsbuildinfo
+server/public
+
+# Python
 __pycache__
+.pytest_cache/
 venv
 .venv
+
+# OS / editor
+.DS_Store
+
+# Env files (never commit real values)
+.env
+.env.*
+!.env.example
+vite.config.ts.*
+
+# Scratch / local-only assets (untracked, kept locally)
+.replit
+.playwright-mcp/
+attached_assets/
+fraternity-colors-top-30.md
+intake.png
+login-desktop.png
+login-mobile.png

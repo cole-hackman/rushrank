@@ -244,3 +244,85 @@ export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: 
     throw error;
   }
 }
+
+// ── Chapter theme & fraternity colors ───────────────────────────
+export interface ChapterTheme {
+  enabled: boolean;
+  accent_hex: string | null;
+  source: "auto" | "manual";
+}
+
+export interface FraternityColor {
+  key: string;
+  name: string;
+  hex_primary: string;
+}
+
+export async function getChapterTheme(): Promise<ChapterTheme> {
+  return api<ChapterTheme>("/chapters/me/theme");
+}
+
+export async function updateChapterTheme(patch: ChapterTheme): Promise<ChapterTheme> {
+  return api<ChapterTheme>("/chapters/me/theme", { method: "PATCH", body: patch });
+}
+
+export async function getFraternityColors(): Promise<FraternityColor[]> {
+  return api<FraternityColor[]>("/fraternity-colors");
+}
+
+// ── PPTX Export ────────────────────────────────────────────────────
+export interface PnmExportFilters {
+  search?: string;
+  tags?: string[];
+}
+
+export async function exportPnmsPptx(
+  filters: PnmExportFilters,
+  sort?: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const res = await fetch(`${API_BASE}/pnms/export/pptx`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ filters, sort: sort ?? null }),
+  });
+  if (!res.ok) {
+    let detail = `Export failed (${res.status})`;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = j.detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] || "pnms.pptx";
+  const blob = await res.blob();
+  return { blob, filename };
+}
+
+export function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Chapter Provisioning ────────────────────────────────────────────────────
+export interface ProvisionRequest {
+  fraternity_name: string;
+  school: string;
+  chapter_name: string;
+  admin_name: string;
+}
+
+export async function provisionChapter(req: ProvisionRequest): Promise<{ chapter_id: string }> {
+  return api<{ chapter_id: string }>("/chapters/provision", { method: "POST", body: req });
+}

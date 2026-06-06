@@ -7,6 +7,8 @@ from fastapi import HTTPException
 import secrets
 import string
 import logging
+import re
+import json
 
 from .database import get_db
 from .models import *
@@ -19,6 +21,8 @@ from supabase import create_client
 import qrcode
 
 logger = logging.getLogger(__name__)
+
+_HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 class UserService:
     """User management service"""
@@ -141,16 +145,143 @@ class ChapterService:
     async def verify_admin_access(self, user_id: str, chapter_id: str):
         """Verify user is an admin of the chapter"""
         db = get_db()
-        
+
         query = """
             SELECT 1 FROM memberships
             WHERE user_id = $1 AND chapter_id = $2 AND role = 'admin'
         """
-        
+
         result = await db.execute_one(query, user_id, chapter_id)
-        
+
         if not result:
             raise HTTPException(status_code=403, detail="Admin access required")
+
+    async def get_theme(self, chapter_id: str) -> dict:
+        """Return chapters.theme JSONB for a chapter."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT theme FROM chapters WHERE id = $1", chapter_id
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Chapter not found")
+        theme = row["theme"]
+        # asyncpg may return JSONB as dict or as JSON string depending on codec setup
+        if isinstance(theme, str):
+            theme = json.loads(theme)
+        return dict(theme)
+
+    async def update_theme(self, chapter_id: str, user_id: str, patch: dict) -> dict:
+        """Admin-only: validate + persist new theme."""
+        await self.verify_admin_access(user_id, chapter_id)  # raises 403
+        accent = patch.get("accent_hex")
+        if accent is not None and not _HEX_RE.match(accent):
+            raise ValueError(f"Invalid accent_hex: {accent!r} (must be #RRGGBB)")
+        source = patch.get("source", "manual")
+        if source not in ("auto", "manual"):
+            raise ValueError(f"Invalid source: {source!r}")
+        new_theme = {
+            "enabled": bool(patch.get("enabled", False)),
+            "accent_hex": accent,
+            "source": source,
+        }
+        db = get_db()
+        await db.execute_command(
+            "UPDATE chapters SET theme = $1::jsonb WHERE id = $2",
+            json.dumps(new_theme), chapter_id,
+        )
+        return new_theme
+
+    async def autodetect_accent(self, fraternity_name: str) -> Optional[str]:
+        """Case-insensitive lookup against fraternity_colors with FIJI alias map."""
+        from .fraternity_colors_seed import ALIASES
+        normalized = fraternity_name.strip().lower()
+        canonical = ALIASES.get(normalized, fraternity_name).strip()
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT hex_primary FROM fraternity_colors WHERE lower(name) = lower($1)",
+            canonical,
+        )
+        return row["hex_primary"] if row else None
+
+    async def list_fraternity_colors(self) -> list[dict]:
+        """List 30 fraternity colors for signup wizard / autodetect UI."""
+        db = get_db()
+        rows = await db.execute_query(
+            "SELECT key, name, hex_primary FROM fraternity_colors ORDER BY rank"
+        )
+        return [dict(r) for r in rows]
+
+    async def get_user_chapter_id(self, user_id: str) -> str:
+        """Return the (first) chapter the user is a member of."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT chapter_id FROM memberships WHERE user_id = $1 LIMIT 1",
+            user_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="No chapter membership found")
+        return str(row["chapter_id"])
+
+    async def get_user_role(self, chapter_id: str, user_id: str) -> Optional[str]:
+        """Return 'admin' / 'exec' / 'member' / None if not a member."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT role FROM memberships WHERE chapter_id = $1 AND user_id = $2",
+            chapter_id, user_id,
+        )
+        return row["role"] if row else None
+
+    async def get_chapter(self, chapter_id: str) -> Optional[dict]:
+        """Return raw chapter row as dict, or None."""
+        db = get_db()
+        row = await db.execute_one(
+            "SELECT id, name, domain_allowlist, created_at FROM chapters WHERE id = $1",
+            chapter_id,
+        )
+        return dict(row) if row else None
+
+    async def provision_chapter(
+        self,
+        user_id: str,
+        fraternity_name: str,
+        school: str,
+        chapter_name: str,
+        admin_name: str,
+    ) -> dict:
+        """Idempotently create a chapter + admin membership for a user.
+
+        Looks up the fraternity in `fraternity_colors` to pre-seed `theme.accent_hex`
+        with source='auto', enabled=False. Caller flips enabled=True in Settings.
+        """
+        accent = await self.autodetect_accent(fraternity_name)
+        theme = {
+            "enabled": False,
+            "accent_hex": accent,
+            "source": "auto" if accent else "manual",
+        }
+        db = get_db()
+        # Idempotency: same user + chapter_name + school → return existing chapter
+        existing = await db.execute_one(
+            """SELECT c.id FROM chapters c
+               JOIN memberships m ON m.chapter_id = c.id
+               WHERE m.user_id = $1 AND c.name = $2 AND c.school = $3""",
+            user_id, chapter_name, school,
+        )
+        if existing:
+            return {"chapter_id": str(existing["id"])}
+        row = await db.execute_one(
+            """INSERT INTO chapters (name, fraternity, school, theme)
+               VALUES ($1, $2, $3, $4::jsonb)
+               RETURNING id""",
+            chapter_name, fraternity_name, school, json.dumps(theme),
+        )
+        chapter_id = row["id"]
+        await db.execute_command(
+            """INSERT INTO memberships (user_id, chapter_id, role)
+               VALUES ($1, $2, 'admin')""",
+            user_id, chapter_id,
+        )
+        return {"chapter_id": str(chapter_id)}
 
 class PNMService:
     """PNM management service"""
@@ -389,7 +520,7 @@ class PNMService:
                   Your RushRank QR Code
                 </h1>
                 <p style="margin:4px 0 0 0;font-size:14px;color:#ffffff;opacity:0.85;">
-                  Beta Theta Pi
+                  Your chapter
                 </p>
               </td>
             </tr>
@@ -434,7 +565,7 @@ class PNMService:
                   <span style="color:#013068">@betacalpoly</span>.
                 </p>
                 <p style="margin:8px 0 0 0;color:#9ca3af;">
-                  You're receiving this because you signed up as a PNM for Beta Theta Pi.
+                  You're receiving this because you signed up as a PNM for your chapter.
                 </p>
               </td>
             </tr>
@@ -1040,6 +1171,93 @@ class PNMService:
                 count = int(match.group(1))
                 return count > 0
         return False
+
+    async def list_for_export(self, chapter_id: str, *, filters: dict, sort: Optional[str] = None) -> list[dict]:
+        """Fetch PNMs with tags + vote summary + latest note for slideshow export.
+
+        Supports optional bid-list filtering. Returns rows shaped for SlideshowService.build_pnm_deck:
+        {id, name, year, major, hometown, photo_url, tags, status,
+         vote_summary, latest_note, gpa}
+        `status` is always 'active' (no schema column for it).
+        `gpa` is None (no schema column).
+        """
+        db = get_db()
+        bid_list_id = filters.get("bid_list_id")
+        bid_bucket = filters.get("bucket")
+
+        if bid_list_id:
+            base = """
+              SELECT
+                p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
+                (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+                (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+                   WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
+              FROM bid_list_entries e
+              JOIN pnms p ON p.id = e.pnm_id
+              WHERE e.bid_list_id = $1 AND p.chapter_id = $2
+                AND COALESCE(p.archived, false) = false
+            """
+            args: list = [bid_list_id, chapter_id]
+            if bid_bucket in ("bid", "maybe", "cut"):
+                args.append(bid_bucket)
+                base += f" AND e.bucket = ${len(args)}::bid_bucket"
+            base += " ORDER BY e.position"
+        else:
+            base = """
+              SELECT
+                p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+                COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
+                (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+                (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+                   WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
+              FROM pnms p
+              WHERE p.chapter_id = $1 AND COALESCE(p.archived, false) = false
+            """
+            args = [chapter_id]
+            if filters.get("search"):
+                args.append(f"%{filters['search'].lower()}%")
+                base += f" AND lower(p.name) LIKE ${len(args)}"
+            order = "p.name"
+            if sort == "name":
+                order = "p.name"
+            elif sort == "created":
+                order = "p.created_at DESC"
+            base += f" ORDER BY {order}"
+
+        rows = await db.execute_query(base, *args)
+        result = []
+        for r in rows:
+            latest_note = None
+            if r.get("latest_note_body"):
+                latest_note = {
+                    "author": r.get("latest_note_author") or "",
+                    "text": r["latest_note_body"],
+                }
+            result.append({
+                "id": str(r["id"]),
+                "name": r["name"],
+                "year": r.get("year") or "",
+                "major": r.get("major") or "",
+                "hometown": r.get("hometown") or "",
+                "photo_url": r.get("photo_url"),
+                "tags": list(r.get("tags") or []),
+                "status": "active",
+                "vote_summary": {
+                    "up": int(r.get("up_count") or 0),
+                    "down": int(r.get("down_count") or 0),
+                    "star": int(r.get("star_count") or 0),
+                },
+                "latest_note": latest_note,
+                "gpa": None,
+            })
+        return result
 
 class VotingService:
     """Voting management service"""
