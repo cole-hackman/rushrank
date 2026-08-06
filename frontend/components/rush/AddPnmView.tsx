@@ -703,7 +703,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
                   <div className="mt-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
                     <p className="text-sm text-blue-800 font-medium mb-2">📱 Save to Camera Roll</p>
                     <p className="text-xs text-blue-700 mb-2">
-                      Photos taken via browser don't auto-save on iOS. Long-press the image above, then tap "Add to Photos" to save a copy.
+                      Photos taken via browser don&apos;t auto-save on iOS. Long-press the image above, then tap &ldquo;Add to Photos&rdquo; to save a copy.
                     </p>
                   </div>
                 )}

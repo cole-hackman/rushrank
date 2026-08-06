@@ -11,7 +11,7 @@ export function FeatureGrid() {
   return (
     <section id="features" className="border-t border-border bg-bg py-24">
       <div className="mx-auto max-w-[1180px] px-6">
-        <h2 className="font-serif text-4xl text-fg md:text-5xl">Everything rush needs. Nothing it doesn't.</h2>
+        <h2 className="font-serif text-4xl text-fg md:text-5xl">Everything rush needs. Nothing it doesn&apos;t.</h2>
         <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => (
             <div key={f.title} className="rounded-2xl border border-border bg-surface p-6">

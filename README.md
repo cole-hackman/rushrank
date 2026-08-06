@@ -68,21 +68,44 @@ SUPABASE_JWKS_URL=https://your-project.supabase.co/auth/v1/.well-known/jwks.json
 cd frontend && npm install
 
 # Backend
-pip install -r requirements.txt
+pip install -r python_server/requirements.txt
 # Or with uv:
-uv pip install -r requirements.txt
+uv pip install -r python_server/requirements.txt
 ```
 
 ### 3. Set Up Database
 
-Apply the schema to your Supabase database:
+`supabase/migrations/` is the single source of truth. Apply every file in
+numeric order:
 
 ```bash
 # Via Supabase CLI
 npx supabase db push
 
-# Or manually run the schema
-psql "$DATABASE_URL" -f supabase/schema.sql
+# Or manually, in order
+for f in supabase/migrations/*.sql; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+done
+```
+
+`supabase/legacy/schema_pre_migrations.sql` is what the project was originally
+created from. It is kept for reference and as a test fixture -- do not apply it.
+
+After applying, `0013_reconcile_schema.sql` records what it found:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT step, action, detail FROM schema_reconciliation_log ORDER BY id;"
+```
+
+### Running the tests
+
+```bash
+cd python_server && pytest -q -m "not integration"   # fast, mock-based
+
+# Integration tests need a real Postgres:
+docker run -d --name rr-test -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16
+export TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
+cd python_server && pytest -q -m integration
 ```
 
 ### 4. Start the Servers

@@ -1,14 +1,37 @@
 name: CI
 
+# Runs on every branch. The previous filter (main, feat/**, fix/**) meant most
+# working branches got no CI at all, including every branch this project's
+# tooling creates.
 on:
   push:
-    branches: [ main, feat/**, fix/** ]
   pull_request:
-    branches: [ main, feat/**, fix/** ]
 
 jobs:
   backend:
     runs-on: ubuntu-latest
+
+    # A real Postgres. The 81 unit tests in this repo are mock-based and cannot
+    # detect a missing table or column, which is why a schema that matched
+    # neither committed definition reached production. See docs/AUDIT-2026-08.md.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,16 +41,30 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Install from the requirements file rather than a hand-maintained list,
+      # which had already drifted from python_server/requirements.txt.
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install asyncpg email-validator fastapi httpx pydantic pytest python-jose python-multipart supabase uvicorn
+          pip install -r python_server/requirements.txt
+          pip install -r python_server/requirements-dev.txt
 
-      - name: Run tests
-        env:
-          PYTHONPATH: python_server
+      - name: Verify migrations apply to an empty database
         run: |
-          pytest -q
+          psql "$TEST_DATABASE_URL" -c 'DROP DATABASE IF EXISTS migration_check;'
+          psql "$TEST_DATABASE_URL" -c 'CREATE DATABASE migration_check;'
+          for f in supabase/migrations/*.sql; do
+            echo "--- $f"
+            psql "${TEST_DATABASE_URL%/*}/migration_check" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      - name: Unit tests
+        working-directory: python_server
+        run: pytest -q -m "not integration"
+
+      - name: Integration tests (real Postgres)
+        working-directory: python_server
+        run: pytest -q -m integration
 
   frontend:
     runs-on: ubuntu-latest
@@ -48,10 +85,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Unit tests
+        run: npm run test
+
       - name: Build
         run: npm run build
-
-
