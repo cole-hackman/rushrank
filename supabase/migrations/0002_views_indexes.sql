@@ -5,7 +5,23 @@ CREATE INDEX IF NOT EXISTS idx_pnms_chapter_name ON pnms (chapter_id, name);
 CREATE INDEX IF NOT EXISTS idx_pnms_name_trgm ON pnms USING gin (name gin_trgm_ops);
 
 CREATE INDEX IF NOT EXISTS idx_votes_round_pnm ON votes (round_id, pnm_id);
-CREATE INDEX IF NOT EXISTS idx_votes_round_voter ON votes (round_id, voter_user_id);
+
+-- Guarded: on a database created from the legacy supabase/schema.sql, votes has
+-- `voter_id`, not `voter_user_id`. 0013_reconcile_schema.sql adds the column and
+-- then re-creates this index. Without the guard this file aborts, which is why
+-- v_round_rankings and v_votes_public are missing in production.
+DO $mig0002_votes_idx$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'votes' AND column_name = 'voter_user_id'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_votes_round_voter ON votes (round_id, voter_user_id);
+  ELSE
+    RAISE NOTICE '0002: votes.voter_user_id absent (legacy shape); idx_votes_round_voter deferred to 0013';
+  END IF;
+END
+$mig0002_votes_idx$;
 
 CREATE INDEX IF NOT EXISTS idx_event_attendance_pnm ON event_attendance (pnm_id);
 CREATE INDEX IF NOT EXISTS idx_event_attendance_event ON event_attendance (event_id);
@@ -37,7 +53,16 @@ BEGIN
   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pnms_search;
 END$$;
 
--- Rankings View
+-- Rankings and anonymity views.
+--
+-- Both depend on the reconciled votes shape (value / favorite / voter_user_id)
+-- and on voting_rounds.settings. On a legacy-origin database none of those
+-- exist, so creating them here aborts the migration. They are therefore defined
+-- in 0013_reconcile_schema.sql, which runs after votes has been reconciled and
+-- uses CREATE OR REPLACE so re-running is harmless.
+--
+-- Definitions kept below for provenance only -- see 0013 for the live ones.
+/*
 CREATE OR REPLACE VIEW v_round_rankings AS
 WITH scoring AS (
   SELECT
@@ -89,6 +114,7 @@ SELECT
   v.voted_at
 FROM votes v
 JOIN voting_rounds vr ON vr.id = v.round_id;
+*/
 
 -- Optional RLS scaffolding (commented)
 -- ALTER TABLE pnms ENABLE ROW LEVEL SECURITY;
