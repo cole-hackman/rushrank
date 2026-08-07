@@ -4,7 +4,7 @@ import { SubframeCore } from "@/components/SubframeCore";
 import { DropdownMenu } from "@/components/DropdownMenu";
 import { IconButton } from "@/ui/components/IconButton";
 import { Avatar } from "@/ui/components/Avatar";
-import { Download, User, Settings, LogOut, Shield, Tag, Users, BarChart3, ListChecks } from "lucide-react";
+import { Download, User, Settings, LogOut, Shield, Tag, Users, BarChart3, ListChecks, ScrollText } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
@@ -117,6 +117,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { label: "Settings", href: "/settings" },
           { label: "Tag Management", href: "/admin/tags" },
           { label: "User Management", href: "/admin/users" },
+          { label: "Activity Log", href: "/admin/audit" },
           { label: "Analytics", href: "/analytics" },
         ]
       : []),
@@ -199,6 +200,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             onClick={() => router.push("/bid-list")}
                           >
                             Bid List
+                          </DropdownMenu.DropdownItem>
+                          <DropdownMenu.DropdownItem
+                            icon={<ScrollText className="h-4 w-4" />}
+                            onClick={() => router.push("/admin/audit")}
+                          >
+                            Activity Log
                           </DropdownMenu.DropdownItem>
                           <DropdownMenu.DropdownItem
                             icon={<BarChart3 className="h-4 w-4" />}

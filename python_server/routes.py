@@ -30,6 +30,8 @@ from .services import (
     InvitationService
 )
 from .bid_list import BidListService
+from . import audit
+from .csv_import import parse_and_import
 from .rate_limit import limiter, VOTE_RATE_LIMIT, AUTH_RATE_LIMIT, WRITE_RATE_LIMIT
 from .websocket import manager as ws_manager
 from .slideshow import SlideshowService, HttpPhotoFetcher
@@ -352,22 +354,29 @@ async def update_membership_role(
     
     # Verify membership belongs to chapter
     membership = await db.execute_one("""
-        SELECT chapter_id FROM memberships WHERE id = $1
+        SELECT chapter_id, user_id, role FROM memberships WHERE id = $1
     """, membership_id)
-    
+
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
-    
+
     if str(membership["chapter_id"]) != chapter_id:
         raise HTTPException(status_code=403, detail="Membership does not belong to this chapter")
-    
+
     # Update role
     await db.execute_command("""
         UPDATE memberships
         SET role = $1
         WHERE id = $2
     """, new_role, membership_id)
-    
+
+    await audit.record(
+        chapter_id, current_user["user_id"], "membership.role_change",
+        entity_type="membership", entity_id=membership_id,
+        before={"role": membership["role"], "user_id": str(membership["user_id"])},
+        after={"role": new_role},
+    )
+
     # Return updated membership
     updated = await db.execute_one("""
         SELECT m.id, m.user_id, m.role, m.created_at, u.email
@@ -562,7 +571,13 @@ async def finalize_my_bid_list(current_user: dict = Depends(get_current_user)):
     active = await bid_list_service.get_active(chapter_id)
     if not active:
         raise HTTPException(status_code=404, detail="No bid list yet")
-    return await bid_list_service.finalize(active["id"], current_user["user_id"])
+    result = await bid_list_service.finalize(active["id"], current_user["user_id"])
+    await audit.record(
+        chapter_id, current_user["user_id"], "bid_list.finalize",
+        entity_type="bid_list", entity_id=active["id"],
+        after={"finalized_at": str(result.get("finalized_at"))},
+    )
+    return result
 
 
 @router.get("/chapters/me/bid-list/export/csv")
@@ -629,6 +644,53 @@ async def public_intake(chapter_id: str, pnm_data: PNMCreate, request: Request):
     if not exists:
         raise HTTPException(status_code=404, detail="Chapter not found")
     return await pnm_service.create_pnm(pnm_data, chapter_id)
+
+
+@router.post("/public/demo-session")
+@limiter.limit(AUTH_RATE_LIMIT)
+async def create_demo_session(request: Request):
+    """Sign a visitor into the seeded read-only demo chapter.
+
+    The credentials stay on the server. The obvious alternative -- shipping the
+    demo password as NEXT_PUBLIC_DEMO_PASSWORD -- bakes a real credential into
+    every client bundle permanently, and it is the same Supabase project that
+    holds real chapters.
+
+    Read-only is enforced in `auth.get_current_user`, not here: the demo account
+    holds only `observer` memberships, and every non-GET request from an
+    observer-only user is rejected. So even if these tokens leak, they cannot
+    write.
+
+    404s when the demo is not configured for this deployment, which is what
+    tells the landing page to keep its in-page demo instead.
+    """
+    email = os.getenv("DEMO_USER_EMAIL")
+    password = os.getenv("DEMO_USER_PASSWORD")
+    supabase_url = os.getenv("SUPABASE_URL")
+    anon_key = os.getenv("SUPABASE_ANON_KEY")
+
+    if not (email and password and supabase_url and anon_key):
+        raise HTTPException(status_code=404, detail="Demo mode is not enabled")
+
+    import httpx
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.post(
+            f"{supabase_url}/auth/v1/token",
+            params={"grant_type": "password"},
+            json={"email": email, "password": password},
+            headers={"apikey": anon_key, "Content-Type": "application/json"},
+        )
+
+    if response.status_code != 200:
+        logger.error(f"Demo sign-in failed: {response.status_code} {response.text[:200]}")
+        raise HTTPException(status_code=503, detail="Demo account is unavailable")
+
+    data = response.json()
+    return {
+        "access_token": data.get("access_token"),
+        "refresh_token": data.get("refresh_token"),
+        "expires_in": data.get("expires_in"),
+    }
 
 
 # PNM endpoints
@@ -724,6 +786,50 @@ async def create_pnm(
     """Create new PNM (all members)"""
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
     return await pnm_service.create_pnm(pnm_data, chapter_id)
+
+@router.post("/pnms/import")
+@limiter.limit(WRITE_RATE_LIMIT)
+async def import_pnms_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    chapter_id: str = Query(..., description="Chapter ID"),
+    dry_run: bool = Query(True, description="Validate and preview without writing"),
+    mapping: Optional[str] = Query(None, description="JSON object of csv-column -> pnm-field"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Import a roster from CSV (admin only).
+
+    Call once with dry_run=true to get the preview the operator confirms, then
+    again with dry_run=false and the same file to commit. Both calls run the
+    same parse and validation, so the second cannot surprise the first.
+    """
+    await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
+
+    mapping_override = None
+    if mapping:
+        import json as _json
+        try:
+            mapping_override = _json.loads(mapping)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="mapping must be valid JSON")
+        if not isinstance(mapping_override, dict):
+            raise HTTPException(status_code=400, detail="mapping must be a JSON object")
+
+    raw = await file.read()
+    result = await parse_and_import(chapter_id, raw, mapping_override, dry_run)
+
+    if not dry_run and result["imported"]:
+        await audit.record(
+            chapter_id, current_user["user_id"], "pnm.import",
+            entity_type="pnm",
+            after={
+                "filename": file.filename,
+                "imported": result["imported"],
+                "skipped": result["skipped"],
+            },
+        )
+
+    return result
 
 @router.get("/pnms/{pnm_id}", response_model=PNM)
 async def get_pnm(
@@ -836,10 +942,16 @@ async def delete_pnm(
     
     await chapter_service.verify_admin_access(current_user["user_id"], pnm.chapter_id)
     success = await pnm_service.delete_pnm(pnm_id)
-    
+
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete PNM")
-    
+
+    await audit.record(
+        pnm.chapter_id, current_user["user_id"], "pnm.delete",
+        entity_type="pnm", entity_id=pnm_id,
+        before={"name": pnm.name, "email": pnm.email},
+    )
+
     return APIResponse(success=True, message="PNM deleted successfully")
 
 @router.post("/pnms/bulk-archive", response_model=APIResponse)
@@ -854,11 +966,13 @@ async def bulk_archive_pnms(
     db = get_db()
     
     # Verify all PNMs belong to chapters the user has admin access to
+    chapter_ids = set()
     for pnm_id in request.pnm_ids:
         pnm = await pnm_service.get_pnm(pnm_id)
         if not pnm:
             raise HTTPException(status_code=404, detail=f"PNM {pnm_id} not found")
         await chapter_service.verify_admin_access(current_user["user_id"], pnm.chapter_id)
+        chapter_ids.add(pnm.chapter_id)
     
     # Update all PNMs
     query = """
@@ -870,8 +984,14 @@ async def bulk_archive_pnms(
     try:
         await db.execute_command(query, request.archived, request.pnm_ids)
         action = "archived" if request.archived else "unarchived"
+        await audit.record(
+            next(iter(chapter_ids), None), current_user["user_id"], "pnm.bulk_archive",
+            entity_type="pnm",
+            after={"archived": request.archived, "count": len(request.pnm_ids),
+                   "pnm_ids": request.pnm_ids},
+        )
         return APIResponse(
-            success=True, 
+            success=True,
             message=f"Successfully {action} {len(request.pnm_ids)} PNM(s)"
         )
     except Exception as e:
@@ -1071,7 +1191,13 @@ async def create_round(
 ):
     """Create new voting round (admin only)"""
     await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
-    return await voting_service.create_round(round_data, chapter_id)
+    round_obj = await voting_service.create_round(round_data, chapter_id)
+    await audit.record(
+        chapter_id, current_user["user_id"], "round.create",
+        entity_type="voting_round", entity_id=round_obj.id,
+        after={"type": round_obj.type.value, "pnm_count": len(round_data.selected_pnm_ids)},
+    )
+    return round_obj
 
 @router.put("/rounds/{round_id}/end", response_model=APIResponse)
 async def end_round(
@@ -1088,7 +1214,12 @@ async def end_round(
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to end round")
-    
+
+    await audit.record(
+        round_obj.chapter_id, current_user["user_id"], "round.end",
+        entity_type="voting_round", entity_id=round_id,
+    )
+
     return APIResponse(success=True, message="Round ended successfully")
 
 @router.post("/rounds/{round_id}/advance")
@@ -1260,6 +1391,73 @@ async def get_round_results(
     
     await chapter_service.verify_membership(current_user["user_id"], round_obj.chapter_id)
     return await voting_service.get_round_results(round_id)
+
+@router.post("/rounds/{round_id}/cutoff")
+async def apply_round_cutoff(
+    round_id: str,
+    payload: CutoffRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Advance the top of a round into a new one (admin only).
+
+    With dry_run the split is returned and nothing is written, which is what the
+    confirmation dialog calls. Committing ends this round, creates the next one
+    seeded with the advancing PNMs, and records the decision in `audit_log` --
+    "who cut him" being the first question a chapter asks afterwards.
+    """
+    round_obj = await voting_service.get_round(round_id)
+    if not round_obj:
+        raise HTTPException(status_code=404, detail="Round not found")
+
+    await chapter_service.verify_admin_access(current_user["user_id"], round_obj.chapter_id)
+
+    result = await voting_service.apply_cutoff(
+        round_id,
+        mode=payload.mode.value,
+        value=payload.value,
+        next_round_type=payload.next_round_type.value,
+        archive_cut=payload.archive_cut,
+        dry_run=payload.dry_run,
+    )
+
+    if not payload.dry_run:
+        await audit.record(
+            round_obj.chapter_id, current_user["user_id"], "round.cutoff",
+            entity_type="voting_round", entity_id=round_id,
+            before={"mode": result["mode"], "value": result["value"]},
+            after={
+                "advanced_count": result["advanced_count"],
+                "cut_count": result["cut_count"],
+                "archived_count": result["archived_count"],
+                "next_round_id": result["next_round_id"],
+                "cut": [{"id": c["id"], "name": c["name"], "yes_percentage": c["yes_percentage"]}
+                        for c in result["cut"]],
+            },
+        )
+
+    return result
+
+# Audit log
+@router.get("/chapters/{chapter_id}/audit-log")
+async def get_audit_log(
+    chapter_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    before: Optional[str] = Query(None, description="ISO timestamp; returns entries older than this"),
+    action: Optional[str] = Query(None, description="Filter by action prefix, e.g. 'round.'"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Chapter audit trail (admin or exec)."""
+    role = await chapter_service.get_user_role(chapter_id, current_user["user_id"])
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+
+    entries = await audit.list_entries(
+        chapter_id, limit=limit, before=before, action_prefix=action
+    )
+    return {
+        "entries": entries,
+        "next_before": entries[-1]["created_at"].isoformat() if len(entries) == limit else None,
+    }
 
 # Event endpoints
 @router.get("/events", response_model=List[Event])

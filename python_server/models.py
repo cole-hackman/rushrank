@@ -131,6 +131,23 @@ class RoundCreate(BaseModel):
     type: RoundType
     selected_pnm_ids: List[str]
 
+class CutoffMode(str, Enum):
+    TOP_N = "top_n"
+    MIN_YES_PCT = "min_yes_pct"
+
+class CutoffRequest(BaseModel):
+    """Advance the top of a finished round into the next one.
+
+    `dry_run` is the important field: the confirmation dialog calls the same
+    endpoint with dry_run=True to get the authoritative split before anything
+    is written, so the preview the chair approves is the one that executes.
+    """
+    mode: CutoffMode
+    value: float = Field(..., gt=0, description="N for top_n, a percentage for min_yes_pct")
+    next_round_type: RoundType = RoundType.GENERAL
+    archive_cut: bool = False
+    dry_run: bool = True
+
 class VotingRound(BaseModel):
     id: str
     chapter_id: str

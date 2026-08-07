@@ -1469,6 +1469,110 @@ class VotingService:
             for row in rows
         ]
 
+    async def apply_cutoff(
+        self,
+        round_id: str,
+        mode: str,
+        value: float,
+        next_round_type: str = "GENERAL",
+        archive_cut: bool = False,
+        dry_run: bool = True,
+    ) -> dict:
+        """Split a round's results into advanced/cut, optionally seeding the next round.
+
+        Ranking comes straight from `get_round_results`, which already orders by
+        `yes_percentage DESC, vote_count DESC` -- so the split matches exactly what
+        the chair is looking at on the results page.
+
+        Ties at the boundary are included, never truncated. "Top 25" on a list where
+        three PNMs share the 25th-place percentage advances all 27 and says so,
+        because silently dropping one of three identical scores is the kind of thing
+        a chapter finds out about afterwards.
+        """
+        results = await self.get_round_results(round_id)
+        if not results:
+            raise HTTPException(
+                status_code=400,
+                detail="This round has no results to cut from",
+            )
+
+        if mode == "top_n":
+            n = int(value)
+            if n <= 0:
+                raise HTTPException(status_code=400, detail="value must be at least 1")
+            if n >= len(results):
+                advanced, cut = list(results), []
+            else:
+                threshold = results[n - 1].yes_percentage
+                advanced = [r for r in results if r.yes_percentage >= threshold]
+                cut = [r for r in results if r.yes_percentage < threshold]
+        elif mode == "min_yes_pct":
+            threshold = float(value)
+            advanced = [r for r in results if r.yes_percentage >= threshold]
+            cut = [r for r in results if r.yes_percentage < threshold]
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown cutoff mode: {mode}")
+
+        def _summarize(items):
+            return [
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "yes_percentage": r.yes_percentage,
+                    "vote_count": r.vote_count,
+                    "favorite_count": r.favorite_count,
+                }
+                for r in items
+            ]
+
+        payload = {
+            "mode": mode,
+            "value": value,
+            "requested_count": int(value) if mode == "top_n" else None,
+            "advanced_count": len(advanced),
+            "cut_count": len(cut),
+            "advanced": _summarize(advanced),
+            "cut": _summarize(cut),
+            "dry_run": dry_run,
+            "next_round_id": None,
+            "archived_count": 0,
+        }
+
+        if dry_run:
+            return payload
+
+        if not advanced:
+            raise HTTPException(
+                status_code=400,
+                detail="That cutoff would advance nobody -- lower the threshold",
+            )
+
+        db = get_db()
+        round_row = await db.execute_one(
+            "SELECT chapter_id, status FROM voting_rounds WHERE id = $1", round_id
+        )
+        if not round_row:
+            raise HTTPException(status_code=404, detail="Round not found")
+
+        if round_row["status"] != "ENDED":
+            await self.end_round(round_id)
+
+        next_round = await self.create_round(
+            RoundCreate(type=RoundType(next_round_type), selected_pnm_ids=[r.id for r in advanced]),
+            str(round_row["chapter_id"]),
+        )
+        payload["next_round_id"] = next_round.id
+        payload["next_round_room_code"] = next_round.room_code
+
+        if archive_cut and cut:
+            await db.execute_command(
+                "UPDATE pnms SET archived = true WHERE id = ANY($1::uuid[])",
+                [r.id for r in cut],
+            )
+            payload["archived_count"] = len(cut)
+
+        return payload
+
 class EventService:
     """Event management service"""
     
