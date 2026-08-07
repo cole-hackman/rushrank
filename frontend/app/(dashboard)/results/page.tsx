@@ -47,17 +47,6 @@ export default function ResultsPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   
-  // Redirect if voting is disabled
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_ENABLE_VOTING !== "true") {
-      router.push("/");
-      toast({ 
-        title: "Results page disabled", 
-        description: "The results feature is currently disabled. See docs/VOTING_PAGE_REIMPLEMENTATION.md for details." 
-      });
-    }
-  }, [router, toast]);
-  
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [selectedRound, setSelectedRound] = useState<string>("");

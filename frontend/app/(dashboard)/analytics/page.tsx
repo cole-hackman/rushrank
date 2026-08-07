@@ -151,8 +151,10 @@ export default function AnalyticsPage() {
       const roundResults = await Promise.all(
         roundsData.map(async (round) => {
           try {
-            const results = await api<{ results: any[] }>(`/rounds/${round.id}/results`).catch(() => ({ results: [] }));
-            return results.results.length;
+            // The endpoint returns a bare array. Reading `.results` off it threw,
+            // and the surrounding catch swallowed it -- so this silently counted 0.
+            const results = await api<any[]>(`/rounds/${round.id}/results`).catch(() => []);
+            return results.length;
           } catch {
             return 0;
           }
@@ -242,8 +244,10 @@ export default function AnalyticsPage() {
           const roundScores: Array<{ round_id: string; round_name?: string; score: number }> = [];
           for (const round of roundsData.slice(0, 3)) {
             try {
-              const results = await api<{ results: any[] }>(`/rounds/${round.id}/results`).catch(() => ({ results: [] }));
-              const pnmResult = results.results.find((r: any) => r.id === pnm.id);
+              // The endpoint returns a bare array. Reading `.results` off it threw,
+            // and the surrounding catch swallowed it -- so this silently counted 0.
+            const results = await api<any[]>(`/rounds/${round.id}/results`).catch(() => []);
+              const pnmResult = results.find((r: any) => r.id === pnm.id);
               if (pnmResult) {
                 roundScores.push({
                   round_id: round.id,

@@ -148,17 +148,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <TopbarWithLeftNav.NavItem selected={pathname === "/pnms"} href="/pnms">
                     PNMs
                   </TopbarWithLeftNav.NavItem>
-                  {/* Voting and Results pages temporarily hidden - see docs/VOTING_PAGE_REIMPLEMENTATION.md */}
-                  {process.env.NEXT_PUBLIC_ENABLE_VOTING === "true" && (
-                    <>
-                      <TopbarWithLeftNav.NavItem selected={pathname === "/voting"} href="/voting">
-                        Voting
-                      </TopbarWithLeftNav.NavItem>
-                      <TopbarWithLeftNav.NavItem selected={pathname === "/results"} href="/results">
-                        Results
-                      </TopbarWithLeftNav.NavItem>
-                    </>
-                  )}
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/voting"} href="/voting">
+                    Voting
+                  </TopbarWithLeftNav.NavItem>
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/results"} href="/results">
+                    Results
+                  </TopbarWithLeftNav.NavItem>
                   <TopbarWithLeftNav.NavItem selected={pathname === "/events"} href="/events">
                     Events
                   </TopbarWithLeftNav.NavItem>
