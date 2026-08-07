@@ -11,7 +11,8 @@ import { Progress } from "@/ui/components/Progress";
 import { Table } from "@/ui/components/Table";
 import { TextField } from "@/ui/components/TextField";
 import { Dialog } from "@/ui/components/Dialog";
-import { api, getChapterId } from "@/lib/api";
+import { api, getChapterId, API_BASE } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth";
 import { useToast } from "@/components/ToastProvider";
 import { useActiveEvent, clearEventsCache } from "@/hooks/useActiveEvent";
 import { SkeletonTable } from "@/components/ui/SkeletonTable";
@@ -267,8 +268,9 @@ function RushRankEventPage() {
       return;
     }
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
-      const token = localStorage.getItem("access_token");
+      // Built by hand, this skipped the `/api` suffix getApiBase() appends --
+      // a 404 whenever the env var is set to the bare origin.
+      const token = await getAccessToken();
       const response = await fetch(
         `${API_BASE}/events/export?chapter_id=${chapterId}`,
         {

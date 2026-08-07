@@ -2,6 +2,7 @@
  * Export utilities for CSV generation and downloads
  */
 import { API_BASE } from "./api";
+import { getAccessToken } from "./auth";
 
 /**
  * Download CSV from API endpoint
@@ -11,7 +12,7 @@ export async function downloadCSV(
   filename: string
 ): Promise<void> {
   try {
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token = await getAccessToken();
     const response = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -54,7 +55,7 @@ export async function exportFilteredPnms(
     ids?: string[];
   }
 ): Promise<void> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = await getAccessToken();
   
   // Fetch filtered PNMs
   const params = new URLSearchParams();

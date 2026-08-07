@@ -54,10 +54,9 @@ function LoginInner() {
     setLoading(true);
 
     if (devMode) {
-      localStorage.setItem("access_token", "dev-token");
       localStorage.setItem("user_email", email || "dev@rushrank.local");
-      toast({ title: "Signed in (dev)", description: "Using local token" });
-      router.replace("/");
+      toast({ title: "Signed in (dev)", description: "Supabase env not set" });
+      router.replace(searchParams.get("next") || "/dashboard");
       return;
     }
 
@@ -70,10 +69,11 @@ function LoginInner() {
         });
         return;
       }
-      localStorage.setItem("access_token", data.session.access_token);
+      // The token is not copied anywhere: lib/auth.ts reads it from the live
+      // Supabase session so it refreshes on its own. `/` is the marketing page.
       localStorage.setItem("user_email", email);
       toast({ title: "Signed in" });
-      router.replace("/");
+      router.replace(searchParams.get("next") || "/dashboard");
     } catch (err: any) {
       toast({
         title: "Login failed",

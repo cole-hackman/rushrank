@@ -19,16 +19,20 @@ export default function AdminProtected({ children }: { children: React.ReactNode
     (async () => {
       try {
         const profile = await api<{ memberships: Array<{ role: string }> }>("/me");
-        const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
+        // `exec` is a real role now (0013 widened the CHECK); it was previously
+        // unreachable, which is why exec-only routes behaved as admin-only.
+        const hasAdminRole = profile.memberships?.some(
+          (m) => ["admin", "exec"].includes(String(m.role).toLowerCase()),
+        );
         setIsAdmin(hasAdminRole);
         if (!hasAdminRole) {
           toast({ title: "Access Denied", description: "Admin access required" });
-          router.replace("/");
+          router.replace("/dashboard");
         }
       } catch (e: any) {
         console.error("Failed to check admin status:", e);
         toast({ title: "Access Denied", description: "Unable to verify admin status" });
-        router.replace("/");
+        router.replace("/dashboard");
       } finally {
         setReady(true);
       }
