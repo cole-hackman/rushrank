@@ -1,7 +1,7 @@
 """
 FastAPI routes for RushRank
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse, Response, HTMLResponse
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -30,6 +30,7 @@ from .services import (
     InvitationService
 )
 from .bid_list import BidListService
+from .rate_limit import limiter, VOTE_RATE_LIMIT, AUTH_RATE_LIMIT, WRITE_RATE_LIMIT
 from .websocket import manager as ws_manager
 from .slideshow import SlideshowService, HttpPhotoFetcher
 
@@ -61,7 +62,9 @@ async def get_current_user_profile(
     return await user_service.get_user_profile(current_user["user_id"])
 
 @router.post("/admin/reset-password")
+@limiter.limit(AUTH_RATE_LIMIT)
 async def admin_reset_password(
+    request: Request,
     payload: Dict[str, str],
     current_user: dict = Depends(get_current_user)
 ):
@@ -230,7 +233,9 @@ async def list_memberships(
     ]
 
 @router.post("/memberships/invite")
+@limiter.limit(WRITE_RATE_LIMIT)
 async def invite_member(
+    request: Request,
     payload: Dict[str, Any],
     chapter_id: str = Query(..., description="Chapter ID"),
     current_user: dict = Depends(get_current_user)
@@ -599,97 +604,50 @@ async def get_pnms(
     
     db = get_db()
     
-    # Check if archived column exists
-    column_check = await db.execute_one("""
-        SELECT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'pnms' AND column_name = 'archived'
-        ) as has_archived
-    """)
-    has_archived_column = column_check.get("has_archived", False) if column_check else False
-    
-    # Enhanced query with stats - using junction table for tags
-    if has_archived_column:
-        query = """
-            SELECT 
-                p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-                p.photo_url, p.created_at, p.archived,
-                COALESCE(ARRAY(
-                    SELECT t.label FROM pnm_tags pt
-                    JOIN tags t ON t.id = pt.tag_id
-                    WHERE pt.pnm_id = p.id
-                ), ARRAY[]::text[]) AS tags,
-                (
-                    SELECT COUNT(DISTINCT ea.event_id) 
-                    FROM event_attendance ea 
-                    JOIN events e ON e.id = ea.event_id 
-                    WHERE ea.pnm_id = p.id AND e.is_active = true
-                ) as attendance_count,
-                (
-                    SELECT COUNT(DISTINCT e.id) 
-                    FROM events e 
-                    WHERE e.chapter_id = p.chapter_id AND e.is_active = true
-                ) as total_events,
-                COALESCE(
-                    ROUND(
-                        (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric / 
-                         NULLIF(COUNT(v.id), 0) * 100)
-                    ), 0
-                ) as yes_percentage,
-                COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
-                COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
-            FROM pnms p
-            LEFT JOIN votes v ON v.pnm_id = p.id
-            WHERE p.chapter_id = $1
-        """
-        
-        # Add archived filter if not including archived
-        if not include_archived:
-            query += " AND p.archived = false"
-        
-        query += """
-            GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-                     p.photo_url, p.created_at, p.archived
-            ORDER BY p.name
-        """
-    else:
-        # Fallback query without archived column
-        query = """
-            SELECT 
-                p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-                p.photo_url, p.created_at,
-                COALESCE(ARRAY(
-                    SELECT t.label FROM pnm_tags pt
-                    JOIN tags t ON t.id = pt.tag_id
-                    WHERE pt.pnm_id = p.id
-                ), ARRAY[]::text[]) AS tags,
-                (
-                    SELECT COUNT(DISTINCT ea.event_id) 
-                    FROM event_attendance ea 
-                    JOIN events e ON e.id = ea.event_id 
-                    WHERE ea.pnm_id = p.id AND e.is_active = true
-                ) as attendance_count,
-                (
-                    SELECT COUNT(DISTINCT e.id) 
-                    FROM events e 
-                    WHERE e.chapter_id = p.chapter_id AND e.is_active = true
-                ) as total_events,
-                COALESCE(
-                    ROUND(
-                        (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric / 
-                         NULLIF(COUNT(v.id), 0) * 100)
-                    ), 0
-                ) as yes_percentage,
-                COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
-                COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
-            FROM pnms p
-            LEFT JOIN votes v ON v.pnm_id = p.id
-            WHERE p.chapter_id = $1
-            GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, 
-                     p.photo_url, p.created_at
-            ORDER BY p.name
-        """
-    
+    # `archived` is guaranteed present by 0013; the include_archived flag simply
+    # widens the filter.
+    query = """
+        SELECT
+            p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
+            p.photo_url, p.created_at, p.archived,
+            COALESCE(ARRAY(
+                SELECT t.label FROM pnm_tags pt
+                JOIN tags t ON t.id = pt.tag_id
+                WHERE pt.pnm_id = p.id
+            ), ARRAY[]::text[]) AS tags,
+            (
+                SELECT COUNT(DISTINCT ea.event_id)
+                FROM event_attendance ea
+                JOIN events e ON e.id = ea.event_id
+                WHERE ea.pnm_id = p.id AND e.is_active = true
+            ) as attendance_count,
+            (
+                SELECT COUNT(DISTINCT e.id)
+                FROM events e
+                WHERE e.chapter_id = p.chapter_id AND e.is_active = true
+            ) as total_events,
+            COALESCE(
+                ROUND(
+                    (COUNT(CASE WHEN v.value = 'YES' THEN 1 END)::numeric /
+                     NULLIF(COUNT(v.id), 0) * 100)
+                ), 0
+            ) as yes_percentage,
+            COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
+            COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
+        FROM pnms p
+        LEFT JOIN votes v ON v.pnm_id = p.id
+        WHERE p.chapter_id = $1
+    """
+
+    if not include_archived:
+        query += " AND p.archived = false"
+
+    query += """
+        GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
+                 p.photo_url, p.created_at, p.archived
+        ORDER BY p.name
+    """
+
     rows = await db.execute_query(query, chapter_id)
     
     return [
@@ -708,7 +666,7 @@ async def get_pnms(
             "weirdest_talent": None,
             "chick_fil_a_order": None,
             "created_at": row["created_at"],
-            "archived": row.get("archived", False) if has_archived_column else False,
+            "archived": row["archived"],
             "attendance_count": row["attendance_count"],
             "total_events": row["total_events"],
             "yes_percentage": float(row["yes_percentage"]) if row["yes_percentage"] else None,
@@ -855,21 +813,6 @@ async def bulk_archive_pnms(
         raise HTTPException(status_code=400, detail="No PNM IDs provided")
     
     db = get_db()
-    
-    # Check if archived column exists
-    column_check = await db.execute_one("""
-        SELECT EXISTS (
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'pnms' AND column_name = 'archived'
-        ) as has_archived
-    """)
-    has_archived_column = column_check.get("has_archived", False) if column_check else False
-    
-    if not has_archived_column:
-        raise HTTPException(
-            status_code=500, 
-            detail="Archive feature not available. Please run migration 0008_add_archived_to_pnms.sql"
-        )
     
     # Verify all PNMs belong to chapters the user has admin access to
     for pnm_id in request.pnm_ids:
@@ -1138,7 +1081,9 @@ async def lock_round(
     return await session_service.set_locked(round_id, locked)
 
 @router.post("/votes")
+@limiter.limit(VOTE_RATE_LIMIT)
 async def create_vote(
+    request: Request,
     vote_data: Dict[str, Any],
     current_user: dict = Depends(get_current_user)
 ):
@@ -1163,109 +1108,49 @@ async def create_vote(
     
     await chapter_service.verify_membership(current_user["user_id"], str(round_row["chapter_id"]))
     
-    if round_row["status"] not in ["ACTIVE", "active"]:
+    if round_row["status"] != "ACTIVE":
         raise HTTPException(status_code=400, detail="Round is not active")
-    
-    # Map YES/NO/UNKNOWN to score (old schema: score 1-10, new schema: value enum)
-    # Old schema mapping: YES=10, NO=1, UNKNOWN=5
-    choice_to_score = {"YES": 10, "NO": 1, "UNKNOWN": 5}
-    
-    # Check if vote already exists (try new schema first, fallback to old)
-    existing_vote = None
-    use_old_schema = False
-    try:
-        existing_vote = await db.execute_one("""
-            SELECT value, favorite FROM votes
-            WHERE round_id = $1 AND pnm_id = $2 AND voter_user_id = $3
-        """, round_id, pnm_id, current_user["user_id"])
-    except Exception:
-        # Fallback to old schema (voter_id + score)
-        use_old_schema = True
-        try:
-            existing_vote = await db.execute_one("""
-                SELECT score, is_favorite as favorite FROM votes
-                WHERE round_id = $1 AND pnm_id = $2 AND voter_id = $3
-            """, round_id, pnm_id, current_user["user_id"])
-            # Convert score back to choice
-            if existing_vote:
-                score = existing_vote["score"]
-                if score >= 7:
-                    existing_vote["value"] = "YES"
-                elif score <= 4:
-                    existing_vote["value"] = "NO"
-                else:
-                    existing_vote["value"] = "UNKNOWN"
-        except Exception:
-            pass
-    
-    # If only updating favorite and vote exists, preserve existing choice
+
+    existing_vote = await db.execute_one("""
+        SELECT value, favorite FROM votes
+        WHERE round_id = $1 AND pnm_id = $2 AND voter_user_id = $3
+    """, round_id, pnm_id, current_user["user_id"])
+
+    # If only updating favorite and a vote exists, preserve the existing choice
     if choice is None and existing_vote:
-        choice = existing_vote.get("value")  # Use existing vote value
+        choice = existing_vote["value"]
     elif not choice:
-        # No choice and no existing vote - can't create vote without choice
+        # No choice and no existing vote - can't create a vote without one
         raise HTTPException(status_code=400, detail="choice is required for new votes")
-    
+
     if choice not in ["YES", "NO", "UNKNOWN"]:
         raise HTTPException(status_code=400, detail="choice must be YES, NO, or UNKNOWN")
-    
-    # Insert or update vote
-    if use_old_schema:
-        # Old schema: use voter_id and score
-        score = choice_to_score[choice]
-        vote_row = await db.execute_one("""
-            INSERT INTO votes (round_id, pnm_id, voter_id, score, is_favorite)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (round_id, pnm_id, voter_id)
-            DO UPDATE SET score = $4, is_favorite = $5, created_at = NOW()
-            RETURNING id, round_id, pnm_id, voter_id, score, is_favorite, created_at
-        """, round_id, pnm_id, current_user["user_id"], score, favorite)
-        # Convert to expected format
-        vote_row = {
-            "id": vote_row["id"],
-            "round_id": vote_row["round_id"],
-            "pnm_id": vote_row["pnm_id"],
-            "voter_user_id": vote_row["voter_id"],
-            "value": choice,
-            "favorite": vote_row["is_favorite"],
-            "voted_at": vote_row["created_at"]
-        }
-    else:
-        # New schema: use voter_user_id and value
-        vote_row = await db.execute_one("""
-            INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (round_id, pnm_id, voter_user_id)
-            DO UPDATE SET value = $4, favorite = $5, voted_at = NOW()
-            RETURNING id, round_id, pnm_id, voter_user_id, value, favorite, voted_at
-        """, round_id, pnm_id, current_user["user_id"], choice, favorite)
-    
-    # Get updated vote tallies for this PNM in this round
-    if use_old_schema:
-        tallies_row = await db.execute_one("""
-            SELECT 
-                COUNT(CASE WHEN score >= 7 THEN 1 END) as yes_count,
-                COUNT(CASE WHEN score <= 4 THEN 1 END) as no_count,
-                COUNT(CASE WHEN score BETWEEN 5 AND 6 THEN 1 END) as unknown_count,
-                COUNT(CASE WHEN is_favorite = true THEN 1 END) as favorites_count
-            FROM votes
-            WHERE round_id = $1 AND pnm_id = $2
-        """, round_id, pnm_id)
-    else:
-        tallies_row = await db.execute_one("""
-            SELECT 
-                COUNT(CASE WHEN value = 'YES' THEN 1 END) as yes_count,
-                COUNT(CASE WHEN value = 'NO' THEN 1 END) as no_count,
-                COUNT(CASE WHEN value = 'UNKNOWN' THEN 1 END) as unknown_count,
-                COUNT(CASE WHEN favorite = true THEN 1 END) as favorites_count
-            FROM votes
-            WHERE round_id = $1 AND pnm_id = $2
-        """, round_id, pnm_id)
-    
+
+    vote_row = await db.execute_one("""
+        INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (round_id, pnm_id, voter_user_id)
+        DO UPDATE SET value = $4, favorite = $5, voted_at = NOW()
+        RETURNING id, round_id, pnm_id, voter_user_id, value, favorite, voted_at
+    """, round_id, pnm_id, current_user["user_id"], choice, favorite)
+
+    # Updated tallies for this PNM in this round
+    tallies_row = await db.execute_one("""
+        SELECT
+            COUNT(CASE WHEN value = 'YES' THEN 1 END) as yes_count,
+            COUNT(CASE WHEN value = 'NO' THEN 1 END) as no_count,
+            COUNT(CASE WHEN value = 'UNKNOWN' THEN 1 END) as unknown_count,
+            COUNT(CASE WHEN favorite = true THEN 1 END) as favorites_count
+        FROM votes
+        WHERE round_id = $1 AND pnm_id = $2
+    """, round_id, pnm_id)
+
     return {
         "id": str(vote_row["id"]),
         "round_id": str(vote_row["round_id"]),
         "pnm_id": str(vote_row["pnm_id"]),
-        "voter_id": str(vote_row.get("voter_user_id") or vote_row.get("voter_id")),
+        # Response key stays `voter_id` -- it is part of the API surface.
+        "voter_id": str(vote_row["voter_user_id"]),
         "choice": vote_row["value"],
         "favorite": vote_row["favorite"],
         "created_at": vote_row["voted_at"].isoformat() if vote_row["voted_at"] else None,
@@ -1375,21 +1260,23 @@ async def get_event_attendance(
     await chapter_service.verify_membership(current_user["user_id"], event.chapter_id)
     
     db = get_db()
+    # event_attendance is keyed on (event_id, pnm_id) and has no surrogate id,
+    # so `id` is synthesised the same way EventService.mark_attendance does.
     rows = await db.execute_query("""
-        SELECT a.id, a.pnm_id, a.checked_in_at, a.checked_in_by, a.notes,
+        SELECT a.pnm_id, a.checked_in_at, a.checked_in_by_user_id, a.notes,
                p.name as pnm_name, p.photo_url as pnm_photo_url
-        FROM attendance a
+        FROM event_attendance a
         JOIN pnms p ON p.id = a.pnm_id
         WHERE a.event_id = $1
         ORDER BY a.checked_in_at DESC
     """, event_id)
-    
+
     return [
         {
-            "id": str(row["id"]),
+            "id": f"{event_id}_{row['pnm_id']}",
             "pnm_id": str(row["pnm_id"]),
             "checked_in_at": row["checked_in_at"].isoformat() if row["checked_in_at"] else None,
-            "checked_in_by": str(row["checked_in_by"]) if row["checked_in_by"] else None,
+            "checked_in_by": str(row["checked_in_by_user_id"]) if row["checked_in_by_user_id"] else None,
             "notes": row["notes"],
             "pnm_name": row["pnm_name"],
             "pnm_photo_url": row["pnm_photo_url"],
@@ -1585,16 +1472,31 @@ async def get_pnm_attendance(
         raise HTTPException(status_code=404, detail="PNM not found")
     await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
     
+    # Shape differs from the event-scoped roster above: the PNM detail page reads
+    # event_name / event_date / status, not pnm_name / pnm_photo_url.
     db = get_db()
     rows = await db.execute_query("""
-        SELECT a.*, e.name as event_name, e.date as event_date
-        FROM attendance a
+        SELECT a.pnm_id, a.event_id, a.checked_in_at, a.notes,
+               e.name as event_name, e.date as event_date
+        FROM event_attendance a
         JOIN events e ON e.id = a.event_id
         WHERE a.pnm_id = $1
         ORDER BY e.date DESC
     """, pnm_id)
-    
-    return [dict(row) for row in rows]
+
+    return [
+        {
+            "id": f"{row['event_id']}_{row['pnm_id']}",
+            "event_id": str(row["event_id"]),
+            "pnm_id": str(row["pnm_id"]),
+            "event_name": row["event_name"],
+            "event_date": row["event_date"].isoformat() if row["event_date"] else None,
+            "checked_in_at": row["checked_in_at"].isoformat() if row["checked_in_at"] else None,
+            "notes": row["notes"],
+            "status": "Checked in" if row["checked_in_at"] else "Not checked in",
+        }
+        for row in rows
+    ]
 
 @router.get("/pnms/{pnm_id}/questionnaire")
 async def get_pnm_questionnaire(
@@ -1621,23 +1523,11 @@ async def get_round_status(
     
     db = get_db()
     
-    # Get votes collected count (try new schema first, fallback to old)
-    try:
-        votes_row = await db.execute_one("""
-            SELECT COUNT(DISTINCT voter_user_id) as votes_collected
-            FROM votes
-            WHERE round_id = $1
-        """, round_id)
-    except Exception:
-        # Fallback to voter_id if voter_user_id doesn't exist (old schema)
-        try:
-            votes_row = await db.execute_one("""
-                SELECT COUNT(DISTINCT voter_id) as votes_collected
-                FROM votes
-                WHERE round_id = $1
-            """, round_id)
-        except Exception:
-            votes_row = {"votes_collected": 0}
+    votes_row = await db.execute_one("""
+        SELECT COUNT(DISTINCT voter_user_id) as votes_collected
+        FROM votes
+        WHERE round_id = $1
+    """, round_id)
     
     # Get total voters (members of chapter)
     members_row = await db.execute_one("""
@@ -1685,7 +1575,7 @@ async def ensure_open_round(
             existing = await db.execute_one("""
                 SELECT id, chapter_id, type, status, room_code, selected_pnm_ids, started_at, ended_at, created_at
                 FROM voting_rounds
-                WHERE chapter_id = $1 AND type = 'GENERAL' AND (status = 'ACTIVE' OR status = 'active')
+                WHERE chapter_id = $1 AND type = 'GENERAL' AND status = 'ACTIVE'
                 ORDER BY created_at DESC
                 LIMIT 1
             """, chapter_id)
@@ -1722,7 +1612,7 @@ async def ensure_open_round(
             
             round_row = await db.execute_one("""
                 INSERT INTO voting_rounds (chapter_id, type, status, room_code, selected_pnm_ids, started_at)
-                VALUES ($1, 'GENERAL', 'active', $2, $3, NOW())
+                VALUES ($1, 'GENERAL', 'ACTIVE', $2, $3, NOW())
                 RETURNING id, chapter_id, type, status, room_code, selected_pnm_ids, started_at, ended_at, created_at
             """, chapter_id, room_code, pnm_ids_array)
         except asyncpg.exceptions.PostgresError as e:
@@ -1737,6 +1627,8 @@ async def ensure_open_round(
             raise HTTPException(status_code=500, detail="Failed to create voting round")
         
         round_id = str(round_row["id"])
+        # round_pnms is what get_round_results and the CSV export filter on.
+        await voting_service.set_round_pnms(round_id, pnm_ids_array)
         logger.info(f"Created round: {round_id} with {len(pnm_ids_array)} PNMs")
         
         return {
@@ -1776,7 +1668,7 @@ async def get_next_unvoted_pnm(
     # Get open round
     round_row = await db.execute_one("""
         SELECT id, selected_pnm_ids FROM voting_rounds
-        WHERE chapter_id = $1 AND type = 'GENERAL' AND (status = 'ACTIVE' OR status = 'active')
+        WHERE chapter_id = $1 AND type = 'GENERAL' AND status = 'ACTIVE'
         ORDER BY created_at DESC LIMIT 1
     """, chapter_id)
     
@@ -1789,50 +1681,25 @@ async def get_next_unvoted_pnm(
     if not selected_pnm_ids:
         return {"round_id": round_id, "pnm": None, "no_pnms": True}
     
-    # Find first PNM user hasn't voted on (using selected_pnm_ids array)
-    # Try new schema first, fallback to old
-    pnm_row = None
-    try:
-        pnm_row = await db.execute_one("""
-            SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-                   COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags
-            FROM pnms p
-            LEFT JOIN pnm_tags pt ON pt.pnm_id = p.id
-            LEFT JOIN tags t ON t.id = pt.tag_id
-            WHERE p.id = ANY($1::uuid[])
-              AND NOT EXISTS (
-                SELECT 1 FROM votes v 
-                WHERE v.round_id = $2 
-                  AND v.pnm_id = p.id 
-                  AND v.voter_user_id = $3
-              )
-            GROUP BY p.id, p.name, p.major, p.hometown, p.year, p.photo_url
-            ORDER BY p.name
-            LIMIT 1
-        """, selected_pnm_ids, round_id, current_user["user_id"])
-    except Exception:
-        # Fallback to voter_id if voter_user_id doesn't exist (old schema)
-        try:
-            pnm_row = await db.execute_one("""
-                SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-                       COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags
-                FROM pnms p
-                LEFT JOIN pnm_tags pt ON pt.pnm_id = p.id
-                LEFT JOIN tags t ON t.id = pt.tag_id
-                WHERE p.id = ANY($1::uuid[])
-                  AND NOT EXISTS (
-                    SELECT 1 FROM votes v 
-                    WHERE v.round_id = $2 
-                      AND v.pnm_id = p.id 
-                      AND v.voter_user_id = $3
-                  )
-                GROUP BY p.id, p.name, p.major, p.hometown, p.year, p.photo_url
-                ORDER BY p.name
-                LIMIT 1
-            """, selected_pnm_ids, round_id, current_user["user_id"])
-        except Exception:
-            pass
-    
+    # Find the first PNM this user hasn't voted on yet
+    pnm_row = await db.execute_one("""
+        SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
+               COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags
+        FROM pnms p
+        LEFT JOIN pnm_tags pt ON pt.pnm_id = p.id
+        LEFT JOIN tags t ON t.id = pt.tag_id
+        WHERE p.id = ANY($1::uuid[])
+          AND NOT EXISTS (
+            SELECT 1 FROM votes v
+            WHERE v.round_id = $2
+              AND v.pnm_id = p.id
+              AND v.voter_user_id = $3
+          )
+        GROUP BY p.id, p.name, p.major, p.hometown, p.year, p.photo_url
+        ORDER BY p.name
+        LIMIT 1
+    """, selected_pnm_ids, round_id, current_user["user_id"])
+
     if not pnm_row:
         # All PNMs have been voted on
         return {"round_id": round_id, "pnm": None, "all_voted": True}
@@ -1888,7 +1755,7 @@ async def create_session(
         room_code = voting_service._generate_room_code()
         join_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
         
-        # Use 'GENERAL' type (database enum only allows GENERAL, INVITE, BID)
+        # 'GENERAL' is the only round type a live session uses; the session
         # Session is identified by the linked session record, not the round type
         round_row = await db.execute_one("""
             INSERT INTO voting_rounds (chapter_id, type, status, room_code, selected_pnm_ids, started_at)
@@ -1900,7 +1767,8 @@ async def create_session(
             raise HTTPException(status_code=500, detail="Failed to create voting round")
         
         round_id = str(round_row["id"])
-        
+        await voting_service.set_round_pnms(round_id, pnm_ids)
+
         # Set first PNM as current (first in the pnm_ids array)
         first_pnm_id = pnm_ids[0] if pnm_ids else None
         
@@ -1915,18 +1783,9 @@ async def create_session(
             raise HTTPException(status_code=500, detail="Failed to create session")
         
         # Get votes collected (try new schema first, fallback to old)
-        try:
-            votes_row = await db.execute_one("""
-                SELECT COUNT(DISTINCT voter_user_id) as votes_collected FROM votes WHERE round_id = $1
-            """, round_id)
-        except Exception:
-            # Fallback to voter_id if voter_user_id doesn't exist (old schema)
-            try:
-                votes_row = await db.execute_one("""
-                    SELECT COUNT(DISTINCT voter_id) as votes_collected FROM votes WHERE round_id = $1
-                """, round_id)
-            except Exception:
-                votes_row = {"votes_collected": 0}
+        votes_row = await db.execute_one("""
+            SELECT COUNT(DISTINCT voter_user_id) as votes_collected FROM votes WHERE round_id = $1
+        """, round_id)
         
         members_row = await db.execute_one("""
             SELECT COUNT(*) as total_voters FROM memberships WHERE chapter_id = $1
@@ -2011,39 +1870,13 @@ async def join_session(
                 "tags": list(pnm_row["tags"]) if pnm_row["tags"] else []
             }
     
-    # Get existing votes for this user in this round (try new schema first, fallback to old)
-    existing_votes = []
-    try:
-        existing_votes = await db.execute_query("""
-            SELECT pnm_id, value, favorite
-            FROM votes
-            WHERE round_id = $1 AND voter_user_id = $2
-        """, round_id, current_user["user_id"])
-    except Exception:
-        # Fallback to old schema (voter_id + score)
-        try:
-            votes_raw = await db.execute_query("""
-                SELECT pnm_id, score, is_favorite
-                FROM votes
-                WHERE round_id = $1 AND voter_id = $2
-            """, round_id, current_user["user_id"])
-            # Convert score to choice
-            for v in votes_raw:
-                score = v["score"]
-                if score >= 7:
-                    choice = "YES"
-                elif score <= 4:
-                    choice = "NO"
-                else:
-                    choice = "UNKNOWN"
-                existing_votes.append({
-                    "pnm_id": v["pnm_id"],
-                    "value": choice,
-                    "favorite": v["is_favorite"]
-                })
-        except Exception:
-            pass
-    
+    # Existing votes for this user in this round
+    existing_votes = await db.execute_query("""
+        SELECT pnm_id, value, favorite
+        FROM votes
+        WHERE round_id = $1 AND voter_user_id = $2
+    """, round_id, current_user["user_id"])
+
     user_votes = {
         str(v["pnm_id"]): {
             "choice": v["value"],
@@ -2053,15 +1886,9 @@ async def join_session(
     }
     
     # Get stats (try voter_user_id first, fallback to voter_id for old schema)
-    try:
-        votes_row = await db.execute_one("""
-            SELECT COUNT(DISTINCT voter_user_id) as votes_collected FROM votes WHERE round_id = $1
-        """, round_id)
-    except Exception:
-        # Fallback to voter_id if voter_user_id doesn't exist (old schema)
-        votes_row = await db.execute_one("""
-            SELECT COUNT(DISTINCT voter_id) as votes_collected FROM votes WHERE round_id = $1
-        """, round_id)
+    votes_row = await db.execute_one("""
+        SELECT COUNT(DISTINCT voter_user_id) as votes_collected FROM votes WHERE round_id = $1
+    """, round_id)
     
     members_row = await db.execute_one("""
         SELECT COUNT(*) as total_voters FROM memberships WHERE chapter_id = $1
@@ -2116,20 +1943,11 @@ async def get_active_session(
     if not session_row:
         return None
     
-    # Get stats (try new schema first, fallback to old)
-    try:
-        votes_row = await db.execute_one("""
-            SELECT COUNT(DISTINCT voter_user_id) as votes_collected FROM votes WHERE round_id = $1
-        """, str(session_row["round_id"]))
-    except Exception:
-        # Fallback to voter_id if voter_user_id doesn't exist (old schema)
-        try:
-            votes_row = await db.execute_one("""
-                SELECT COUNT(DISTINCT voter_id) as votes_collected FROM votes WHERE round_id = $1
-            """, str(session_row["round_id"]))
-        except Exception:
-            votes_row = {"votes_collected": 0}
-    
+    votes_row = await db.execute_one("""
+        SELECT COUNT(DISTINCT voter_user_id) as votes_collected FROM votes WHERE round_id = $1
+    """, str(session_row["round_id"]))
+
+
     members_row = await db.execute_one("""
         SELECT COUNT(*) as total_voters FROM memberships WHERE chapter_id = $1
     """, chapter_id)
@@ -2223,20 +2041,10 @@ async def advance_session(
             await db.execute_command("""
                 UPDATE sessions SET ended_at = NOW() WHERE id = $1
             """, session_id)
-            # Also update round status to ENDED
-            try:
-                await db.execute_command("""
-                    UPDATE voting_rounds SET status = 'ENDED', ended_at = NOW() WHERE id = $1
-                """, round_id)
-            except Exception:
-                # If status column doesn't support 'ENDED', try 'completed'
-                try:
-                    await db.execute_command("""
-                        UPDATE voting_rounds SET status = 'completed', ended_at = NOW() WHERE id = $1
-                    """, round_id)
-                except Exception:
-                    pass  # Ignore if status update fails
-            
+            await db.execute_command("""
+                UPDATE voting_rounds SET status = 'ENDED', ended_at = NOW() WHERE id = $1
+            """, round_id)
+
             # Broadcast session ended via WebSocket
             await ws_manager.broadcast_session_end(session_id, round_id)
             

@@ -26,23 +26,28 @@ FORBIDDEN: list[tuple[str, str]] = [
     (r"\bevent_attendances\b",       "typo: the table is event_attendance, singular"),
     (r"\bFROM\s+notes\b",            "legacy table; migrations create pnm_notes"),
     (r"\bJOIN\s+notes\b",            "legacy table; migrations create pnm_notes"),
-    (r"\bis_favorite\b",             "legacy votes column; use votes.favorite"),
+    # Narrowed to the qualified column read. Bare `is_favorite` still appears as
+    # an OUTPUT ALIAS in GET /pnms (`COUNT(...) > 0 as is_favorite`), which is
+    # part of the response contract and correctly sourced from `v.favorite`.
+    (r"v\.is_favorite\b",             "legacy votes column; use votes.favorite"),
     (r"\bv\.score\b",                "legacy votes column; use votes.value"),
     (r"information_schema\.columns", "runtime schema sniffing; the schema is now known"),
 ]
 
-# Counts that exist today and are fixed in the next PR of this cleanup. A count
-# going UP fails the test; going down means an entry should be lowered or removed.
+# A count going UP fails the test; a budget left higher than reality also fails,
+# so this list cannot rot into a rubber stamp.
 EXPECTED_REMAINING: dict[str, int] = {
-    r"\bFROM\s+attendance\b": 3,
-    r"\bINTO\s+attendance\b": 2,
+    # All zero: every legacy reference was removed when the queries moved onto
+    # the reconciled schema. Any non-zero entry here is a regression.
+    r"\bFROM\s+attendance\b": 0,
+    r"\bINTO\s+attendance\b": 0,
     r"\bJOIN\s+attendance\b": 0,
-    r"\bevent_attendances\b": 2,
-    r"\bFROM\s+notes\b": 4,
+    r"\bevent_attendances\b": 0,
+    r"\bFROM\s+notes\b": 0,
     r"\bJOIN\s+notes\b": 0,
-    r"\bis_favorite\b": 24,
-    r"\bv\.score\b": 8,
-    r"information_schema\.columns": 6,
+    r"v\.is_favorite\b": 0,
+    r"\bv\.score\b": 0,
+    r"information_schema\.columns": 0,
 }
 
 

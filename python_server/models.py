@@ -58,57 +58,74 @@ class PNMCreate(BaseModel):
     chick_fil_a_order: Optional[str] = None
 
 class PNM(BaseModel):
+    # Every optional field carries an explicit `= None`. In Pydantic v2,
+    # `Optional[str]` WITHOUT a default is required-but-nullable, so omitting a
+    # field raises ValidationError rather than defaulting to None. That is why
+    # GET /pnms/{id} (which selects p.* and has no walkout_song column) and
+    # get_round_results (which never selects email/phone/fun_fact) both failed
+    # on every row. See docs/AUDIT-2026-08.md.
     id: str
     chapter_id: str
     name: str
-    email: Optional[str]
-    phone: Optional[str]
-    major: str
-    hometown: Optional[str]
-    year: Optional[str]
-    photo_url: Optional[str]
-    tags: List[str]
-    walkout_song: Optional[str]
-    weirdest_talent: Optional[str]
-    fun_fact: Optional[str]
-    chick_fil_a_order: Optional[str]
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    # Nullable in the DB: CSV import and the public intake form cannot always
+    # supply a major, and 0013 relaxes the legacy NOT NULL.
+    major: Optional[str] = None
+    hometown: Optional[str] = None
+    year: Optional[str] = None
+    photo_url: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    walkout_song: Optional[str] = None
+    weirdest_talent: Optional[str] = None
+    fun_fact: Optional[str] = None
+    chick_fil_a_order: Optional[str] = None
     created_at: datetime
     attendance_count: Optional[int] = None
     total_events: Optional[int] = None
     archived: bool = False
 
 class PNMWithVotes(PNM):
-    vote_count: int
-    yes_count: int
-    no_count: int
+    # These four were previously declared on BulkArchiveRequest -- a single
+    # indentation slip that broke two endpoints at once: bulk-archive rejected
+    # every request as missing four required fields, and these vote statistics
+    # were silently dropped from /rounds/{id}/results because Pydantic ignores
+    # undeclared kwargs. The frontend reads yes_percentage and favorite_count as
+    # required, so results rendered 0% for every PNM.
+    vote_count: int = 0
+    yes_count: int = 0
+    no_count: int = 0
+    dont_know_count: int = 0
+    favorite_count: int = 0
+    yes_percentage: float = 0.0
+    controversy_score: float = 0.0
 
 class BulkArchiveRequest(BaseModel):
     pnm_ids: List[str]
     archived: bool
-    dont_know_count: int
-    favorite_count: int
-    yes_percentage: float
-    controversy_score: float
 
 # Voting Models
+# The legacy lowercase members ('rush', 'dinner', 'interview', 'final',
+# 'pending', 'completed') are gone. create_round binds `round_data.type.value`
+# straight into the INSERT, so leaving them would let a client write a value
+# that violates the CHECK constraint 0013 adds. The only sender of type="rush"
+# was /voting/admin, deleted in the previous PR. The normalizing trigger on
+# voting_rounds remains as defence in depth for anything still in flight.
 class RoundType(str, Enum):
     GENERAL = "GENERAL"
     INVITE = "INVITE"
     BID = "BID"
-    # Legacy values for backwards compatibility
-    RUSH = "rush"
-    DINNER = "dinner"
-    INTERVIEW = "interview"
-    FINAL = "final"
+
+class VoteValue(str, Enum):
+    YES = "YES"
+    NO = "NO"
+    UNKNOWN = "UNKNOWN"
 
 class RoundStatus(str, Enum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
     LOCKED = "LOCKED"
     ENDED = "ENDED"
-    # Legacy values for backwards compatibility
-    PENDING = "pending"
-    COMPLETED = "completed"
 
 class RoundCreate(BaseModel):
     type: RoundType
@@ -119,8 +136,10 @@ class VotingRound(BaseModel):
     chapter_id: str
     type: RoundType
     status: RoundStatus
-    room_code: str
-    selected_pnm_ids: List[str]
+    # Nullable for rounds created before room_code existed; 0013 backfills, but
+    # a row can still arrive NULL from a database mid-migration.
+    room_code: Optional[str] = None
+    selected_pnm_ids: List[str] = Field(default_factory=list)
     started_at: Optional[datetime]
     ended_at: Optional[datetime]
     created_at: datetime
@@ -129,18 +148,23 @@ class VotingRoundWithDetails(VotingRound):
     total_pnms: int
     voter_count: int
 
+# Votes are YES/NO/UNKNOWN, not a 1-10 score. The legacy `votes.score` and
+# `votes.is_favorite` columns survive as deprecated shadows after 0013, but
+# canonical writes leave them NULL -- so reading them into non-Optional fields
+# raised ValidationError. No frontend call site uses POST /rounds/{id}/votes,
+# so reshaping these models breaks nothing.
 class VoteCreate(BaseModel):
     pnm_id: str
-    score: int = Field(..., ge=1, le=10)
-    is_favorite: bool = False
+    value: VoteValue
+    favorite: bool = False
 
 class Vote(BaseModel):
     id: str
     round_id: str
     pnm_id: str
     voter_id: str
-    score: int
-    is_favorite: bool
+    value: VoteValue
+    favorite: bool = False
     created_at: datetime
 
 # Event Models
@@ -193,6 +217,9 @@ class Note(BaseModel):
     id: str
     pnm_id: str
     author_id: Optional[str] = None
+    # Display name for the note's author -- the member's email, or "Anonymous"
+    # when the note was left anonymously. The PNM detail page renders this.
+    author: Optional[str] = None
     body: str
     anonymous: bool = True
     likes_count: int = 0
