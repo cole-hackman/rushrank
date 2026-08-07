@@ -346,3 +346,88 @@ export interface ProvisionRequest {
 export async function provisionChapter(req: ProvisionRequest): Promise<{ chapter_id: string }> {
   return api<{ chapter_id: string }>("/chapters/provision", { method: "POST", body: req });
 }
+
+// ── Bid list ────────────────────────────────────────────────────────────────
+// The backend for this has been complete and tested since May with no UI at
+// all. Twelve routes, a 10-minute editor lock with takeover, and CSV + PDF
+// export -- none of it reachable.
+
+export type BidBucket = "bid" | "maybe" | "cut";
+
+export interface BidListEntry {
+  pnm_id: string;
+  bucket: BidBucket;
+  position: number;
+  name: string;
+  year: string;
+  major: string;
+  photo_url: string | null;
+  vote_summary: { up: number; down: number; star: number };
+}
+
+export interface BidList {
+  id: string;
+  chapter_id: string;
+  source_round_id: string | null;
+  name: string;
+  bid_cap: number | null;
+  locked_by: string | null;
+  locked_at: string | null;
+  finalized_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BidListWithEntries {
+  bid_list: BidList;
+  entries: BidListEntry[];
+}
+
+/** 404 when the chapter has no bid list yet -- callers treat that as "empty". */
+export async function getBidList(): Promise<BidListWithEntries> {
+  return api<BidListWithEntries>("/chapters/me/bid-list");
+}
+
+export async function createBidList(body: {
+  source_round_id: string;
+  name: string;
+  bid_cap?: number | null;
+}): Promise<BidList> {
+  return api<BidList>("/chapters/me/bid-list", { method: "POST", body });
+}
+
+export async function acquireBidListLock(): Promise<BidList> {
+  return api<BidList>("/chapters/me/bid-list/lock", { method: "POST" });
+}
+
+export async function refreshBidListLock(): Promise<BidList> {
+  return api<BidList>("/chapters/me/bid-list/lock/refresh", { method: "POST" });
+}
+
+export async function releaseBidListLock(): Promise<void> {
+  await api("/chapters/me/bid-list/lock", { method: "DELETE" });
+}
+
+export async function updateBidListEntry(
+  pnmId: string,
+  body: { bucket: BidBucket; position: number },
+): Promise<unknown> {
+  return api(`/chapters/me/bid-list/entries/${pnmId}`, { method: "PATCH", body });
+}
+
+export async function finalizeBidList(): Promise<BidList> {
+  return api<BidList>("/chapters/me/bid-list/finalize", { method: "POST" });
+}
+
+/** CSV and PDF come back as file bodies, so they bypass api()'s JSON handling. */
+export async function downloadBidList(format: "csv" | "pdf"): Promise<{ blob: Blob; filename: string }> {
+  const { getAccessToken } = await import("@/lib/auth");
+  const token = await getAccessToken();
+  const res = await fetch(`${API_BASE}/chapters/me/bid-list/export/${format}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  return { blob: await res.blob(), filename: match?.[1] || `bid-list.${format}` };
+}

@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
@@ -9,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn, formatPhoneNumber } from "@/lib/utils";
 import { Camera, CheckCircle2, AlertCircle, Upload } from "lucide-react";
 
-export default function IntakePage() {
+function IntakeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -749,3 +750,16 @@ const LabelInputContainer = ({
     </div>
   );
 };
+
+
+// useSearchParams() needs a Suspense boundary to prerender -- the chapter comes
+// from ?chapter=<uuid>. Same pattern as app/login/page.tsx.
+export default function IntakePage() {
+  return (
+    <Suspense
+      fallback={<div className="flex h-screen items-center justify-center">Loading…</div>}
+    >
+      <IntakeForm />
+    </Suspense>
+  );
+}
