@@ -1,7 +1,7 @@
 """
 Supabase JWT Authentication for FastAPI
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import httpx
 import os
@@ -186,7 +186,50 @@ async def ensure_user_row(user_id: str, email: Optional[str]) -> None:
         logger.warning(f"Could not sync user {user_id} into public.users: {e}")
 
 
+# Requests that cannot change anything. Everything else is a write as far as
+# the read-only demo account is concerned.
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# Short TTL: this decides whether someone can write, so a role correction should
+# take effect in a minute, not five.
+_observer_cache = SimpleCache(default_ttl=60)
+
+
+async def _is_observer_only(user_id: str) -> bool:
+    """True when every one of this user's memberships is `observer`.
+
+    A user with no memberships at all is not an observer -- they are mid-signup,
+    and provisioning a chapter is the write they are about to make.
+    """
+    cached = _observer_cache.get(user_id)
+    if cached is not None:
+        return cached
+
+    from .database import get_db
+    try:
+        db = get_db()
+        row = await db.execute_one(
+            """
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE lower(role) = 'observer') AS observers
+            FROM memberships WHERE user_id = $1::uuid
+            """,
+            user_id,
+        )
+        result = bool(row and row["total"] > 0 and row["total"] == row["observers"])
+    except Exception as e:  # noqa: BLE001
+        # Failing open is the right default here: a database hiccup must not
+        # lock every real chapter out of writing. The demo account's protection
+        # is defence in depth over data that is re-seedable anyway.
+        logger.warning(f"Could not resolve observer status for {user_id}: {e}")
+        return False
+
+    _observer_cache.set(user_id, result)
+    return result
+
+
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> Dict[str, Any]:
     """FastAPI dependency to get current authenticated user"""
@@ -211,6 +254,15 @@ async def get_current_user(
 
     await ensure_user_row(user_id, email)
 
+    # The read-only demo, enforced at the one place every protected route passes
+    # through. Doing it in middleware instead would mean verifying the token a
+    # second time just to learn who is asking.
+    if request.method not in _SAFE_METHODS and await _is_observer_only(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="This is a read-only demo account. Create a chapter to make changes.",
+        )
+
     return {
         "user_id": user_id,
         "email": email,
@@ -218,13 +270,16 @@ async def get_current_user(
     }
 
 async def get_optional_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ) -> Optional[Dict[str, Any]]:
     """Optional authentication - returns None if no token provided"""
     if not credentials:
         return None
-    
+
     try:
-        return await get_current_user(credentials)
+        # The request must be threaded through, or every optional-auth route
+        # becomes a hole in the read-only demo.
+        return await get_current_user(request, credentials)
     except HTTPException:
         return None

@@ -13,6 +13,7 @@ import { FeatherTag } from "@subframe/core";
 import { FeatherUsers } from "@subframe/core";
 import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
+import { FeatherUpload } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
 import { FeatherArchive } from "@subframe/core";
 import { api, API_BASE, getChapterId, exportPnmsPptx, triggerBlobDownload } from "@/lib/api";
@@ -388,6 +389,13 @@ export default function PNMsPage() {
           >
             {exporting ? "Building…" : "Export → PowerPoint"}
           </Button>
+          {isAdmin && (
+            <Link href="/pnms/import">
+              <Button variant="neutral-secondary" icon={<FeatherUpload />}>
+                Import CSV
+              </Button>
+            </Link>
+          )}
           <Link href="/intake">
             <Button variant="brand-primary">New PNM</Button>
           </Link>

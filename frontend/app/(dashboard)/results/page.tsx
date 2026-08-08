@@ -6,13 +6,22 @@ import { FeatherAlertTriangle } from "@subframe/core";
 import { FeatherArrowUpDown } from "@subframe/core";
 import { FeatherDownload } from "@subframe/core";
 import { FeatherHelpCircle } from "@subframe/core";
+import { FeatherScissors } from "@subframe/core";
 import { FeatherSearch } from "@subframe/core";
 import { FeatherStar } from "@subframe/core";
 import { FeatherThumbsDown } from "@subframe/core";
 import { FeatherThumbsUp } from "@subframe/core";
 import { FeatherTrendingUp } from "@subframe/core";
 import { FeatherUsers } from "@subframe/core";
-import { api, API_BASE, getChapterId } from "@/lib/api";
+import { FeatherX } from "@subframe/core";
+import {
+  api,
+  API_BASE,
+  applyCutoff,
+  getChapterId,
+  type CutoffMode,
+  type CutoffResult,
+} from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { useRouter } from "next/navigation";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
@@ -58,6 +67,7 @@ export default function ResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [showCutoff, setShowCutoff] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -169,11 +179,35 @@ export default function ResultsPage() {
         </span>
       </div>
 
-      <div className="flex w-full items-center justify-between">
+      <div className="flex w-full flex-wrap items-center gap-3">
         <Button icon={<FeatherDownload />} onClick={handleExport} disabled={!selectedRound}>
           Export CSV
         </Button>
+        <Button
+          variant="destructive-secondary"
+          icon={<FeatherScissors />}
+          disabled={!selectedRound || results.length === 0}
+          onClick={() => setShowCutoff(true)}
+        >
+          Make cuts
+        </Button>
       </div>
+
+      {showCutoff && selectedRound && (
+        <CutoffModal
+          roundId={selectedRound}
+          results={results}
+          onClose={() => setShowCutoff(false)}
+          onDone={(next) => {
+            setShowCutoff(false);
+            toast({
+              title: "Cuts applied",
+              description: `${next.advanced_count} advanced to the next round.`,
+            });
+            router.push(`/results?roundId=${next.next_round_id}`);
+          }}
+        />
+      )}
 
       <div className="w-full items-start gap-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Total PNMs" value={stats.total} icon={<FeatherUsers />} tone="neutral" />
@@ -331,6 +365,255 @@ export default function ResultsPage() {
             )}
           </Table>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Advance the top of this round into the next one.
+ *
+ * The preview is computed twice on purpose. Locally, so moving the slider is
+ * instant and the chair can feel where the line falls; then again on the server
+ * as a dry run before anything is written, because the server's split is the
+ * one that will execute. If the two ever disagree, the server's number is what
+ * the confirm button shows.
+ */
+function CutoffModal({
+  roundId,
+  results,
+  onClose,
+  onDone,
+}: {
+  roundId: string;
+  results: PNMResult[];
+  onClose: () => void;
+  onDone: (result: CutoffResult) => void;
+}) {
+  const { toast } = useToast();
+  const [mode, setMode] = useState<CutoffMode>("top_n");
+  const [value, setValue] = useState<number>(Math.max(1, Math.ceil(results.length / 2)));
+  const [archiveCut, setArchiveCut] = useState(false);
+  const [confirming, setConfirming] = useState<CutoffResult | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Mirrors the server's rule, ties included: everyone level with the boundary
+  // advances. Cutting one of three identical scores is a person, not a rounding
+  // detail.
+  const localSplit = useMemo(() => {
+    const ranked = [...results].sort((a, b) => (b.yes_percentage || 0) - (a.yes_percentage || 0));
+    if (mode === "top_n") {
+      const n = Math.max(1, Math.floor(value));
+      if (n >= ranked.length) return { advanced: ranked, cut: [] as PNMResult[] };
+      const threshold = ranked[n - 1].yes_percentage || 0;
+      return {
+        advanced: ranked.filter((r) => (r.yes_percentage || 0) >= threshold),
+        cut: ranked.filter((r) => (r.yes_percentage || 0) < threshold),
+      };
+    }
+    return {
+      advanced: ranked.filter((r) => (r.yes_percentage || 0) >= value),
+      cut: ranked.filter((r) => (r.yes_percentage || 0) < value),
+    };
+  }, [results, mode, value]);
+
+  const tied = mode === "top_n" && localSplit.advanced.length > Math.floor(value);
+
+  const preview = async () => {
+    setBusy(true);
+    try {
+      const result = await applyCutoff(roundId, { mode, value, dry_run: true });
+      setConfirming(result);
+    } catch (e: any) {
+      toast({ title: "Could not preview the cut", description: e?.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const commit = async () => {
+    setBusy(true);
+    try {
+      const result = await applyCutoff(roundId, {
+        mode,
+        value,
+        archive_cut: archiveCut,
+        dry_run: false,
+      });
+      onDone(result);
+    } catch (e: any) {
+      toast({ title: "Could not apply the cut", description: e?.message });
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-lg">
+        <div className="flex items-start justify-between gap-4 border-b border-solid border-neutral-border px-6 py-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-heading-2 font-heading-2 text-default-font">
+              {confirming ? "Confirm cuts" : "Make cuts"}
+            </span>
+            <span className="text-body font-body text-subtext-color">
+              {confirming
+                ? "This ends the round and starts a new one with everyone who advances."
+                : "Everyone who advances is carried into a new round."}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-sm p-1 text-subtext-color hover:text-default-font"
+          >
+            <FeatherX className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+          {!confirming && (
+            <>
+              <div className="flex gap-2">
+                {([
+                  { key: "top_n" as const, label: "Advance top N" },
+                  { key: "min_yes_pct" as const, label: "Cut below a %" },
+                ]).map((option) => (
+                  <button
+                    key={option.key}
+                    onClick={() => {
+                      setMode(option.key);
+                      setValue(option.key === "top_n" ? Math.max(1, Math.ceil(results.length / 2)) : 50);
+                    }}
+                    className={cn(
+                      "flex-1 rounded-lg border border-solid px-4 py-2 text-body font-body transition",
+                      mode === option.key
+                        ? "border-brand-600 bg-brand-50 text-brand-700"
+                        : "border-neutral-border bg-white text-subtext-color hover:text-default-font",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-caption-bold font-caption-bold text-subtext-color">
+                  {mode === "top_n" ? "How many advance" : "Minimum yes percentage"}
+                </span>
+                <input
+                  type="range"
+                  min={mode === "top_n" ? 1 : 0}
+                  max={mode === "top_n" ? results.length : 100}
+                  step={mode === "top_n" ? 1 : 5}
+                  value={value}
+                  onChange={(e) => setValue(Number(e.target.value))}
+                  className="w-full accent-brand-600"
+                />
+                <span className="text-heading-2 font-heading-2 text-default-font">
+                  {mode === "top_n" ? `Top ${Math.floor(value)}` : `${value}% yes or better`}
+                </span>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-solid border-success-200 bg-success-50 px-4 py-3">
+                  <span className="text-caption-bold font-caption-bold text-success-700">Advancing</span>
+                  <div className="text-heading-1 font-heading-1 text-success-700">
+                    {localSplit.advanced.length}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-solid border-neutral-border bg-neutral-50 px-4 py-3">
+                  <span className="text-caption-bold font-caption-bold text-subtext-color">Cut</span>
+                  <div className="text-heading-1 font-heading-1 text-default-font">
+                    {localSplit.cut.length}
+                  </div>
+                </div>
+              </div>
+
+              {tied && (
+                <div className="flex items-start gap-2 rounded-lg border border-solid border-warning-200 bg-warning-50 p-3">
+                  <FeatherAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-600" />
+                  <span className="text-body font-body text-warning-700">
+                    {localSplit.advanced.length - Math.floor(value)} extra PNM(s) are tied at the
+                    cutoff score and advance too, rather than being split arbitrarily.
+                  </span>
+                </div>
+              )}
+
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={archiveCut}
+                  onChange={(e) => setArchiveCut(e.target.checked)}
+                  className="mt-1 accent-brand-600"
+                />
+                <span className="text-body font-body text-subtext-color">
+                  Also archive the {localSplit.cut.length} PNM(s) who are cut, hiding them from the
+                  main list. You can unarchive them later.
+                </span>
+              </label>
+            </>
+          )}
+
+          {confirming && (
+            <>
+              <div className="rounded-lg border border-solid border-neutral-border bg-neutral-50 p-4">
+                <span className="text-body font-body text-default-font">
+                  <span className="text-body-bold font-body-bold">{confirming.advanced_count}</span>{" "}
+                  advance to a new round.{" "}
+                  <span className="text-body-bold font-body-bold">{confirming.cut_count}</span> are
+                  cut{archiveCut ? " and archived" : ""}.
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-caption-bold font-caption-bold text-subtext-color">
+                  Being cut
+                </span>
+                <ul className="max-h-52 space-y-1 overflow-y-auto rounded-lg border border-solid border-neutral-border p-3">
+                  {confirming.cut.map((pnm) => (
+                    <li
+                      key={pnm.id}
+                      className="flex items-center justify-between text-body font-body text-default-font"
+                    >
+                      <span>{pnm.name}</span>
+                      <span className="text-subtext-color">
+                        {Math.round(pnm.yes_percentage)}%
+                      </span>
+                    </li>
+                  ))}
+                  {confirming.cut.length === 0 && (
+                    <li className="text-body font-body text-subtext-color">Nobody.</li>
+                  )}
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-solid border-neutral-border px-6 py-4">
+          {confirming ? (
+            <>
+              <Button variant="neutral-secondary" onClick={() => setConfirming(null)} disabled={busy}>
+                Back
+              </Button>
+              <Button variant="destructive-primary" loading={busy} onClick={commit}>
+                Cut {confirming.cut_count} and start next round
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="neutral-secondary" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                loading={busy}
+                disabled={localSplit.advanced.length === 0}
+                onClick={preview}
+              >
+                Review
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

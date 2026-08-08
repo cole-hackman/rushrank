@@ -431,3 +431,162 @@ export async function downloadBidList(format: "csv" | "pdf"): Promise<{ blob: Bl
   const match = disposition.match(/filename="([^"]+)"/);
   return { blob: await res.blob(), filename: match?.[1] || `bid-list.${format}` };
 }
+
+// ── Roster import ───────────────────────────────────────────────────────────
+
+export interface ImportIssue {
+  row: number;
+  message: string;
+}
+
+export interface ImportDuplicate {
+  row: number;
+  name: string;
+  email: string | null;
+  existing_id: string;
+}
+
+export interface ImportResult {
+  columns: string[];
+  /** csv column -> pnm field. Columns the server could not place are absent. */
+  mapping: Record<string, string>;
+  total: number;
+  valid: number;
+  skipped: number;
+  errors: ImportIssue[];
+  duplicates: ImportDuplicate[];
+  preview: Array<Record<string, any>>;
+  dry_run: boolean;
+  imported: number;
+  pnm_ids: string[];
+}
+
+export const IMPORT_FIELDS = [
+  "name", "email", "phone", "major", "hometown", "year", "photo_url", "tags",
+] as const;
+
+/**
+ * Upload a roster CSV. Parsing happens server-side, so the preview is produced
+ * by the same code that will do the insert -- what you approve is what runs.
+ *
+ * Multipart, so this bypasses api()'s JSON body handling; the 401 refresh-retry
+ * is not reproduced here because an import is an explicit user action that can
+ * simply be retried.
+ */
+export async function importPnmsCsv(
+  chapterId: string,
+  file: File,
+  opts: { dryRun: boolean; mapping?: Record<string, string> },
+): Promise<ImportResult> {
+  const { getAccessToken } = await import("@/lib/auth");
+  const token = await getAccessToken();
+
+  const params = new URLSearchParams({
+    chapter_id: chapterId,
+    dry_run: String(opts.dryRun),
+  });
+  if (opts.mapping) params.set("mapping", JSON.stringify(opts.mapping));
+
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_BASE}/pnms/import?${params}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+
+  if (!res.ok) {
+    let detail = `Import failed (${res.status})`;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as ImportResult;
+}
+
+// ── Round cutoffs ───────────────────────────────────────────────────────────
+
+export type CutoffMode = "top_n" | "min_yes_pct";
+
+export interface CutoffCandidate {
+  id: string;
+  name: string;
+  yes_percentage: number;
+  vote_count: number;
+  favorite_count: number;
+}
+
+export interface CutoffResult {
+  mode: CutoffMode;
+  value: number;
+  /** What was asked for, when it differs from advanced_count because of ties. */
+  requested_count: number | null;
+  advanced_count: number;
+  cut_count: number;
+  advanced: CutoffCandidate[];
+  cut: CutoffCandidate[];
+  dry_run: boolean;
+  next_round_id: string | null;
+  next_round_room_code?: string | null;
+  archived_count: number;
+}
+
+export async function applyCutoff(
+  roundId: string,
+  body: {
+    mode: CutoffMode;
+    value: number;
+    next_round_type?: "GENERAL" | "INVITE" | "BID";
+    archive_cut?: boolean;
+    dry_run: boolean;
+  },
+): Promise<CutoffResult> {
+  return api<CutoffResult>(`/rounds/${roundId}/cutoff`, { method: "POST", body });
+}
+
+// ── Audit log ───────────────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  id: string;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  before: any;
+  after: any;
+  created_at: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
+}
+
+export async function getAuditLog(
+  chapterId: string,
+  opts?: { limit?: number; before?: string; action?: string },
+): Promise<{ entries: AuditEntry[]; next_before: string | null }> {
+  const params = new URLSearchParams();
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.before) params.set("before", opts.before);
+  if (opts?.action) params.set("action", opts.action);
+  const query = params.toString();
+  return api(`/chapters/${chapterId}/audit-log${query ? `?${query}` : ""}`);
+}
+
+// ── Demo mode ───────────────────────────────────────────────────────────────
+
+/**
+ * Exchange nothing for a session on the seeded read-only demo chapter. The
+ * credentials live on the server; a 404 means this deployment has no demo
+ * configured, which callers treat as "hide the demo entry point".
+ */
+export async function startDemoSession(): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
+  return api("/public/demo-session", { method: "POST" });
+}

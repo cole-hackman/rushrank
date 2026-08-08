@@ -22,8 +22,11 @@ export function Hero() {
             >
               Get started free
             </Link>
+            {/* Was an anchor to the swipe widget below. It now signs the
+                visitor into a seeded, read-only chapter -- the real product
+                with real data, which is what a chapter is deciding on. */}
             <Link
-              href="#demo"
+              href="/demo"
               className="rounded-full border border-fg/15 px-6 py-3 text-base text-fg hover:bg-surface-muted"
             >
               Try the demo
