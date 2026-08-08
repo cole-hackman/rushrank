@@ -31,6 +31,7 @@ from .services import (
 )
 from .bid_list import BidListService
 from . import audit
+from . import merge as merge_service
 from .csv_import import parse_and_import
 from .rate_limit import limiter, VOTE_RATE_LIMIT, AUTH_RATE_LIMIT, WRITE_RATE_LIMIT
 from .websocket import manager as ws_manager
@@ -691,6 +692,61 @@ async def create_demo_session(request: Request):
         "refresh_token": data.get("refresh_token"),
         "expires_in": data.get("expires_in"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Duplicate merge
+#
+# The roster has four ways in -- intake form, CSV import, walk-ups, and the
+# interest link -- so the same person arrives more than once routinely. Import
+# refuses to insert a duplicate it recognises; this reunites the two rows that
+# already exist, whose notes and attendance are otherwise split.
+# ---------------------------------------------------------------------------
+
+class MergeRequest(BaseModel):
+    """`winner` survives; `loser` is folded into it and deleted."""
+    loser_id: str
+
+
+@router.get("/chapters/{chapter_id}/duplicates")
+async def list_duplicates(
+    chapter_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Rows that look like the same person, strongest signal first."""
+    await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
+    return {"groups": await merge_service.find_duplicate_groups(chapter_id)}
+
+
+@router.post("/pnms/{winner_id}/merge")
+async def merge_pnm(
+    winner_id: str,
+    payload: MergeRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Fold one PNM into another. Admin only -- this deletes a row.
+
+    Irreversible from the UI, so the before-state of both rows is written to
+    `audit_log` before the response returns.
+    """
+    winner = await pnm_service.get_pnm(winner_id)
+    if not winner:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_admin_access(current_user["user_id"], winner.chapter_id)
+
+    result = await merge_service.merge_pnms(winner_id, payload.loser_id)
+
+    await audit.record(
+        result["chapter_id"], current_user["user_id"], "pnm.merge",
+        entity_type="pnm", entity_id=winner_id,
+        before=result["before"],
+        after={
+            "moved": result["moved"],
+            "dropped_as_duplicate": result["dropped_as_duplicate"],
+            "fields_filled": result["fields_filled"],
+        },
+    )
+    return result
 
 
 # PNM endpoints
