@@ -290,46 +290,22 @@ class PNMService:
         """Get PNM by email (case-insensitive)"""
         db = get_db()
         
-        # Check if archived column exists
-        column_check = await db.execute_one("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'pnms' AND column_name = 'archived'
-            ) as has_archived
-        """)
-        has_archived_column = column_check.get("has_archived", False) if column_check else False
-        
         # Using simple query to find latest PNM with this email
         # Ideally emails are unique per chapter, but might duplicate across chapters
         # We'll take the most recently created one
-        if has_archived_column:
-            query = """
-                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
-                       COALESCE(ARRAY(
-                           SELECT t.label FROM pnm_tags pt
-                           JOIN tags t ON t.id = pt.tag_id
-                           WHERE pt.pnm_id = p.id
-                       ), ARRAY[]::text[]) AS tags,
-                       p.created_at, p.archived
-                FROM pnms p
-                WHERE LOWER(p.email) = LOWER($1)
-                ORDER BY p.created_at DESC
-                LIMIT 1
-            """
-        else:
-            query = """
-                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
-                       COALESCE(ARRAY(
-                           SELECT t.label FROM pnm_tags pt
-                           JOIN tags t ON t.id = pt.tag_id
-                           WHERE pt.pnm_id = p.id
-                       ), ARRAY[]::text[]) AS tags,
-                       p.created_at
-                FROM pnms p
-                WHERE LOWER(p.email) = LOWER($1)
-                ORDER BY p.created_at DESC
-                LIMIT 1
-            """
+        query = """
+            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at, p.archived
+            FROM pnms p
+            WHERE LOWER(p.email) = LOWER($1)
+            ORDER BY p.created_at DESC
+            LIMIT 1
+        """
         row = await db.execute_one(query, email)
         
         if not row:
@@ -351,7 +327,7 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row.get("archived", False) if has_archived_column else False
+            archived=row["archived"]
         )
 
     def get_qr_bytes(self, pnm_id: str) -> bytes:
@@ -808,42 +784,18 @@ class PNMService:
         """Get all PNMs for a chapter"""
         db = get_db()
         
-        # Check if archived column exists
-        column_check = await db.execute_one("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'pnms' AND column_name = 'archived'
-            ) as has_archived
-        """)
-        has_archived_column = column_check.get("has_archived", False) if column_check else False
-        
-        if has_archived_column:
-            query = """
-                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
-                       COALESCE(ARRAY(
-                           SELECT t.label FROM pnm_tags pt
-                           JOIN tags t ON t.id = pt.tag_id
-                           WHERE pt.pnm_id = p.id
-                       ), ARRAY[]::text[]) AS tags,
-                       p.created_at, p.archived
-                FROM pnms p
-                WHERE p.chapter_id = $1
-                ORDER BY p.name
-            """
-        else:
-            query = """
-                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
-                       COALESCE(ARRAY(
-                           SELECT t.label FROM pnm_tags pt
-                           JOIN tags t ON t.id = pt.tag_id
-                           WHERE pt.pnm_id = p.id
-                       ), ARRAY[]::text[]) AS tags,
-                       p.created_at
-                FROM pnms p
-                WHERE p.chapter_id = $1
-                ORDER BY p.name
-            """
-        
+        query = """
+            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at, p.archived
+            FROM pnms p
+            WHERE p.chapter_id = $1
+            ORDER BY p.name
+        """
         rows = await db.execute_query(query, chapter_id)
         
         return [
@@ -862,7 +814,7 @@ class PNMService:
                 weirdest_talent=None,
                 chick_fil_a_order=None,
                 created_at=row["created_at"],
-                archived=row.get("archived", False) if has_archived_column else False
+                archived=row["archived"]
             )
             for row in rows
         ]
@@ -871,40 +823,17 @@ class PNMService:
         """Get specific PNM"""
         db = get_db()
         
-        # Check if archived column exists
-        column_check = await db.execute_one("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'pnms' AND column_name = 'archived'
-            ) as has_archived
-        """)
-        has_archived_column = column_check.get("has_archived", False) if column_check else False
-        
-        if has_archived_column:
-            query = """
-                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
-                       COALESCE(ARRAY(
-                           SELECT t.label FROM pnm_tags pt
-                           JOIN tags t ON t.id = pt.tag_id
-                           WHERE pt.pnm_id = p.id
-                       ), ARRAY[]::text[]) AS tags,
-                       p.created_at, p.archived
-                FROM pnms p
-                WHERE p.id = $1
-            """
-        else:
-            query = """
-                SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
-                       COALESCE(ARRAY(
-                           SELECT t.label FROM pnm_tags pt
-                           JOIN tags t ON t.id = pt.tag_id
-                           WHERE pt.pnm_id = p.id
-                       ), ARRAY[]::text[]) AS tags,
-                       p.created_at
-                FROM pnms p
-                WHERE p.id = $1
-            """
-        
+        query = """
+            SELECT p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags,
+                   p.created_at, p.archived
+            FROM pnms p
+            WHERE p.id = $1
+        """
         row = await db.execute_one(query, pnm_id)
         
         if not row:
@@ -926,36 +855,19 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row.get("archived", False) if has_archived_column else False
+            archived=row["archived"]
         )
     
     async def create_pnm(self, pnm_data: PNMCreate, chapter_id: str) -> PNM:
         """Create new PNM"""
         db = get_db()
         
-        # Check if archived column exists
-        column_check = await db.execute_one("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'pnms' AND column_name = 'archived'
-            ) as has_archived
-        """)
-        has_archived_column = column_check.get("has_archived", False) if column_check else False
-        
         # Insert into pnms table (only columns that exist in the migration)
-        if has_archived_column:
-            query = """
-                INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at, archived
-            """
-        else:
-            query = """
-                INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at
-            """
-        
+        query = """
+            INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at, archived
+        """
         # Validate email is required and not empty
         if not pnm_data.email or not pnm_data.email.strip():
             raise HTTPException(status_code=400, detail="Email is required")
@@ -1033,7 +945,7 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row.get("archived", False) if has_archived_column else False
+            archived=row["archived"]
         )
         
         # Run email and attendance in background (don't block response)
@@ -1060,8 +972,8 @@ class PNMService:
                     for event_row in events_today:
                         try:
                             await db.execute_command("""
-                                INSERT INTO attendance (event_id, pnm_id, notes)
-                                VALUES ($1, $2, 'Auto-checked in on PNM creation')
+                                INSERT INTO event_attendance (event_id, pnm_id, method, notes)
+                                VALUES ($1, $2, 'SEARCH', 'Auto-checked in on PNM creation')
                                 ON CONFLICT (event_id, pnm_id) DO NOTHING
                             """, str(event_row["id"]), pnm_id)
                             logger.info(f"✅ Auto-checked in PNM {pnm_id} at event {event_row['id']}")
@@ -1152,8 +1064,8 @@ class PNMService:
             await db.execute_command("DELETE FROM votes WHERE pnm_id = $1", pnm_id)
             # Delete round_pnms
             await db.execute_command("DELETE FROM round_pnms WHERE pnm_id = $1", pnm_id)
-            # Delete event_attendances
-            await db.execute_command("DELETE FROM event_attendances WHERE pnm_id = $1", pnm_id)
+            # Delete attendance
+            await db.execute_command("DELETE FROM event_attendance WHERE pnm_id = $1", pnm_id)
         except Exception as e:
             logger.warning(f"Error deleting related records for PNM {pnm_id}: {e}")
         
@@ -1189,12 +1101,15 @@ class PNMService:
             base = """
               SELECT
                 p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-                COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
-                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
-                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
-                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
-                (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
-                (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+                COALESCE(ARRAY(
+                  SELECT t.label FROM pnm_tags pt JOIN tags t ON t.id = pt.tag_id
+                  WHERE pt.pnm_id = p.id
+                ), ARRAY[]::TEXT[]) AS tags,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.value = 'YES')   AS up_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.value = 'NO') AS down_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.favorite = true) AS star_count,
+                (SELECT n.body FROM pnm_notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+                (SELECT u.email FROM pnm_notes n LEFT JOIN users u ON u.id = n.author_user_id
                    WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
               FROM bid_list_entries e
               JOIN pnms p ON p.id = e.pnm_id
@@ -1210,12 +1125,15 @@ class PNMService:
             base = """
               SELECT
                 p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-                COALESCE(p.tags, ARRAY[]::TEXT[]) AS tags,
-                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score >= 7)   AS up_count,
-                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.score <= 4) AS down_count,
-                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.is_favorite = true) AS star_count,
-                (SELECT n.body FROM notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
-                (SELECT u.email FROM notes n LEFT JOIN users u ON u.id = n.author_id
+                COALESCE(ARRAY(
+                  SELECT t.label FROM pnm_tags pt JOIN tags t ON t.id = pt.tag_id
+                  WHERE pt.pnm_id = p.id
+                ), ARRAY[]::TEXT[]) AS tags,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.value = 'YES')   AS up_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.value = 'NO') AS down_count,
+                (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = p.id AND v.favorite = true) AS star_count,
+                (SELECT n.body FROM pnm_notes n WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_body,
+                (SELECT u.email FROM pnm_notes n LEFT JOIN users u ON u.id = n.author_user_id
                    WHERE n.pnm_id = p.id ORDER BY n.created_at DESC LIMIT 1) AS latest_note_author
               FROM pnms p
               WHERE p.chapter_id = $1 AND COALESCE(p.archived, false) = false
@@ -1282,23 +1200,11 @@ class VotingService:
         
         result = []
         for row in rows:
-            # Handle enum conversion with fallback
-            try:
-                round_type = RoundType(row["type"])
-            except ValueError:
-                # Fallback for legacy values
-                round_type = RoundType.GENERAL
-            
-            try:
-                round_status = RoundStatus(row["status"])
-            except ValueError:
-                # Fallback for legacy values - try to match common patterns
-                status_str = str(row["status"]).upper()
-                if status_str in ["ACTIVE", "DRAFT", "LOCKED", "ENDED"]:
-                    round_status = RoundStatus(status_str)
-                else:
-                    round_status = RoundStatus.DRAFT
-            
+            # 0013 normalises type/status to the canonical uppercase vocabulary
+            # and constrains them with a CHECK, so these always parse.
+            round_type = RoundType(row["type"])
+            round_status = RoundStatus(row["status"])
+
             result.append(
                 VotingRound(
                     id=str(row["id"]),
@@ -1326,7 +1232,7 @@ class VotingService:
                    COUNT(DISTINCT v.voter_user_id) as voter_count
             FROM voting_rounds vr
             LEFT JOIN votes v ON v.round_id = vr.id
-            WHERE vr.chapter_id = $1 AND (vr.status = 'ACTIVE' OR vr.status = 'active')
+            WHERE vr.chapter_id = $1 AND vr.status = 'ACTIVE'
             GROUP BY vr.id
         """
         
@@ -1335,37 +1241,9 @@ class VotingService:
         if not row:
             return None
         
-        # Handle enum conversion with fallback (case-insensitive)
-        try:
-            round_type = RoundType(row["type"])
-        except ValueError:
-            # Try case-insensitive match
-            type_str = str(row["type"]).upper()
-            try:
-                round_type = RoundType(type_str)
-            except ValueError:
-                round_type = RoundType.GENERAL
-        
-        try:
-            round_status = RoundStatus(row["status"])
-        except ValueError:
-            # Try case-insensitive match
-            status_str = str(row["status"]).upper()
-            try:
-                round_status = RoundStatus(status_str)
-            except ValueError:
-                # Map common variations
-                if status_str == "ACTIVE":
-                    round_status = RoundStatus.ACTIVE
-                elif status_str == "DRAFT":
-                    round_status = RoundStatus.DRAFT
-                elif status_str == "LOCKED":
-                    round_status = RoundStatus.LOCKED
-                elif status_str in ["ENDED", "COMPLETED"]:
-                    round_status = RoundStatus.ENDED
-                else:
-                    round_status = RoundStatus.DRAFT
-        
+        round_type = RoundType(row["type"])
+        round_status = RoundStatus(row["status"])
+
         return VotingRoundWithDetails(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
@@ -1396,21 +1274,9 @@ class VotingService:
         if not row:
             return None
         
-        # Handle enum conversion with fallback
-        try:
-            round_type = RoundType(row["type"])
-        except ValueError:
-            round_type = RoundType.GENERAL
-        
-        try:
-            round_status = RoundStatus(row["status"])
-        except ValueError:
-            status_str = str(row["status"]).upper()
-            if status_str in ["ACTIVE", "DRAFT", "LOCKED", "ENDED"]:
-                round_status = RoundStatus(status_str)
-            else:
-                round_status = RoundStatus.DRAFT
-        
+        round_type = RoundType(row["type"])
+        round_status = RoundStatus(row["status"])
+
         return VotingRound(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
@@ -1450,7 +1316,9 @@ class VotingService:
             room_code,
             round_data.selected_pnm_ids
         )
-        
+
+        await self.set_round_pnms(str(row["id"]), round_data.selected_pnm_ids)
+
         return VotingRound(
             id=str(row["id"]),
             chapter_id=str(row["chapter_id"]),
@@ -1476,36 +1344,59 @@ class VotingService:
         result = await db.execute_command(query, round_id)
         return "UPDATE 1" in result
     
+    async def set_round_pnms(self, round_id: str, pnm_ids: List[str]) -> None:
+        """Populate round_pnms for a round, preserving order.
+
+        get_round_results and export_round_csv both filter on round_pnms, but no
+        code path ever wrote to it -- so every round the application created came
+        back with empty results. 0013 backfills existing rows; this keeps new
+        ones correct. `voting_rounds.selected_pnm_ids` is still written alongside
+        until the contract migration removes it.
+        """
+        if not pnm_ids:
+            return
+        db = get_db()
+        await db.execute_command(
+            """
+            INSERT INTO round_pnms (round_id, pnm_id, order_index)
+            SELECT $1, x.pnm_id::uuid, (x.ord - 1)::int
+            FROM unnest($2::text[]) WITH ORDINALITY AS x(pnm_id, ord)
+            WHERE EXISTS (SELECT 1 FROM pnms p WHERE p.id = x.pnm_id::uuid)
+            ON CONFLICT (round_id, pnm_id) DO UPDATE SET order_index = EXCLUDED.order_index
+            """,
+            round_id, [str(pid) for pid in pnm_ids],
+        )
+
     async def cast_vote(self, round_id: str, vote_data: VoteCreate, voter_id: str) -> Vote:
         """Cast or update vote in a round"""
         db = get_db()
         
         # Use UPSERT to handle vote updates
         query = """
-            INSERT INTO votes (round_id, pnm_id, voter_id, score, is_favorite)
+            INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (round_id, pnm_id, voter_id)
-            DO UPDATE SET score = $4, is_favorite = $5, created_at = NOW()
-            RETURNING id, round_id, pnm_id, voter_id, score, is_favorite, created_at
+            ON CONFLICT (round_id, pnm_id, voter_user_id)
+            DO UPDATE SET value = $4, favorite = $5, voted_at = NOW()
+            RETURNING id, round_id, pnm_id, voter_user_id, value, favorite, voted_at
         """
-        
+
         row = await db.execute_one(
             query,
             round_id,
             vote_data.pnm_id,
             voter_id,
-            vote_data.score,
-            vote_data.is_favorite
+            vote_data.value.value,
+            vote_data.favorite
         )
-        
+
         return Vote(
             id=str(row["id"]),
             round_id=str(row["round_id"]),
             pnm_id=str(row["pnm_id"]),
-            voter_id=str(row["voter_id"]),
-            score=row["score"],
-            is_favorite=row["is_favorite"],
-            created_at=row["created_at"]
+            voter_id=str(row["voter_user_id"]),
+            value=row["value"],
+            favorite=row["favorite"],
+            created_at=row["voted_at"]
         )
     
     async def get_round_results(self, round_id: str) -> List[PNMWithVotes]:
@@ -1528,7 +1419,12 @@ class VotingService:
                    CASE WHEN COUNT(v.id) > 0 THEN
                        ROUND(COUNT(CASE WHEN v.value = 'YES' THEN 1 END) * 100.0 / COUNT(v.id), 2)
                    ELSE 0 END as yes_percentage,
-                   0 as controversy_score
+                   -- Population stddev of the YES/UNKNOWN/NO -> 1/0.5/0 mapping,
+                   -- scaled so the PRD's ">= 2.0 is controversial" threshold is
+                   -- meaningful. Was hardcoded to 0, so nothing was ever flagged.
+                   COALESCE(STDDEV_POP(
+                       CASE v.value WHEN 'YES' THEN 1.0 WHEN 'UNKNOWN' THEN 0.5 ELSE 0.0 END
+                   ), 0) * 20 as controversy_score
             FROM pnms p
             LEFT JOIN votes v ON v.pnm_id = p.id AND v.round_id = $1
             WHERE p.id IN (
@@ -1820,22 +1716,6 @@ class EventService:
         if not event_row:
             raise HTTPException(status_code=400, detail="Attendance already marked")
         
-        # Also write to attendance table for backwards compatibility
-        attendance_query = """
-            INSERT INTO attendance (event_id, pnm_id, checked_in_by, notes)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (event_id, pnm_id) DO NOTHING
-            RETURNING id, event_id, pnm_id, checked_in_at, checked_in_by, notes
-        """
-        
-        attendance_row = await db.execute_one(
-            attendance_query,
-            attendance_data.event_id,
-            attendance_data.pnm_id,
-            checker_id,
-            attendance_data.notes
-        )
-        
         # Return using event_attendance data (primary source)
         return Attendance(
             id=str(event_row["event_id"]) + "_" + str(event_row["pnm_id"]),  # Composite key for compatibility
@@ -1862,7 +1742,7 @@ class ExportService:
                    ), '') AS tags,
                    COALESCE((
                        SELECT COUNT(*)
-                       FROM attendance a
+                       FROM event_attendance a
                        JOIN events e ON e.id = a.event_id
                        WHERE a.pnm_id = p.id AND e.is_active = true
                    ), 0) AS attendance_count,
@@ -2092,16 +1972,20 @@ class NoteService:
     async def list_notes(self, pnm_id: str) -> List[Note]:
         db = get_db()
         rows = await db.execute_query("""
-            SELECT id, pnm_id, author_user_id, body, anonymous, likes_count, created_at
-            FROM pnm_notes
-            WHERE pnm_id = $1
-            ORDER BY created_at DESC
+            SELECT n.id, n.pnm_id, n.author_user_id, n.body, n.anonymous,
+                   n.likes_count, n.created_at,
+                   CASE WHEN n.anonymous THEN NULL ELSE u.email END AS author_email
+            FROM pnm_notes n
+            LEFT JOIN users u ON u.id = n.author_user_id
+            WHERE n.pnm_id = $1
+            ORDER BY n.created_at DESC
         """, pnm_id)
         return [
             Note(
                 id=str(r["id"]),
                 pnm_id=str(r["pnm_id"]),
                 author_id=str(r["author_user_id"]) if r["author_user_id"] else None,
+                author="Anonymous" if r["anonymous"] else (r["author_email"] or "Member"),
                 body=r["body"],
                 anonymous=r["anonymous"],
                 likes_count=r["likes_count"] or 0,

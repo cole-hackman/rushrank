@@ -57,10 +57,10 @@ class BidListService:
 
         scored = await db.execute_query(
             """SELECT v.pnm_id,
-                      SUM(CASE WHEN v.score >= 7 THEN 1
-                               WHEN v.score <= 4 THEN -1
+                      SUM(CASE WHEN v.value = 'YES' THEN 1
+                               WHEN v.value = 'NO' THEN -1
                                ELSE 0 END)
-                      + SUM(CASE WHEN v.is_favorite THEN 1 ELSE 0 END) AS score
+                      + SUM(CASE WHEN v.favorite THEN 1 ELSE 0 END) AS score
                  FROM votes v
                 WHERE v.round_id = $1 AND v.pnm_id = ANY($2::uuid[])
              GROUP BY v.pnm_id""",
@@ -116,9 +116,9 @@ class BidListService:
         rows = await db.execute_query(
             """SELECT e.pnm_id, e.bucket::text AS bucket, e.position,
                       p.name, p.year, p.major, p.photo_url,
-                      (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.score >= 7)       AS up_count,
-                      (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.score <= 4)       AS down_count,
-                      (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.is_favorite = true) AS star_count
+                      (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.value = 'YES')       AS up_count,
+                      (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.value = 'NO')       AS down_count,
+                      (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.favorite = true) AS star_count
                  FROM bid_list_entries e
                  JOIN pnms p ON p.id = e.pnm_id
                 WHERE e.bid_list_id = $1

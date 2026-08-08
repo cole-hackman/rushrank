@@ -46,11 +46,14 @@ type AttendanceEvent = {
   status?: string;
 };
 
+// Matches the backend Note model (GET/POST /pnms/{id}/notes). This page used to
+// call /pnms/{id}/comments with a `text` field -- an endpoint that never existed,
+// so the list silently rendered empty and posting always 404'd.
 type Comment = {
   id: string;
-  author?: string;
+  author?: string | null;
   created_at: string;
-  text: string;
+  body: string;
   anonymous?: boolean;
 };
 
@@ -82,7 +85,7 @@ export default function PNMProfilePage() {
       const [pnmData, attendanceData, commentsData] = await Promise.all([
         api<PNM>(`/pnms/${id}`),
         api<AttendanceEvent[]>(`/pnms/${id}/attendance`).catch(() => [] as AttendanceEvent[]),
-        api<Comment[]>(`/pnms/${id}/comments`).catch(() => [] as Comment[]),
+        api<Comment[]>(`/pnms/${id}/notes`).catch(() => [] as Comment[]),
       ]);
 
       setPnm(pnmData);
@@ -146,14 +149,14 @@ export default function PNMProfilePage() {
     if (!newComment.trim() || !id) return;
     setPosting(true);
     try {
-      const created = await api<Comment>(`/pnms/${id}/comments`, {
+      const created = await api<Comment>(`/pnms/${id}/notes`, {
         method: "POST",
-        body: { text: newComment.trim(), anonymous },
+        body: { pnm_id: id, body: newComment.trim(), anonymous },
       });
       setComments((prev) => [
         {
           ...created,
-          text: newComment.trim(),
+          body: newComment.trim(),
           created_at: created.created_at || new Date().toISOString(),
           anonymous,
         },
@@ -318,7 +321,7 @@ export default function PNMProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <p className="text-sm text-beta-navy">{comment.text}</p>
+                    <p className="text-sm text-beta-navy">{comment.body}</p>
                   </div>
                 ))}
               </div>
