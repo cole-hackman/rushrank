@@ -8,6 +8,7 @@ import { Download, User, Settings, LogOut, Shield, Tag, Users, BarChart3 } from 
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { signOut } from "@/lib/auth";
 import Protected from "@/components/Protected";
 import ToastProvider from "@/components/ToastProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -85,10 +86,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     })();
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user_email");
-    localStorage.removeItem("user_name");
+  const handleLogout = async () => {
+    await signOut();
     window.location.href = "/login";
   };
 
@@ -107,19 +106,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Define mobile navigation items
   const mobileNavItems = [
-    { label: "Home", href: "/" },
+    { label: "Home", href: "/dashboard" },
     { label: "Rush", href: "/rush" },
     { label: "PNMs", href: "/pnms" },
     { label: "Events", href: "/events" },
-    // ADMIN PAGES HIDDEN - See docs/archive/REIMPLEMENTATION.md
-    /*
-    ...(isAdmin ? [
-      { label: "Settings", href: "/settings" },
-      { label: "Tag Management", href: "/admin/tags" },
-      { label: "User Management", href: "/admin/users" },
-      { label: "Analytics", href: "/admin/analytics" },
-    ] : []),
-    */
+    { label: "Voting", href: "/voting" },
+    ...(isAdmin
+      ? [
+          { label: "Settings", href: "/settings" },
+          { label: "Tag Management", href: "/admin/tags" },
+          { label: "User Management", href: "/admin/users" },
+          { label: "Analytics", href: "/analytics" },
+        ]
+      : []),
   ];
 
   return (
@@ -131,7 +130,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             mobileNavItems={mobileNavItems}
             leftSlot={
               <>
-                <Link href="/">
+                <Link href="/dashboard">
                   <img
                     className="h-8 w-8 flex-none object-cover rounded-full"
                     src="/logo.png"
@@ -139,7 +138,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   />
                 </Link>
                 <div className="flex items-center gap-2">
-                  <TopbarWithLeftNav.NavItem selected={pathname === "/"} href="/">
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/dashboard"} href="/dashboard">
                     Home
                   </TopbarWithLeftNav.NavItem>
                   <TopbarWithLeftNav.NavItem selected={pathname === "/rush"} href="/rush">
@@ -157,15 +156,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <TopbarWithLeftNav.NavItem selected={pathname === "/events"} href="/events">
                     Events
                   </TopbarWithLeftNav.NavItem>
-                  {/* ADMIN DROPDOWN HIDDEN - See docs/archive/REIMPLEMENTATION.md */}
-                  {/*
                   {adminCheckReady && isAdmin && (
                     <SubframeCore.DropdownMenu.Root>
                       <SubframeCore.DropdownMenu.Trigger asChild>
                         <button
-                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${pathname?.startsWith("/admin") || pathname === "/settings"
-                            ? "bg-beta-navy/10 text-beta-navy"
-                            : "text-beta-gray hover:bg-beta-navy/5 hover:text-beta-navy"
+                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${pathname?.startsWith("/admin") || pathname === "/settings" || pathname === "/analytics"
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-primary/5 hover:text-primary"
                             }`}
                         >
                           <Shield className="h-3.5 w-3.5" />
@@ -198,7 +195,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                           </DropdownMenu.DropdownItem>
                           <DropdownMenu.DropdownItem
                             icon={<BarChart3 className="h-4 w-4" />}
-                            onClick={() => router.push("/admin/analytics")}
+                            onClick={() => router.push("/analytics")}
                           >
                             Analytics
                           </DropdownMenu.DropdownItem>
@@ -206,7 +203,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       </SubframeCore.DropdownMenu.Portal>
                     </SubframeCore.DropdownMenu.Root>
                   )}
-                  */}
                 </div>
               </>
             }
@@ -226,21 +222,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       align="end"
                       sideOffset={4}
                     >
-                      {/* USER MENU ITEMS HIDDEN - See docs/archive/REIMPLEMENTATION.md */}
-                      {/*
                       <DropdownMenu.DropdownItem
                         icon={<User className="h-4 w-4" />}
-                        onClick={() => router.push("/settings")}
+                        onClick={() => router.push("/profile")}
                       >
                         Profile
                       </DropdownMenu.DropdownItem>
-                      <DropdownMenu.DropdownItem
-                        icon={<Settings className="h-4 w-4" />}
-                        onClick={() => router.push("/settings")}
-                      >
-                        Settings
-                      </DropdownMenu.DropdownItem>
-                      */}
+                      {isAdmin && (
+                        <DropdownMenu.DropdownItem
+                          icon={<Settings className="h-4 w-4" />}
+                          onClick={() => router.push("/settings")}
+                        >
+                          Settings
+                        </DropdownMenu.DropdownItem>
+                      )}
                       <SubframeCore.DropdownMenu.Separator />
                       <SubframeCore.DropdownMenu.Label className="px-2 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">
                         Theme

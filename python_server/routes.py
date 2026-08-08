@@ -592,6 +592,45 @@ async def export_my_bid_list_pdf(current_user: dict = Depends(get_current_user))
     )
 
 
+# ---------------------------------------------------------------------------
+# Public (unauthenticated) endpoints
+#
+# /intake is handed to a PNM standing at a rush table. It used to call the
+# authenticated /chapters endpoint to discover which chapter it belonged to,
+# which 401s for a logged-out visitor -- leaving chapter_id null and the form
+# permanently unsubmittable. These take the chapter from the URL instead.
+#
+# Both are rate limited: they are the only unauthenticated write path in the API.
+# ---------------------------------------------------------------------------
+
+@router.get("/public/chapters/{chapter_id}")
+@limiter.limit(WRITE_RATE_LIMIT)
+async def get_public_chapter(chapter_id: str, request: Request):
+    """Minimal chapter info for the public intake form. No auth."""
+    db = get_db()
+    row = await db.execute_one(
+        "SELECT id, name, theme FROM chapters WHERE id = $1", chapter_id
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    theme = row["theme"]
+    if isinstance(theme, str):
+        import json as _json
+        theme = _json.loads(theme)
+    return {"id": str(row["id"]), "name": row["name"], "theme": theme}
+
+
+@router.post("/public/chapters/{chapter_id}/intake")
+@limiter.limit(WRITE_RATE_LIMIT)
+async def public_intake(chapter_id: str, pnm_data: PNMCreate, request: Request):
+    """Self-registration by a PNM. No auth; the chapter comes from the URL."""
+    db = get_db()
+    exists = await db.execute_one("SELECT 1 FROM chapters WHERE id = $1", chapter_id)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return await pnm_service.create_pnm(pnm_data, chapter_id)
+
+
 # PNM endpoints
 @router.get("/pnms")
 async def get_pnms(

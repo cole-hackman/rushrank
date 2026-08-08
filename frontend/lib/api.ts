@@ -1,3 +1,5 @@
+import { getAccessToken, refreshAccessToken, SIGNED_OUT_EVENT } from "@/lib/auth";
+
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 // Support both NEXT_PUBLIC_API_BASE_URL and NEXT_PUBLIC_API_URL for backwards compatibility
@@ -15,10 +17,7 @@ function getApiBase(): string {
 
 export const API_BASE = getApiBase();
 
-function getToken() {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("access_token");
-}
+
 
 const CHAPTER_ID_CACHE_KEY = "rushapp_chapter_id";
 const CHAPTER_ID_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
@@ -146,9 +145,19 @@ export async function checkBackendHealth(): Promise<{ reachable: boolean; error?
   }
 }
 
-export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: any; headers?: Record<string, string>; timeout?: number }): Promise<T> {
+export async function api<T>(
+  path: string,
+  opts?: {
+    method?: HttpMethod;
+    body?: any;
+    headers?: Record<string, string>;
+    timeout?: number;
+    /** internal: set when this call is the post-refresh retry */
+    __retried?: boolean;
+  },
+): Promise<T> {
   const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
-  const token = getToken();
+  const token = await getAccessToken();
   const timeout = opts?.timeout || 20000; // 20 second default timeout (increased for Render free tier)
   
   // Debug: log the URL being called (always log API_BASE in production for debugging)
@@ -189,9 +198,20 @@ export async function api<T>(path: string, opts?: { method?: HttpMethod; body?: 
       let errorMessage = text || `Request failed: ${res.status}`;
       
       // Handle specific HTTP status codes
-      if (res.status === 401) {
-        // Authentication error - token might be invalid or expired
-        errorMessage = `Authentication failed (401). Your session may have expired. Please try logging out and back in.`;
+      if (res.status === 401 && !opts?.__retried) {
+        // The cached session may simply be stale. Refresh once and retry before
+        // surfacing anything to the user -- this is the path that used to force
+        // a manual log out / log in every hour.
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          return api<T>(path, { ...opts, __retried: true } as typeof opts);
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+        }
+        errorMessage = "Your session has expired. Please sign in again.";
+      } else if (res.status === 401) {
+        errorMessage = "Your session has expired. Please sign in again.";
       } else if (res.status === 403) {
         errorMessage = `Access forbidden (403). You may not have permission to access this resource.`;
       } else if (res.status === 404) {
@@ -280,7 +300,7 @@ export async function exportPnmsPptx(
   filters: PnmExportFilters,
   sort?: string,
 ): Promise<{ blob: Blob; filename: string }> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = await getAccessToken();
   const res = await fetch(`${API_BASE}/pnms/export/pptx`, {
     method: "POST",
     headers: {

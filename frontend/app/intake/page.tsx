@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Label } from "@/components/ui/ui/label";
@@ -11,8 +11,11 @@ import { Camera, CheckCircle2, AlertCircle, Upload } from "lucide-react";
 
 export default function IntakePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [chapterId, setChapterId] = useState<string | null>(null);
+  const [chapterName, setChapterName] = useState<string | null>(null);
+  const isPublicLink = Boolean(searchParams?.get("chapter"));
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -29,14 +32,33 @@ export default function IntakePage() {
   const [questionnaireQuestions, setQuestionnaireQuestions] = useState<Array<{ id?: string; question: string; type: string; required: boolean }>>([]);
   const [questionnaireAnswers, setQuestionnaireAnswers] = useState<Record<string, string>>({});
 
+  // This form is handed to a PNM at a rush table, so it has to work while
+  // logged out. It used to resolve the chapter by calling the *authenticated*
+  // /chapters endpoint, which 401s for an anonymous visitor -- leaving
+  // chapterId null and the submit button permanently disabled. The chapter now
+  // comes from the URL (?chapter=<uuid>), with the authenticated lookup kept as
+  // a fallback for a brother who opens the page from inside the app.
   useEffect(() => {
     (async () => {
+      const fromUrl = searchParams?.get("chapter");
+      if (fromUrl) {
+        try {
+          const chapter = await api<{ id: string; name: string }>(`/public/chapters/${fromUrl}`);
+          setChapterId(chapter.id);
+          setChapterName(chapter.name);
+          return;
+        } catch (e: any) {
+          toast({ title: "Chapter not found", description: "Check the link and try again." });
+          return;
+        }
+      }
+
       try {
         const chapters = await api<{ id: string; name: string }[]>("/chapters");
         const cid = chapters[0]?.id || null;
         setChapterId(cid);
+        setChapterName(chapters[0]?.name ?? null);
 
-        // Load active questionnaire
         if (cid) {
           try {
             const questionnaires = await api<Array<{ id: string; schema: any; active: boolean }>>(`/questionnaires?chapter_id=${cid}`);
@@ -46,14 +68,16 @@ export default function IntakePage() {
             }
           } catch (e) {
             console.error("Failed to load questionnaire:", e);
-            // Continue without questionnaire
           }
         }
-      } catch (e: any) {
-        toast({ title: "Failed to load chapter", description: e.message });
+      } catch {
+        toast({
+          title: "Open this form from your chapter's link",
+          description: "Ask a brother for the intake link, which includes the chapter code.",
+        });
       }
     })();
-  }, [toast]);
+  }, [searchParams, toast]);
 
   useEffect(() => {
     if (file) {
@@ -85,7 +109,9 @@ export default function IntakePage() {
     if (!hometown.trim()) {
       newErrors.hometown = "Hometown is required";
     }
-    if (!celebrityCrush.trim()) {
+    // Optional on the public form: it is a fun-fact prompt, not a reason to
+    // turn away a PNM standing in front of you.
+    if (!isPublicLink && !celebrityCrush.trim()) {
       newErrors.celebrityCrush = "Celebrity Crush is required";
     }
 
@@ -103,14 +129,12 @@ export default function IntakePage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // A photo is strongly encouraged -- the PPTX export and voting cards are much
+  // worse without one -- but blocking submission on it loses the PNM entirely
+  // when a camera permission is denied at a rush table. Encourage, don't gate.
   const validateStep2 = (): boolean => {
-    const newErrors: Record<string, string> = {};
-    if (!file) {
-      newErrors.file = "Photo is required";
-      toast({ title: "Photo required", description: "Please upload a photo to continue" });
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors({});
+    return true;
   };
 
   // Check if form is valid for button state
@@ -123,8 +147,7 @@ export default function IntakePage() {
     if (!major.trim()) return false;
     if (!year.trim()) return false;
     if (!hometown.trim()) return false;
-    if (!celebrityCrush.trim()) return false;
-    if (!file) return false;
+    if (!isPublicLink && !celebrityCrush.trim()) return false;
 
     // Check questionnaire required fields
     for (let idx = 0; idx < questionnaireQuestions.length; idx++) {
@@ -174,7 +197,11 @@ export default function IntakePage() {
     setErrors({});
     try {
 
-      const created = await api<any>(`/pnms?chapter_id=${chapterId}`, {
+      const created = await api<any>(
+        isPublicLink
+          ? `/public/chapters/${chapterId}/intake`
+          : `/pnms?chapter_id=${chapterId}`,
+        {
         method: "POST",
         body: {
           name: name.trim(),
@@ -187,7 +214,8 @@ export default function IntakePage() {
           tags: [],
           fun_fact: celebrityCrush.trim() // Map to legacy field name
         }
-      });
+      },
+      );
       const pnmId = created.id as string;
 
       // Save questionnaire answers if any

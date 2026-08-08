@@ -260,6 +260,14 @@ class ChapterService:
             "source": "auto" if accent else "manual",
         }
         db = get_db()
+        # Belt and braces: get_current_user already upserts the row, but a
+        # foreign-key violation here is the difference between a chapter being
+        # created and a signup dead-ending, so make it impossible.
+        if admin_name:
+            await db.execute_command(
+                "UPDATE users SET name = COALESCE(name, $2) WHERE id = $1",
+                user_id, admin_name,
+            )
         # Idempotency: same user + chapter_name + school → return existing chapter
         existing = await db.execute_one(
             """SELECT c.id FROM chapters c

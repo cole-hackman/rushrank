@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useFraternityColors } from "@/lib/queries";
-import { provisionChapter } from "@/lib/api";
+import { api, provisionChapter, clearCachedChapterId } from "@/lib/api";
 
 const PENDING_KEY = "rushrank.pendingSignup.v1";
 
@@ -36,13 +36,13 @@ export function SignupWizard() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ""}/api/v1/chapters/me/theme`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.ok) {
-          router.replace("/dashboard");
-        }
-      } catch {}
+        // Hand-built as `${BASE}/api/v1/...`, this produced `/api/api/v1/...`
+        // whenever the env var already carried the suffix.
+        await api("/chapters/me/theme");
+        router.replace("/dashboard");
+      } catch {
+        // No chapter yet -- stay on the wizard.
+      }
     })();
   }, [router]);
 
@@ -61,18 +61,38 @@ export function SignupWizard() {
     }
     const raw = localStorage.getItem(PENDING_KEY);
     if (!raw) return;
-    (async () => {
+
+    let done = false;
+    const provision = async () => {
+      if (done) return;
+      done = true;
       try {
         const pending: PendingSignup = JSON.parse(raw);
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
         await provisionChapter(pending);
         localStorage.removeItem(PENDING_KEY);
+        clearCachedChapterId();
         router.replace("/dashboard?welcome=1");
       } catch (e: any) {
+        done = false;
         setError(e?.message ?? "Provisioning failed");
       }
-    })();
+    };
+
+    // Driven by the auth-state callback rather than a bare getSession(): on
+    // return from a magic link, getSession() can resolve before supabase-js has
+    // finished parsing the token out of the URL hash. The old code returned
+    // silently in that case, leaving the user on this screen with no chapter
+    // and no error -- one of the two reasons self-serve signup never completed.
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) void provision();
+    });
+
+    // Covers the case where the session was already established before mount.
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) void provision();
+    });
+
+    return () => data.subscription.unsubscribe();
   }, [search, router]);
 
   async function sendMagicLink() {

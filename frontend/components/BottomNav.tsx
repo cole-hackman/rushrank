@@ -12,7 +12,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-    { label: "Home", href: "/", icon: <Home className="h-5 w-5" /> },
+    { label: "Home", href: "/dashboard", icon: <Home className="h-5 w-5" /> },
     { label: "Rush", href: "/rush", icon: <ClipboardList className="h-5 w-5" /> },
     { label: "PNMs", href: "/pnms", icon: <Users className="h-5 w-5" /> },
     { label: "Events", href: "/events", icon: <Calendar className="h-5 w-5" /> },

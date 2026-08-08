@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, useEffect } from "react";
 import { api, API_BASE } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth";
 import { useToast } from "@/components/ToastProvider";
 import { Label } from "@/components/ui/ui/label";
 import { Input } from "@/components/ui/ui/input";
@@ -223,7 +224,7 @@ export function AddPnmView({ onBack }: AddPnmViewProps) {
           const formData = new FormData();
           formData.append("file", file);
 
-          const token = localStorage.getItem("access_token");
+          const token = await getAccessToken();
           const res = await fetch(`${API_BASE}/pnms/${pnmId}/upload-photo`, {
             method: "POST",
             body: formData,

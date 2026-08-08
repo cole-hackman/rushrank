@@ -10,6 +10,8 @@ import json
 from typing import Optional, Dict, Any
 import logging
 
+from .cache import SimpleCache
+
 logger = logging.getLogger(__name__)
 
 # HTTP Bearer security scheme
@@ -124,6 +126,66 @@ async def verify_token(token: str) -> Dict[str, Any]:
             detail="Authentication failed"
         )
 
+# Users we have already reconciled this process, so the upsert below costs one
+# statement per user per five minutes rather than one per request. This is what
+# python_server/cache.py was written for; it had no callers until now.
+_user_sync_cache = SimpleCache(default_ttl=300)
+
+
+async def ensure_user_row(user_id: str, email: Optional[str]) -> None:
+    """Make sure the authenticated Supabase user exists in public.users.
+
+    Nothing ever synced auth.users to public.users. No trigger existed, and the
+    only INSERT INTO users lived inside the admin invite flow -- so a user who
+    signed up with a magic link had an auth row and no local row, which meant a
+    foreign-key violation the moment chapter provisioning inserted their
+    membership, and a 404 from GET /me. That is one of the two independent
+    reasons self-serve signup could never complete.
+
+    0013 also installs a trigger on auth.users as a backstop for users who
+    verify their email but never hit the API. This is the authoritative path
+    because it works for every auth method, needs no Supabase dashboard step,
+    and is testable.
+    """
+    if not email:
+        return
+    if _user_sync_cache.get(user_id) is not None:
+        return
+
+    from .database import get_db
+
+    try:
+        db = get_db()
+    except RuntimeError:
+        # No pool yet (e.g. during startup); skip rather than fail the request.
+        return
+
+    try:
+        # Written so it cannot raise rather than wrapped in a try/except.
+        #
+        # users.email is UNIQUE, and an invited-then-signed-up user has a local
+        # row under a *different* id holding the same address. Letting that
+        # violation fire and catching it is not enough: an error inside a
+        # transaction aborts the whole transaction, so every subsequent
+        # statement in the request would fail too. The guard skips instead.
+        # 0013's reconciliation is what actually repoints those rows.
+        await db.execute_command(
+            """
+            INSERT INTO users (id, email)
+            SELECT $1::uuid, $2
+            WHERE NOT EXISTS (
+                SELECT 1 FROM users WHERE email = $2 AND id <> $1::uuid
+            )
+            ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email
+            """,
+            user_id, email,
+        )
+        _user_sync_cache.set(user_id, True)
+    except Exception as e:
+        # Anything else (no pool, permissions) must not break the request.
+        logger.warning(f"Could not sync user {user_id} into public.users: {e}")
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> Dict[str, Any]:
@@ -146,7 +208,9 @@ async def get_current_user(
             status_code=401,
             detail="Invalid token payload"
         )
-    
+
+    await ensure_user_row(user_id, email)
+
     return {
         "user_id": user_id,
         "email": email,
