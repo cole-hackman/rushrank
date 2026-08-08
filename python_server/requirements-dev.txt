@@ -1,0 +1,5 @@
+# Test-only dependencies. Kept separate so the Render build (which installs
+# requirements.txt) stays lean.
+pytest>=8.0
+pytest-asyncio>=0.23
+httpx>=0.28

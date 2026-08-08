@@ -222,7 +222,7 @@ export default function SettingsPage() {
             </Button>
             <Button
               variant="neutral-secondary"
-              onClick={() => router.push("/admin/analytics")}
+              onClick={() => router.push("/analytics")}
             >
               Analytics
             </Button>

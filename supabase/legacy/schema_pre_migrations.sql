@@ -1,3 +1,21 @@
+-- ============================================================================
+-- NOT APPLIED. HISTORICAL REFERENCE ONLY.
+--
+-- This is the schema RushRank was originally created from, before
+-- supabase/migrations/ existed. It is retained for exactly one reason: it is
+-- the fixture the schema-convergence test replays to prove that
+-- 0013_reconcile_schema.sql can heal a production database created from it.
+--
+-- `supabase/migrations/` is the single source of truth. Do not apply this file
+-- to any database. Do not add to it. It is deleted once 0013 has been applied
+-- to production and verified.
+--
+-- Note: it also references the Supabase `auth` schema, so it cannot be applied
+-- to a bare Postgres without errors.
+--
+-- See docs/AUDIT-2026-08.md.
+-- ============================================================================
+
 -- RushRank Enhanced Schema with Multi-tenancy and RLS
 -- This replaces the existing Drizzle schema with Supabase-compatible tables
 

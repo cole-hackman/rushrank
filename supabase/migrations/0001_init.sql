@@ -4,6 +4,10 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "citext";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+-- Legacy-origin databases were created by supabase/legacy/schema_pre_migrations.sql,
+-- which used uuid_generate_v4(). Install uuid-ossp so those defaults keep resolving
+-- and so 0012 applies on a database that never had it.
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Enums
 DO $$

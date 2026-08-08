@@ -23,8 +23,10 @@ RushRank — fraternity rush management app. Next.js 14 frontend (`frontend/`) +
 - API docs while running: `http://localhost:8000/docs`
 
 ### Database
-- Schema lives in `supabase/schema.sql` plus numbered files in `supabase/migrations/` (0001–0008).
-- Apply: `npx supabase db push` or `psql "$DATABASE_URL" -f supabase/schema.sql`.
+- **`supabase/migrations/` is the single source of truth.** Apply every file in numeric order.
+- `supabase/legacy/schema_pre_migrations.sql` is the pre-migrations schema the project was created from. Reference and test fixture only — never apply it.
+- `0013_reconcile_schema.sql` converges either origin onto one schema and logs what it found to `schema_reconciliation_log`.
+- Apply: `npx supabase db push`, or loop `psql -v ON_ERROR_STOP=1 -f` over `supabase/migrations/*.sql`.
 - Migrations are append-only and numerically ordered; create the next file rather than editing past ones.
 
 ## Architecture

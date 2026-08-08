@@ -47,7 +47,7 @@ export function PnmCardShowcase() {
               </dl>
               {p.latestNote && (
                 <blockquote className="mt-4 border-l-2 border-accent pl-3 text-sm italic text-muted-foreground">
-                  "{p.latestNote.text}"
+                  &ldquo;{p.latestNote.text}&rdquo;
                   <div className="mt-1 text-xs not-italic">— {p.latestNote.author}</div>
                 </blockquote>
               )}
