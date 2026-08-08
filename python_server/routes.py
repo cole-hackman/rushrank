@@ -1111,6 +1111,18 @@ async def create_vote(
     if round_row["status"] != "ACTIVE":
         raise HTTPException(status_code=400, detail="Round is not active")
 
+    # The lock was cosmetic: it flipped a boolean and broadcast it, but nothing
+    # here checked it, so a locked session still accepted votes -- and the
+    # client only disabled the buttons, not the swipe handler.
+    session_row = await db.execute_one("""
+        SELECT id, locked FROM sessions
+        WHERE round_id = $1 AND ended_at IS NULL
+        ORDER BY started_at DESC LIMIT 1
+    """, round_id)
+
+    if session_row and session_row["locked"]:
+        raise HTTPException(status_code=409, detail="Voting is locked by the chair")
+
     existing_vote = await db.execute_one("""
         SELECT value, favorite FROM votes
         WHERE round_id = $1 AND pnm_id = $2 AND voter_user_id = $3
@@ -1120,8 +1132,9 @@ async def create_vote(
     if choice is None and existing_vote:
         choice = existing_vote["value"]
     elif not choice:
-        # No choice and no existing vote - can't create a vote without one
-        raise HTTPException(status_code=400, detail="choice is required for new votes")
+        # Starring a PNM you haven't voted on yet is a normal gesture; it used to
+        # 400. Record it as UNKNOWN so the favourite is not lost.
+        choice = "UNKNOWN"
 
     if choice not in ["YES", "NO", "UNKNOWN"]:
         raise HTTPException(status_code=400, detail="choice must be YES, NO, or UNKNOWN")
@@ -1145,6 +1158,28 @@ async def create_vote(
         WHERE round_id = $1 AND pnm_id = $2
     """, round_id, pnm_id)
 
+    tallies = {
+        "yes": tallies_row["yes_count"] if tallies_row else 0,
+        "no": tallies_row["no_count"] if tallies_row else 0,
+        "unknown": tallies_row["unknown_count"] if tallies_row else 0,
+        "favorites": tallies_row["favorites_count"] if tallies_row else 0,
+    }
+
+    # ws_manager.broadcast_vote_cast has existed since the websocket manager was
+    # written and was never called, so the chair's "Votes Collected" bar was set
+    # once at session creation and never moved. Open (non-session) voting has no
+    # session to broadcast to, hence the guard.
+    if session_row:
+        voters_row = await db.execute_one("""
+            SELECT COUNT(DISTINCT voter_user_id) as votes_collected
+            FROM votes WHERE round_id = $1
+        """, round_id)
+        await ws_manager.broadcast_vote_cast(
+            str(session_row["id"]),
+            str(pnm_id),
+            {**tallies, "votes_collected": voters_row["votes_collected"] if voters_row else 0},
+        )
+
     return {
         "id": str(vote_row["id"]),
         "round_id": str(vote_row["round_id"]),
@@ -1154,12 +1189,7 @@ async def create_vote(
         "choice": vote_row["value"],
         "favorite": vote_row["favorite"],
         "created_at": vote_row["voted_at"].isoformat() if vote_row["voted_at"] else None,
-        "tallies": {
-            "yes": tallies_row["yes_count"] if tallies_row else 0,
-            "no": tallies_row["no_count"] if tallies_row else 0,
-            "unknown": tallies_row["unknown_count"] if tallies_row else 0,
-            "favorites": tallies_row["favorites_count"] if tallies_row else 0
-        }
+        "tallies": tallies,
     }
 
 @router.post("/rounds/{round_id}/votes", response_model=Vote)
@@ -1536,12 +1566,28 @@ async def get_round_status(
         WHERE chapter_id = $1
     """, round_obj.chapter_id)
     
+    # Server-authoritative countdown. Was a hardcoded 165 with a TODO beside it.
+    # Derived from one server timestamp so every device in the room agrees --
+    # forty phones each running their own interval would drift apart in a minute.
+    timer_row = await db.execute_one("""
+        SELECT timer_seconds, current_pnm_started_at
+        FROM sessions
+        WHERE round_id = $1 AND ended_at IS NULL
+        ORDER BY started_at DESC LIMIT 1
+    """, round_id)
+
+    timer_remaining = None
+    if timer_row and timer_row["timer_seconds"] and timer_row["current_pnm_started_at"]:
+        elapsed = (datetime.now(timezone.utc) - timer_row["current_pnm_started_at"]).total_seconds()
+        timer_remaining = max(0, int(timer_row["timer_seconds"] - elapsed))
+
     return {
         "round_id": round_id,
         "status": round_obj.status,
         "votes_collected": votes_row["votes_collected"] if votes_row else 0,
         "total_voters": members_row["total_voters"] if members_row else 0,
-        "timer_remaining": 165  # TODO: implement timer logic
+        "timer_seconds": timer_row["timer_seconds"] if timer_row else None,
+        "timer_remaining": timer_remaining,
     }
 
 # Open Voting endpoints
@@ -1555,13 +1601,14 @@ async def ensure_open_round(
     logger.info(f"ensure_open_round called: user_id={user_id}, chapter_id={chapter_id}")
     
     try:
-        # Verify membership
+        # Opening a round is a chair action -- this previously only checked
+        # membership, so any brother could create one.
         try:
-            await chapter_service.verify_membership(user_id, chapter_id)
+            await chapter_service.verify_admin_access(user_id, chapter_id)
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error verifying membership: {e}", exc_info=True)
+            logger.error(f"Error verifying admin access: {e}", exc_info=True)
             raise HTTPException(status_code=403, detail=f"Access denied: {str(e)}")
         
         try:
@@ -1729,6 +1776,13 @@ async def create_session(
         chapter_id = payload.get("chapter_id")
         if not chapter_id:
             raise HTTPException(status_code=400, detail="chapter_id required")
+
+        # Both of these were accepted from the UI and silently discarded.
+        raw_timer = payload.get("timer_seconds")
+        timer_seconds = int(raw_timer) if raw_timer not in (None, "", 0) else None
+        if timer_seconds is not None and timer_seconds < 10:
+            raise HTTPException(status_code=400, detail="timer_seconds must be at least 10")
+        anonymous = bool(payload.get("anonymous", False))
         
         await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
         
@@ -1774,10 +1828,12 @@ async def create_session(
         
         # Create session with first PNM set as current
         session_row = await db.execute_one("""
-            INSERT INTO sessions (round_id, join_code, current_pnm_id, locked, started_at)
-            VALUES ($1, $2, $3, false, NOW())
-            RETURNING id, round_id, join_code, current_pnm_id, locked, started_at
-        """, round_id, join_code, first_pnm_id)
+            INSERT INTO sessions (round_id, join_code, current_pnm_id, locked, started_at,
+                                  timer_seconds, anonymous, current_pnm_started_at)
+            VALUES ($1, $2, $3, false, NOW(), $4, $5, NOW())
+            RETURNING id, round_id, join_code, current_pnm_id, locked, started_at,
+                      timer_seconds, anonymous
+        """, round_id, join_code, first_pnm_id, timer_seconds, anonymous)
         
         if not session_row:
             raise HTTPException(status_code=500, detail="Failed to create session")
@@ -1806,7 +1862,9 @@ async def create_session(
             "locked": session_row["locked"],
             "votes_collected": votes_row["votes_collected"] if votes_row else 0,
             "total_voters": members_row["total_voters"] if members_row else 0,
-            "is_chair": is_chair
+            "is_chair": is_chair,
+            "timer_seconds": session_row["timer_seconds"],
+            "anonymous": session_row["anonymous"],
         }
     except HTTPException:
         raise
@@ -1828,6 +1886,7 @@ async def join_session(
     
     session_row = await db.execute_one("""
         SELECT s.id, s.round_id, s.join_code, s.current_pnm_id, s.locked,
+               s.timer_seconds, s.anonymous, s.current_pnm_started_at,
                vr.chapter_id, vr.selected_pnm_ids
         FROM sessions s
         JOIN voting_rounds vr ON vr.id = s.round_id
@@ -1912,6 +1971,11 @@ async def join_session(
         "votes_collected": votes_row["votes_collected"] if votes_row else 0,
         "total_voters": members_row["total_voters"] if members_row else 0,
         "is_chair": is_chair,
+        "timer_seconds": session_row["timer_seconds"],
+        "anonymous": session_row["anonymous"],
+        # A voter always sees their own votes -- anonymity hides identities from
+        # *other* members, which is enforced at the read boundary by
+        # v_votes_public wherever cross-voter data is exposed.
         "user_votes": user_votes
     }
 
@@ -1933,7 +1997,8 @@ async def get_active_session(
     chapter_id = str(membership["chapter_id"])
     
     session_row = await db.execute_one("""
-        SELECT s.id, s.round_id, s.join_code, s.current_pnm_id, s.locked
+        SELECT s.id, s.round_id, s.join_code, s.current_pnm_id, s.locked,
+               s.timer_seconds, s.anonymous
         FROM sessions s
         JOIN voting_rounds vr ON vr.id = s.round_id
         WHERE vr.chapter_id = $1 AND s.ended_at IS NULL
@@ -1967,7 +2032,9 @@ async def get_active_session(
         "locked": session_row["locked"],
         "votes_collected": votes_row["votes_collected"] if votes_row else 0,
         "total_voters": members_row["total_voters"] if members_row else 0,
-        "is_chair": is_chair
+        "is_chair": is_chair,
+        "timer_seconds": session_row["timer_seconds"],
+        "anonymous": session_row["anonymous"],
     }
 
 @router.post("/sessions/{session_id}/lock")
@@ -2061,7 +2128,8 @@ async def advance_session(
     next_pnm_id = pnm_ids[next_index]
     
     await db.execute_command("""
-        UPDATE sessions SET current_pnm_id = $1 WHERE id = $2
+        UPDATE sessions SET current_pnm_id = $1, current_pnm_started_at = NOW()
+        WHERE id = $2
     """, next_pnm_id, session_id)
     
     # Get PNM details for broadcast
@@ -2102,7 +2170,8 @@ async def get_session_current(
     
     # Get session and verify access
     session_row = await db.execute_one("""
-        SELECT s.id, s.round_id, s.current_pnm_id, s.locked, vr.chapter_id
+        SELECT s.id, s.round_id, s.current_pnm_id, s.locked, s.timer_seconds,
+               s.current_pnm_started_at, vr.chapter_id
         FROM sessions s
         JOIN voting_rounds vr ON vr.id = s.round_id
         WHERE s.id = $1 AND s.ended_at IS NULL
@@ -2133,6 +2202,11 @@ async def get_session_current(
     if not pnm_row:
         return {"pnm": None, "locked": session_row["locked"]}
     
+    timer_remaining = None
+    if session_row["timer_seconds"] and session_row["current_pnm_started_at"]:
+        elapsed = (datetime.now(timezone.utc) - session_row["current_pnm_started_at"]).total_seconds()
+        timer_remaining = max(0, int(session_row["timer_seconds"] - elapsed))
+
     return {
         "pnm": {
             "id": str(pnm_row["id"]),
@@ -2144,7 +2218,9 @@ async def get_session_current(
             "photo_url": pnm_row["photo_url"],
             "tags": list(pnm_row["tags"]) if pnm_row["tags"] else []
         },
-        "locked": session_row["locked"]
+        "locked": session_row["locked"],
+        "timer_seconds": session_row["timer_seconds"],
+        "timer_remaining": timer_remaining,
     }
 
 # Unified export endpoint

@@ -49,6 +49,8 @@ type Session = {
   votes_collected?: number;
   total_voters?: number;
   is_chair?: boolean;
+  timer_seconds?: number | null;
+  anonymous?: boolean;
 };
 
 type VoteChoice = "YES" | "NO" | "UNKNOWN";
@@ -58,17 +60,6 @@ const swipeThreshold = 80;
 export default function VotingPage() {
   const { toast } = useToast();
   const router = useRouter();
-  
-  // Redirect if voting is disabled
-  useEffect(() => {
-    if (process.env.NEXT_PUBLIC_ENABLE_VOTING !== "true") {
-      router.push("/");
-      toast({ 
-        title: "Voting page disabled", 
-        description: "The voting feature is currently disabled. See docs/VOTING_PAGE_REIMPLEMENTATION.md for details." 
-      });
-    }
-  }, [router, toast]);
   
   const [activeTab, setActiveTab] = useState<"open" | "session">("open");
   const [chapterId, setChapterId] = useState<string | null | undefined>(undefined);
@@ -87,6 +78,11 @@ export default function VotingPage() {
   const [startAnonymous, setStartAnonymous] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [isChair, setIsChair] = useState(false);
+
+  // Server-authoritative countdown. Refreshed from /sessions/{id}/current so
+  // every device in the room shows the same number; a local interval only
+  // animates between refreshes.
+  const [timerRemaining, setTimerRemaining] = useState<number | null>(null);
 
   // Shared UI state
   const [dragDirection, setDragDirection] = useState<"left" | "right" | "up" | null>(null);
@@ -231,11 +227,17 @@ export default function VotingPage() {
 
   const fetchSessionCurrent = async (id: string) => {
     try {
-      const res = await api<{ pnm: PNM | null; locked?: boolean }>(`/sessions/${id}/current`);
+      const res = await api<{
+        pnm: PNM | null;
+        locked?: boolean;
+        timer_seconds?: number | null;
+        timer_remaining?: number | null;
+      }>(`/sessions/${id}/current`);
       setSessionPNM(res?.pnm || null);
       if (res?.locked !== undefined) {
         setSession((prev) => (prev ? { ...prev, locked: res.locked } : prev));
       }
+      setTimerRemaining(res?.timer_remaining ?? null);
     } catch {
       // ignore
     }
@@ -268,7 +270,11 @@ export default function VotingPage() {
         await fetchNextOpenPNM();
       }
     } catch (e: any) {
-      toast({ title: "Vote failed", description: e?.message });
+      const locked = e?.status === 409;
+      toast({
+        title: locked ? "Voting is locked" : "Vote failed",
+        description: locked ? "The chair has locked voting for this PNM." : e?.message,
+      });
     }
   };
 
@@ -317,7 +323,7 @@ export default function VotingPage() {
         },
       });
       setSession(created);
-      setIsChair(created.is_chair || true);
+      setIsChair(Boolean(created.is_chair));
       toast({ title: "Session started", description: `Join code: ${created.join_code}` });
       await fetchSessionCurrent(created.id);
     } catch (e: any) {
@@ -408,6 +414,13 @@ export default function VotingPage() {
     }
   }, [session?.id]);
 
+  // The chair's progress bar was set once at session creation and never moved,
+  // because the backend defined broadcast_vote_cast and never called it.
+  const handleWsVoteCast = useCallback((_pnmId: string, tallies?: { votes_collected?: number }) => {
+    if (tallies?.votes_collected === undefined) return;
+    setSession((prev) => (prev ? { ...prev, votes_collected: tallies.votes_collected } : prev));
+  }, []);
+
   const handleWsLockChange = useCallback((locked: boolean) => {
     if (session) {
       setSession({ ...session, locked });
@@ -427,6 +440,7 @@ export default function VotingPage() {
   const { connected: wsConnected } = useSessionWebSocket({
     sessionId: session?.id || null,
     onPnmAdvance: handleWsPnmAdvance,
+    onVoteCast: handleWsVoteCast,
     onLockChange: handleWsLockChange,
     onSessionEnd: handleWsSessionEnd,
     enabled: activeTab === "session" && !!session?.id,
@@ -443,6 +457,13 @@ export default function VotingPage() {
 
     return () => clearInterval(interval);
   }, [session?.id, activeTab, wsConnected]);
+
+  useEffect(() => {
+    if (timerRemaining === null) return;
+    if (timerRemaining <= 0) return;
+    const t = setTimeout(() => setTimerRemaining((v) => (v === null ? null : Math.max(0, v - 1))), 1000);
+    return () => clearTimeout(t);
+  }, [timerRemaining]);
 
   const handleDrag = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (Math.abs(info.offset.y) > Math.abs(info.offset.x)) {
@@ -567,6 +588,17 @@ export default function VotingPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                    {timerRemaining !== null && (
+                      <Badge
+                        variant={timerRemaining <= 15 ? "warning" : "neutral"}
+                        className="text-sm font-mono"
+                      >
+                        {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, "0")}
+                      </Badge>
+                    )}
+                    {session.anonymous && (
+                      <Badge variant="neutral" className="text-sm">Anonymous</Badge>
+                    )}
                     <Badge variant={session.locked ? "warning" : "success"} className="text-sm">
                       {session.locked ? "Locked" : "Active"}
                     </Badge>
@@ -731,11 +763,14 @@ function VoteCard({
         <AnimatePresence>
           <motion.div
             key={pnm.id}
-            drag
+            // `disabled` used to be passed only to the three buttons, so a
+            // locked session could still be voted through by swiping.
+            drag={!disabled}
+            dragListener={!disabled}
             dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
             dragElastic={0.6}
-            onDrag={onDrag}
-            onDragEnd={onDragEnd}
+            onDrag={disabled ? undefined : onDrag}
+            onDragEnd={disabled ? undefined : onDragEnd}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, x: dragDirection === "right" ? 200 : dragDirection === "left" ? -200 : 0, y: dragDirection === "up" ? -200 : 0 }}

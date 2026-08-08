@@ -22,6 +22,10 @@ type SessionMessage = {
     no: number;
     unknown: number;
     favorites: number;
+    // How many distinct members have voted in this round -- drives the chair's
+    // progress bar, which was previously frozen at whatever it was when the
+    // session was created.
+    votes_collected?: number;
   };
   round_id?: string;
 };
