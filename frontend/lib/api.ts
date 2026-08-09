@@ -590,3 +590,48 @@ export async function startDemoSession(): Promise<{
 }> {
   return api("/public/demo-session", { method: "POST" });
 }
+
+// ── Duplicate merge ─────────────────────────────────────────────────────────
+// Four ways into the roster — intake form, CSV import, walk-ups and the
+// interest link — means the same person arrives more than once routinely.
+// Import refuses to insert a duplicate it recognises; this reunites the two
+// rows that already exist, whose notes and attendance are otherwise split.
+
+export interface DuplicateMember {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  major: string | null;
+  year: string | null;
+  photo_url: string | null;
+  created_at: string;
+  /** Shown so whoever merges can keep the richer row rather than guess. */
+  notes: number;
+  attendance: number;
+  votes: number;
+}
+
+export interface DuplicateGroup {
+  reason: "email" | "phone" | "name";
+  key: string;
+  members: DuplicateMember[];
+}
+
+export async function getDuplicates(chapterId: string): Promise<{ groups: DuplicateGroup[] }> {
+  return api(`/chapters/${chapterId}/duplicates`);
+}
+
+/** Destructive and not undoable from the UI — confirm before calling. */
+export async function mergePnms(
+  winnerId: string,
+  loserId: string,
+): Promise<{
+  winner_id: string;
+  loser_id: string;
+  moved: Record<string, number>;
+  dropped_as_duplicate: Record<string, number>;
+  fields_filled: string[];
+}> {
+  return api(`/pnms/${winnerId}/merge`, { method: "POST", body: { loser_id: loserId } });
+}
