@@ -40,7 +40,7 @@ PREVIEW_ROWS = 20
 # Fields we can populate. `name` is the only one that is required -- 0013
 # relaxed the legacy NOT NULL on `pnms.major` precisely so partial rosters
 # and walk-up intake could succeed.
-FIELDS = ["name", "email", "phone", "major", "hometown", "year", "photo_url", "tags"]
+FIELDS = ["name", "email", "phone", "major", "hometown", "year", "photo_url", "tags", "gpa"]
 
 # Header aliases, keyed by the normalized form (lowercased, non-alphanumerics
 # stripped). Covers what chapters actually have in their spreadsheets.
@@ -76,6 +76,11 @@ _HEADER_ALIASES: dict[str, str] = {
     "tags": "tags",
     "tag": "tags",
     "labels": "tags",
+    "gpa": "gpa",
+    "grades": "gpa",
+    "gradepointaverage": "gpa",
+    "cumulativegpa": "gpa",
+    "cumgpa": "gpa",
 }
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -202,6 +207,22 @@ def parse_csv(raw: bytes, mapping_override: Optional[dict[str, str]] = None) -> 
             seen_emails[key_email] = line
         seen_names[key_name] = line
 
+        raw_gpa = mapped.get("gpa")
+        if raw_gpa:
+            try:
+                gpa = float(raw_gpa)
+            except ValueError:
+                errors.append({"row": line, "message": f"'{raw_gpa}' is not a GPA"})
+                continue
+            # numeric(4,3) would reject a typo'd 35 as a database error; caught
+            # here it is one skipped row with an explanation.
+            if not 0 <= gpa <= 5:
+                errors.append({"row": line, "message": f"GPA {gpa} is outside 0-5"})
+                continue
+            mapped["gpa"] = gpa
+        else:
+            mapped["gpa"] = None
+
         mapped["tags"] = _split_tags(mapped.get("tags"))
         mapped["_row"] = line
         rows.append(mapped)
@@ -263,11 +284,12 @@ async def _insert_rows(chapter_id: str, rows: list[dict]) -> list[str]:
     db = get_db()
     inserted = await db.execute_query(
         """
-        INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url)
-        SELECT $1::uuid, x.name, x.email, x.phone, x.major, x.hometown, x.year, x.photo_url
+        INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, gpa)
+        SELECT $1::uuid, x.name, x.email, x.phone, x.major, x.hometown, x.year, x.photo_url, x.gpa
         FROM unnest(
-            $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]
-        ) AS x(name, email, phone, major, hometown, year, photo_url)
+            $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[],
+            $9::numeric[]
+        ) AS x(name, email, phone, major, hometown, year, photo_url, gpa)
         RETURNING id, lower(name) AS lname, lower(email) AS lemail
         """,
         chapter_id,
@@ -278,6 +300,7 @@ async def _insert_rows(chapter_id: str, rows: list[dict]) -> list[str]:
         [r.get("hometown") for r in rows],
         [r.get("year") for r in rows],
         [r.get("photo_url") for r in rows],
+        [r.get("gpa") for r in rows],
     )
 
     pnm_ids = [str(r["id"]) for r in inserted]
