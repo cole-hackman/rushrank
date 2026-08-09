@@ -115,12 +115,15 @@ class BidListService:
 
         rows = await db.execute_query(
             """SELECT e.pnm_id, e.bucket::text AS bucket, e.position,
+                      e.outcome, e.outcome_at, e.declined_reason,
+                      u.name AS outcome_by_name,
                       p.name, p.year, p.major, p.photo_url,
                       (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.value = 'YES')       AS up_count,
                       (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.value = 'NO')       AS down_count,
                       (SELECT COUNT(*) FROM votes v WHERE v.pnm_id = e.pnm_id AND v.favorite = true) AS star_count
                  FROM bid_list_entries e
                  JOIN pnms p ON p.id = e.pnm_id
+                 LEFT JOIN users u ON u.id = e.outcome_by_user_id
                 WHERE e.bid_list_id = $1
              ORDER BY e.bucket, e.position""",
             bid_list_id,
@@ -139,10 +142,31 @@ class BidListService:
                     "down": int(r.get("down_count") or 0),
                     "star": int(r.get("star_count") or 0),
                 },
+                "outcome": r.get("outcome") or "pending",
+                "outcome_at": r.get("outcome_at"),
+                "declined_reason": r.get("declined_reason"),
+                "outcome_by_name": r.get("outcome_by_name"),
             }
             for r in rows
         ]
-        return {"bid_list": self._row_to_dict(row), "entries": entries}
+
+        # The cap counts acceptances, not offers. Counting rows in the `bid`
+        # bucket answers "how many bids did we hand out"; a chapter in the last
+        # week of rush is asking "how many do we have left", and two declines
+        # give two back.
+        bids = [e for e in entries if e["bucket"] == "bid"]
+        tally = {
+            "offered": sum(1 for e in bids if e["outcome"] == "offered"),
+            "accepted": sum(1 for e in bids if e["outcome"] == "accepted"),
+            "declined": sum(1 for e in bids if e["outcome"] == "declined"),
+            "pending": sum(1 for e in bids if e["outcome"] == "pending"),
+        }
+        cap = row["bid_cap"]
+        tally["remaining"] = (
+            max(0, cap - tally["accepted"] - tally["offered"]) if cap is not None else None
+        )
+
+        return {"bid_list": self._row_to_dict(row), "entries": entries, "outcomes": tally}
 
     async def acquire_lock(self, bid_list_id: str, user_id: str) -> dict:
         """Acquire the editor lock, taking over a stale (>10min old) lock if needed."""
@@ -230,6 +254,50 @@ class BidListService:
             bucket, position, bid_list_id, pnm_id,
         )
         return {"pnm_id": pnm_id, "bucket": bucket, "position": position}
+
+    async def set_outcome(self, bid_list_id: str, pnm_id: str, outcome: str,
+                          user_id: str, declined_reason: Optional[str] = None) -> dict:
+        """Record what happened to a bid.
+
+        Only entries in the `bid` bucket can carry a real outcome -- a cut PNM
+        was never offered anything, and letting the UI mark one "accepted"
+        would quietly corrupt the cap.
+        """
+        if outcome not in ("pending", "offered", "accepted", "declined"):
+            raise HTTPException(status_code=400, detail=f"Unknown outcome: {outcome}")
+
+        db = get_db()
+        entry = await db.execute_one(
+            """SELECT bucket::text AS bucket FROM bid_list_entries
+                WHERE bid_list_id = $1 AND pnm_id = $2""",
+            bid_list_id, pnm_id,
+        )
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        if entry["bucket"] != "bid" and outcome != "pending":
+            raise HTTPException(
+                status_code=400,
+                detail="Only PNMs in the bid bucket can be offered, accepted or declined",
+            )
+
+        row = await db.execute_one(
+            """UPDATE bid_list_entries
+                  SET outcome = $3,
+                      declined_reason = $4,
+                      outcome_by_user_id = $5,
+                      -- Returning to pending is a correction, not an event.
+                      outcome_at = CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END,
+                      updated_at = NOW()
+                WHERE bid_list_id = $1 AND pnm_id = $2
+            RETURNING pnm_id, outcome, outcome_at, declined_reason""",
+            bid_list_id, pnm_id, outcome, declined_reason, user_id,
+        )
+        return {
+            "pnm_id": str(row["pnm_id"]),
+            "outcome": row["outcome"],
+            "outcome_at": row["outcome_at"],
+            "declined_reason": row["declined_reason"],
+        }
 
     async def finalize(self, bid_list_id: str, user_id: str) -> dict:
         await self._require_lock(bid_list_id, user_id)
