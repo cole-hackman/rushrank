@@ -270,3 +270,58 @@ async def test_a_group_shows_which_row_is_richer(seeded, db, merge):
 @pytest.mark.asyncio
 async def test_a_clean_roster_reports_nothing(seeded, merge):
     assert await merge.find_duplicate_groups(str(seeded["chapter"])) == []
+
+
+@pytest.mark.asyncio
+async def test_a_contact_logged_outside_an_event_still_collides(seeded, db, merge):
+    """The NULL case, which is the common one.
+
+    Most contacts are logged from a PNM's profile with no event attached, so
+    `pnm_contacts.event_id` is NULL on both duplicates. `existing.event_id =
+    child.event_id` evaluates to NULL there, the row reads as collision-free,
+    and the move trips `pnm_contacts_unique_per_event` -- whose COALESCE folds
+    both NULLs onto one sentinel precisely because they are not distinct.
+    The predicate uses IS NOT DISTINCT FROM for that reason.
+    """
+    for pnm in (seeded["pnm_a"], seeded["pnm_b"]):
+        await db.execute(
+            "INSERT INTO pnm_contacts (pnm_id, user_id) VALUES ($1, $2)",
+            pnm, seeded["user"],
+        )
+
+    result = await merge.merge_pnms(str(seeded["pnm_a"]), str(seeded["pnm_b"]))
+
+    assert result["dropped_as_duplicate"]["pnm_contacts"] == 1
+    assert await db.fetchval(
+        "SELECT COUNT(*) FROM pnm_contacts WHERE pnm_id = $1", seeded["pnm_a"]
+    ) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_same_brother_at_two_events_keeps_both_contacts(seeded, db, merge):
+    """Coverage counts distinct brothers, so this does not change the number --
+    but the contact history is where it came from, and it is worth keeping."""
+    second_event = await db.fetchval(
+        """INSERT INTO events (chapter_id, name, date)
+           VALUES ($1, 'Sports Night', now()) RETURNING id""",
+        seeded["chapter"],
+    )
+    await db.execute(
+        "INSERT INTO pnm_contacts (pnm_id, user_id, event_id) VALUES ($1, $2, $3)",
+        seeded["pnm_a"], seeded["user"], seeded["event"],
+    )
+    await db.execute(
+        "INSERT INTO pnm_contacts (pnm_id, user_id, event_id) VALUES ($1, $2, $3)",
+        seeded["pnm_b"], seeded["user"], second_event,
+    )
+
+    result = await merge.merge_pnms(str(seeded["pnm_a"]), str(seeded["pnm_b"]))
+
+    assert result["moved"]["pnm_contacts"] == 1
+    assert await db.fetchval(
+        "SELECT COUNT(*) FROM pnm_contacts WHERE pnm_id = $1", seeded["pnm_a"]
+    ) == 2
+    # One brother, two meetings -> still one for coverage.
+    assert await db.fetchval(
+        "SELECT COUNT(DISTINCT user_id) FROM pnm_contacts WHERE pnm_id = $1", seeded["pnm_a"]
+    ) == 1
