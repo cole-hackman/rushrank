@@ -644,6 +644,46 @@ export async function startDemoSession(): Promise<{
   return api("/public/demo-session", { method: "POST" });
 }
 
+// ── Academic eligibility ────────────────────────────────────────────────────
+// Most chapters have a GPA floor and most campuses require certifying it. The
+// exception process matters more than the number: a chapter *will* bid someone
+// below the line, and that decision should be recorded rather than made in a
+// group chat. See migration 0018.
+
+export type Eligibility = "no_minimum" | "unknown" | "waived" | "eligible" | "below";
+
+export const ELIGIBILITY_LABEL: Record<Eligibility, string> = {
+  no_minimum: "",
+  // Deliberately not "ineligible" — nobody has checked yet.
+  unknown: "No GPA on file",
+  waived: "Waived",
+  eligible: "Meets minimum",
+  below: "Below minimum",
+};
+
+export async function setPnmGpa(pnmId: string, gpa: number | null): Promise<unknown> {
+  return api(`/pnms/${pnmId}/gpa`, { method: "PATCH", body: { gpa } });
+}
+
+/** Granting requires a reason; the database refuses a waiver without one. */
+export async function setGpaWaiver(
+  pnmId: string,
+  waived: boolean,
+  reason?: string,
+): Promise<{ pnm_id: string; gpa_waived: boolean; gpa_waived_reason: string | null }> {
+  return api(`/pnms/${pnmId}/gpa-waiver`, {
+    method: "POST",
+    body: { waived, reason: reason ?? null },
+  });
+}
+
+/** null turns the check off for the chapter. */
+export async function setChapterMinGpa(
+  chapterId: string,
+  gpa: number | null,
+): Promise<{ min_gpa: number | null }> {
+  return api(`/chapters/${chapterId}/min-gpa`, { method: "PUT", body: { gpa } });
+}
 // ── Pre-rush pipeline ───────────────────────────────────────────────────────
 // The front half of the funnel: people the chapter is talking to before formal
 // rush starts. Same rows as PNMs, separated by `stage` — see migration 0015.

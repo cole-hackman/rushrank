@@ -16,7 +16,8 @@ import { FeatherImage } from "@subframe/core";
 import { FeatherUpload } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
 import { FeatherArchive } from "@subframe/core";
-import { api, API_BASE, getChapterId, exportPnmsPptx, triggerBlobDownload } from "@/lib/api";
+import { api, API_BASE, getChapterId, exportPnmsPptx, triggerBlobDownload,
+         ELIGIBILITY_LABEL, type Eligibility } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
@@ -49,6 +50,11 @@ type PNM = {
   favorite_count?: number;
   is_favorite?: boolean;
   archived?: boolean;
+  gpa?: number | null;
+  gpa_waived?: boolean;
+  gpa_waived_reason?: string | null;
+  min_gpa?: number | null;
+  eligibility?: Eligibility;
   met_count?: number;
   met_by_me?: boolean;
 };
@@ -75,6 +81,8 @@ export default function PNMsPage() {
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // The list the academic chair needs before bids go out.
+  const [belowMinOnly, setBelowMinOnly] = useState(false);
   // The list the rush chair reads out on Thursday: who is going into a vote
   // that nobody in the room has actually spoken to.
   const [unmetOnly, setUnmetOnly] = useState(false);
@@ -170,11 +178,14 @@ export default function PNMsPage() {
     if (selectedTags.length) {
       data = data.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
     }
+    if (belowMinOnly) {
+      data = data.filter((p) => p.eligibility === "below");
+    }
     if (unmetOnly) {
       data = data.filter((p) => !(p.met_count ?? 0));
     }
     return data;
-  }, [pnms, search, selectedTags, showArchived, unmetOnly]);
+  }, [pnms, search, selectedTags, showArchived, belowMinOnly, unmetOnly]);
 
   const stats = useMemo(() => {
     const total = pnms.length;
@@ -445,6 +456,9 @@ export default function PNMsPage() {
             <Checkbox label="Show email" checked={showEmail} onCheckedChange={setShowEmail} />
             <Checkbox label="Show phone" checked={showPhone} onCheckedChange={setShowPhone} />
             <Checkbox label="Show archived" checked={showArchived} onCheckedChange={setShowArchived} />
+            {pnms.some((p) => p.min_gpa != null) && (
+              <Checkbox label="Below GPA minimum" checked={belowMinOnly} onCheckedChange={setBelowMinOnly} />
+            )}
             <Checkbox label="Nobody's met" checked={unmetOnly} onCheckedChange={setUnmetOnly} />
           </div>
         </div>
@@ -532,6 +546,7 @@ export default function PNMsPage() {
                     {showPhone && <Table.HeaderCell className="w-[160px] min-w-[160px]">Phone</Table.HeaderCell>}
                     <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[130px] min-w-[130px]">GPA</Table.HeaderCell>
                     <Table.HeaderCell className="w-[150px] min-w-[150px]">Met by</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px] max-w-[120px] text-right sticky right-0 bg-white dark:bg-neutral-800 z-10">Actions</Table.HeaderCell>
                   </Table.HeaderRow>
@@ -591,6 +606,27 @@ export default function PNMsPage() {
                     </Table.Cell>
                     <Table.Cell className="w-[120px] min-w-[120px] text-subtext-color whitespace-nowrap">
                       {pnm.attendance_count || 0} / {pnm.total_events || 0}
+                    </Table.Cell>
+                    <Table.Cell className="w-[130px] min-w-[130px] whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <span className="text-body font-body text-default-font">
+                          {pnm.gpa != null ? pnm.gpa.toFixed(2) : "—"}
+                        </span>
+                        {pnm.eligibility && pnm.eligibility !== "no_minimum" && (
+                          <span
+                            className={cn(
+                              "text-caption font-caption",
+                              pnm.eligibility === "below" && "text-error-600",
+                              pnm.eligibility === "waived" && "text-warning-700",
+                              pnm.eligibility === "unknown" && "text-subtext-color",
+                              pnm.eligibility === "eligible" && "text-success-700",
+                            )}
+                            title={pnm.gpa_waived_reason || undefined}
+                          >
+                            {ELIGIBILITY_LABEL[pnm.eligibility]}
+                          </span>
+                        )}
+                      </div>
                     </Table.Cell>
                     <Table.Cell className="w-[150px] min-w-[150px]">
                       <MetButton

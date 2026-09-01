@@ -119,6 +119,11 @@ class PNM(BaseModel):
     attendance_count: Optional[int] = None
     total_events: Optional[int] = None
     archived: bool = False
+    # Academic eligibility (migration 0018). `gpa` NULL means not on file,
+    # which is deliberately distinct from below the minimum.
+    gpa: Optional[float] = None
+    gpa_waived: bool = False
+    gpa_waived_reason: Optional[str] = None
     # Pipeline (migration 0015). Defaults match the column defaults so a row
     # selected before those columns existed still validates.
     stage: PNMStage = PNMStage.PNM
@@ -161,6 +166,21 @@ class PNMWithVotes(PNM):
     # Reading a yes-percentage without this is the difference between "half the
     # chapter knows him and is split" and "four people know him".
     met_count: int = 0
+
+class GpaUpdate(BaseModel):
+    """Set or clear a PNM's GPA. None clears it back to "not on file"."""
+    gpa: Optional[float] = Field(None, ge=0, le=5)
+
+
+class GpaWaiverRequest(BaseModel):
+    """Grant or revoke an exception to the chapter's GPA floor.
+
+    A reason is required to grant one. A waiver with no author and no reason is
+    the group-chat decision this exists to replace, and the DB refuses it too.
+    """
+    waived: bool
+    reason: Optional[str] = None
+
 
 class BulkArchiveRequest(BaseModel):
     pnm_ids: List[str]
