@@ -61,7 +61,10 @@ export default function VotingPage() {
   const { toast } = useToast();
   const router = useRouter();
   
-  const [activeTab, setActiveTab] = useState<"open" | "session">("open");
+  // Live Session is the default: it is the flow the whole chapter runs together
+  // during rush, and the one the chair drives. Open Voting stays reachable on the
+  // second tab for anyone catching up outside a session.
+  const [activeTab, setActiveTab] = useState<"open" | "session">("session");
   const [chapterId, setChapterId] = useState<string | null | undefined>(undefined);
 
   // Open voting
@@ -232,10 +235,23 @@ export default function VotingPage() {
         locked?: boolean;
         timer_seconds?: number | null;
         timer_remaining?: number | null;
+        votes_collected?: number;
       }>(`/sessions/${id}/current`);
       setSessionPNM(res?.pnm || null);
-      if (res?.locked !== undefined) {
-        setSession((prev) => (prev ? { ...prev, locked: res.locked } : prev));
+      if (res?.locked !== undefined || res?.votes_collected !== undefined) {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...(res.locked !== undefined ? { locked: res.locked } : {}),
+                // Without this the progress bar only ever moved over the
+                // websocket, so it froze whenever the socket was down.
+                ...(res.votes_collected !== undefined
+                  ? { votes_collected: res.votes_collected }
+                  : {}),
+              }
+            : prev
+        );
       }
       setTimerRemaining(res?.timer_remaining ?? null);
     } catch {
@@ -271,9 +287,17 @@ export default function VotingPage() {
       }
     } catch (e: any) {
       const locked = e?.status === 409;
+      // api() already retried a 429 once. If it still failed, say plainly that
+      // the vote did not land -- the old generic "Vote failed" left brothers
+      // believing they had voted when they had not.
+      const busy = e?.status === 429;
       toast({
-        title: locked ? "Voting is locked" : "Vote failed",
-        description: locked ? "The chair has locked voting for this PNM." : e?.message,
+        title: locked ? "Voting is locked" : busy ? "Vote not recorded" : "Vote failed",
+        description: locked
+          ? "The chair has locked voting for this PNM."
+          : busy
+            ? "The server was busy. Swipe again to record your vote."
+            : e?.message,
       });
     }
   };
@@ -487,11 +511,11 @@ export default function VotingPage() {
   return (
     <div className="flex w-full flex-col gap-6">
       <Tabs>
-        <Tabs.Item active={activeTab === "open"} onClick={() => setActiveTab("open")}>
-          Open Voting
-        </Tabs.Item>
         <Tabs.Item active={activeTab === "session"} onClick={() => setActiveTab("session")}>
           Live Session
+        </Tabs.Item>
+        <Tabs.Item active={activeTab === "open"} onClick={() => setActiveTab("open")}>
+          Open Voting
         </Tabs.Item>
       </Tabs>
 

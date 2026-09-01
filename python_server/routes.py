@@ -2419,11 +2419,21 @@ async def get_session_current(
     
     chapter_id = str(session_row["chapter_id"])
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
-    
+
+    # The chair's progress bar is driven by this count. It arrives over the
+    # websocket on every vote, but the 5s fallback poll is what runs whenever the
+    # socket is down -- and without this the bar froze at its last websocket
+    # value (or at session creation, if the socket never connected at all).
+    voters_row = await db.execute_one("""
+        SELECT COUNT(DISTINCT voter_user_id) as votes_collected
+        FROM votes WHERE round_id = $1
+    """, str(session_row["round_id"]))
+    votes_collected = voters_row["votes_collected"] if voters_row else 0
+
     current_pnm_id = str(session_row["current_pnm_id"]) if session_row["current_pnm_id"] else None
     
     if not current_pnm_id:
-        return {"pnm": None, "locked": session_row["locked"]}
+        return {"pnm": None, "locked": session_row["locked"], "votes_collected": votes_collected}
     
     # Get PNM details with tags
     pnm_row = await db.execute_one("""
@@ -2437,7 +2447,7 @@ async def get_session_current(
     """, current_pnm_id)
     
     if not pnm_row:
-        return {"pnm": None, "locked": session_row["locked"]}
+        return {"pnm": None, "locked": session_row["locked"], "votes_collected": votes_collected}
     
     timer_remaining = None
     if session_row["timer_seconds"] and session_row["current_pnm_started_at"]:
@@ -2458,6 +2468,7 @@ async def get_session_current(
         "locked": session_row["locked"],
         "timer_seconds": session_row["timer_seconds"],
         "timer_remaining": timer_remaining,
+        "votes_collected": votes_collected,
     }
 
 # Unified export endpoint
