@@ -63,7 +63,9 @@ Voting sessions are the performance-critical path: chair advances PNMs via the b
 ## Environment
 
 - Root `.env` — backend: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWKS_URL`, `ALLOWED_ORIGINS` (CSV, no trailing slashes).
-- `frontend/.env.local` — `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_API_BASE_URL`.
+- `frontend/.env.local` — `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_BASE_URL`. Set `NEXT_PUBLIC_API_BASE_URL` with **no trailing slash and no `/api`**: `getApiBase()` appends `/api`, and `useSessionWebSocket` derives the socket origin by stripping it back off, so a trailing slash breaks both.
+  - `NEXT_PUBLIC_WS_BASE_URL` is an optional override, only for deployments that terminate websockets on a different host than the API. Leave it unset otherwise.
+  - There is no `NEXT_PUBLIC_SITE_URL`. Auth redirects are built from `window.location.origin` (`components/marketing/SignupWizard.tsx`, `app/login/page.tsx`), so the deployed domain must instead be allowlisted in **Supabase → Authentication → URL Configuration** (Site URL + Redirect URLs), or email verification and password reset will fail.
 - `main.py` has its own minimal `.env` loader; it reads root `.env` and `backend/.env` without overriding existing env vars.
 
 ## Deployment

@@ -49,8 +49,9 @@ Requires Node 20+, Python 3.11+, and a Supabase project.
     python run_fastapi.py        # http://localhost:8000 (API docs at /docs)
 
     # frontend — env in frontend/.env.local: NEXT_PUBLIC_SUPABASE_URL,
-    #   NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SITE_URL,
-    #   NEXT_PUBLIC_API_BASE_URL
+    #   NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_API_BASE_URL
+    #   (no trailing slash, no /api — the client appends /api, and the live
+    #    voting socket is derived by stripping it back off)
     cd frontend && npm install && npm run dev   # http://localhost:3000
 
 Apply `supabase/migrations/*.sql` in numeric order against your database
