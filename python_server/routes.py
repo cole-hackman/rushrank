@@ -734,7 +734,14 @@ async def get_pnms(
                 ), 0
             ) as yes_percentage,
             COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
-            COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
+            COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count,
+            -- How many brothers have actually spoken to him. Subqueries rather
+            -- than another LEFT JOIN: joining a second one-to-many alongside
+            -- votes would multiply the rows and inflate every vote count above.
+            (SELECT COUNT(DISTINCT c.user_id) FROM pnm_contacts c WHERE c.pnm_id = p.id)
+                AS met_count,
+            EXISTS (SELECT 1 FROM pnm_contacts c
+                     WHERE c.pnm_id = p.id AND c.user_id = $2::uuid) AS met_by_me
         FROM pnms p
         LEFT JOIN votes v ON v.pnm_id = p.id
         WHERE p.chapter_id = $1
@@ -749,8 +756,8 @@ async def get_pnms(
         ORDER BY p.name
     """
 
-    rows = await db.execute_query(query, chapter_id)
-    
+    rows = await db.execute_query(query, chapter_id, current_user["user_id"])
+
     return [
         {
             "id": str(row["id"]),
@@ -772,7 +779,9 @@ async def get_pnms(
             "total_events": row["total_events"],
             "yes_percentage": float(row["yes_percentage"]) if row["yes_percentage"] else None,
             "is_favorite": bool(row["is_favorite"]),
-            "favorite_count": int(row["favorite_count"]) if row["favorite_count"] else 0
+            "favorite_count": int(row["favorite_count"]) if row["favorite_count"] else 0,
+            "met_count": int(row["met_count"] or 0),
+            "met_by_me": bool(row["met_by_me"]),
         }
         for row in rows
     ]
@@ -786,6 +795,63 @@ async def create_pnm(
     """Create new PNM (all members)"""
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
     return await pnm_service.create_pnm(pnm_data, chapter_id)
+
+# ---------------------------------------------------------------------------
+# Contact coverage
+#
+# A brother votes on sixty PNMs having genuinely spoken to maybe fifteen. This
+# records which fifteen, so the chapter can tell "forty people know him and half
+# said no" from "four people know him and the rest guessed".
+# ---------------------------------------------------------------------------
+
+class ContactRequest(BaseModel):
+    event_id: Optional[str] = None
+    note: Optional[str] = None
+
+@router.post("/pnms/{pnm_id}/contacts")
+async def log_pnm_contact(
+    pnm_id: str,
+    payload: ContactRequest = ContactRequest(),
+    current_user: dict = Depends(get_current_user)
+):
+    """"I've talked to him." Idempotent per event, so a double-tap is harmless."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    return await pnm_service.log_contact(
+        pnm_id, current_user["user_id"], payload.event_id, payload.note
+    )
+
+@router.delete("/pnms/{pnm_id}/contacts")
+async def remove_pnm_contact(
+    pnm_id: str,
+    event_id: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Undo a tap. A brother can only remove his own."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    return await pnm_service.remove_contact(pnm_id, current_user["user_id"], event_id)
+
+@router.get("/pnms/{pnm_id}/contacts")
+async def get_pnm_contacts(
+    pnm_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Who has met him. Names, because a number does not prompt anyone to act."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    summary = await pnm_service.get_contact_summary(pnm_id, current_user["user_id"])
+    summary["contacts"] = await pnm_service.list_contacts(pnm_id)
+    return summary
 
 @router.post("/pnms/import")
 @limiter.limit(WRITE_RATE_LIMIT)
@@ -1968,7 +2034,15 @@ async def get_next_unvoted_pnm(
     # Find the first PNM this user hasn't voted on yet
     pnm_row = await db.execute_one("""
         SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-               COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags
+               COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags,
+               -- Coverage travels with the card so the voter learns he has
+               -- never met this person *before* swiping, not afterwards.
+               -- Subqueries, not joins: another one-to-many here would
+               -- multiply rows against pnm_tags.
+               (SELECT COUNT(DISTINCT c.user_id) FROM pnm_contacts c
+                 WHERE c.pnm_id = p.id) AS met_count,
+               EXISTS (SELECT 1 FROM pnm_contacts c
+                        WHERE c.pnm_id = p.id AND c.user_id = $3::uuid) AS met_by_me
         FROM pnms p
         LEFT JOIN pnm_tags pt ON pt.pnm_id = p.id
         LEFT JOIN tags t ON t.id = pt.tag_id
@@ -1998,7 +2072,9 @@ async def get_next_unvoted_pnm(
             "year": pnm_row["year"],
             "bio": None,
             "photo_url": pnm_row["photo_url"],
-            "tags": list(pnm_row["tags"]) if pnm_row["tags"] else []
+            "tags": list(pnm_row["tags"]) if pnm_row["tags"] else [],
+            "met_count": int(pnm_row["met_count"] or 0),
+            "met_by_me": bool(pnm_row["met_by_me"]),
         }
     }
 

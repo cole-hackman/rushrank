@@ -590,3 +590,42 @@ export async function startDemoSession(): Promise<{
 }> {
   return api("/public/demo-session", { method: "POST" });
 }
+
+// ── Contact coverage ────────────────────────────────────────────────────────
+// A brother votes on sixty PNMs having genuinely spoken to maybe fifteen. This
+// records which fifteen, so a yes-percentage can be read in context — see
+// migration 0016.
+
+export interface ContactSummary {
+  pnm_id: string;
+  /** Distinct brothers who have met him. Never a row count. */
+  met_count: number;
+  met_by_me: boolean;
+}
+
+export interface ContactEntry {
+  user_id: string;
+  name: string | null;
+  event_name: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/** Idempotent per event, so a double-tap at a crowded event is harmless. */
+export async function logContact(
+  pnmId: string,
+  body?: { event_id?: string; note?: string },
+): Promise<ContactSummary> {
+  return api<ContactSummary>(`/pnms/${pnmId}/contacts`, { method: "POST", body: body ?? {} });
+}
+
+export async function removeContact(pnmId: string, eventId?: string): Promise<ContactSummary> {
+  const query = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
+  return api<ContactSummary>(`/pnms/${pnmId}/contacts${query}`, { method: "DELETE" });
+}
+
+export async function getContacts(
+  pnmId: string,
+): Promise<ContactSummary & { contacts: ContactEntry[] }> {
+  return api(`/pnms/${pnmId}/contacts`);
+}
