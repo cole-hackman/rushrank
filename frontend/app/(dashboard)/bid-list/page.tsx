@@ -31,6 +31,8 @@ import {
   BidBucket,
   BidListEntry,
   BidListWithEntries,
+  setBidOutcome,
+  type BidOutcome,
   acquireBidListLock,
   createBidList,
   downloadBidList,
@@ -63,7 +65,70 @@ const LOCK_HEARTBEAT_MS = 2 * 60 * 1000;
 
 type Round = { id: string; name?: string; created_at: string };
 
-function EntryCard({ entry, disabled }: { entry: BidListEntry; disabled: boolean }) {
+/**
+ * Outcome control, shown only in the bid bucket.
+ *
+ * Not gated behind the editor lock like dragging is: an acceptance is a fact
+ * arriving from the outside world, often days after the list was finalized,
+ * from whoever happens to hear it first. Requiring the lock would mean the
+ * person who hears it cannot record it.
+ */
+function OutcomeControl({
+  entry,
+  onChange,
+}: {
+  entry: BidListEntry;
+  onChange: (next: BidOutcome, reason?: string) => void;
+}) {
+  const options: Array<{ key: BidOutcome; label: string; className: string }> = [
+    { key: "pending", label: "Not sent", className: "text-subtext-color" },
+    { key: "offered", label: "Offered", className: "text-brand-600" },
+    { key: "accepted", label: "Accepted", className: "text-success-700" },
+    { key: "declined", label: "Declined", className: "text-danger" },
+  ];
+  const active = options.find((o) => o.key === entry.outcome) ?? options[0];
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <select
+        aria-label={`Bid outcome for ${entry.name}`}
+        value={entry.outcome}
+        onPointerDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const next = e.target.value as BidOutcome;
+          if (next === "declined") {
+            // Free text, because chapters lose people to other houses, to cost,
+            // and to deciding against Greek life -- and which matters varies.
+            const reason = window.prompt(`Why did ${entry.name} decline? (optional)`) ?? undefined;
+            onChange(next, reason || undefined);
+          } else {
+            onChange(next);
+          }
+        }}
+        className={cn(
+          "rounded-full border border-border bg-card px-2 py-1 text-caption",
+          active.className,
+        )}
+      >
+        {options.map((option) => (
+          <option key={option.key} value={option.key}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function EntryCard({
+  entry,
+  disabled,
+  onOutcome,
+}: {
+  entry: BidListEntry;
+  disabled: boolean;
+  onOutcome?: (pnmId: string, next: BidOutcome, reason?: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: entry.pnm_id,
     disabled,
@@ -95,6 +160,12 @@ function EntryCard({ entry, disabled }: { entry: BidListEntry; disabled: boolean
         <span className="text-danger">{entry.vote_summary.down}</span>
         {entry.vote_summary.star > 0 && <span title="Favorites">★{entry.vote_summary.star}</span>}
       </div>
+      {entry.bucket === "bid" && onOutcome && (
+        <OutcomeControl
+          entry={entry}
+          onChange={(next, reason) => onOutcome(entry.pnm_id, next, reason)}
+        />
+      )}
     </div>
   );
 }
@@ -106,6 +177,7 @@ function BucketColumn({
   entries,
   disabled,
   overCap,
+  onOutcome,
 }: {
   bucket: BidBucket;
   label: string;
@@ -113,6 +185,7 @@ function BucketColumn({
   entries: BidListEntry[];
   disabled: boolean;
   overCap: boolean;
+  onOutcome?: (pnmId: string, next: BidOutcome, reason?: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: bucket, disabled });
 
@@ -141,7 +214,7 @@ function BucketColumn({
 
       <div className="flex flex-col gap-2">
         {entries.map((e) => (
-          <EntryCard key={e.pnm_id} entry={e} disabled={disabled} />
+          <EntryCard key={e.pnm_id} entry={e} disabled={disabled} onOutcome={onOutcome} />
         ))}
         {entries.length === 0 && (
           <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-caption text-subtext-color">
@@ -230,6 +303,35 @@ function BidListBoard() {
 
   const bidCap = data?.bid_list.bid_cap ?? null;
   const overCap = bidCap !== null && byBucket.bid.length > bidCap;
+  const tally = data?.outcomes;
+
+  const applyOutcome = async (pnmId: string, next: BidOutcome, reason?: string) => {
+    const previous = data;
+    // Optimistic, then reconciled from the server response -- the tally is
+    // derived server-side, so a stale local count would misreport bids left.
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            entries: current.entries.map((e) =>
+              e.pnm_id === pnmId
+                ? { ...e, outcome: next, declined_reason: reason ?? null }
+                : e,
+            ),
+          }
+        : current,
+    );
+    try {
+      await setBidOutcome(pnmId, next, reason);
+      await load();
+    } catch (e: any) {
+      setData(previous);
+      toast({ title: "Couldn't record that", description: e?.message });
+    }
+  };
+  // Once bids start going out, the useful number stops being "how many are on
+  // the list" and becomes "how many do we have left" -- declines give bids back.
+  const inPlay = (tally?.accepted ?? 0) + (tally?.offered ?? 0);
 
   const takeLock = async () => {
     setBusy(true);
@@ -344,6 +446,23 @@ function BidListBoard() {
             {bidCap !== null && ` of ${bidCap}`} · {byBucket.maybe.length} undecided ·{" "}
             {byBucket.cut.length} cut
           </p>
+          {tally && inPlay > 0 && (
+            <p className="mt-1 text-body text-subtext-color">
+              <span className="text-body-bold font-body-bold text-success-700">
+                {tally.accepted} accepted
+              </span>
+              {tally.offered > 0 && ` · ${tally.offered} awaiting an answer`}
+              {tally.declined > 0 && ` · ${tally.declined} declined`}
+              {tally.remaining !== null && (
+                <>
+                  {" · "}
+                  <span className="text-body-bold font-body-bold text-default-font">
+                    {tally.remaining} {tally.remaining === 1 ? "bid" : "bids"} left
+                  </span>
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -425,6 +544,7 @@ function BidListBoard() {
               entries={byBucket[b.key]}
               disabled={!canEdit}
               overCap={b.key === "bid" && overCap}
+              onOutcome={b.key === "bid" ? applyOutcome : undefined}
             />
           ))}
         </div>

@@ -354,9 +354,16 @@ export async function provisionChapter(req: ProvisionRequest): Promise<{ chapter
 
 export type BidBucket = "bid" | "maybe" | "cut";
 
+export type BidOutcome = "pending" | "offered" | "accepted" | "declined";
+
 export interface BidListEntry {
   pnm_id: string;
   bucket: BidBucket;
+  /** What happened after the list was finalized. Only meaningful in the bid bucket. */
+  outcome: BidOutcome;
+  outcome_at: string | null;
+  declined_reason: string | null;
+  outcome_by_name: string | null;
   position: number;
   name: string;
   year: string;
@@ -378,9 +385,37 @@ export interface BidList {
   updated_at: string;
 }
 
+export interface BidOutcomeTally {
+  offered: number;
+  accepted: number;
+  declined: number;
+  pending: number;
+  /** Against the cap, counting acceptances and outstanding offers. null = no cap set. */
+  remaining: number | null;
+}
+
 export interface BidListWithEntries {
   bid_list: BidList;
   entries: BidListEntry[];
+  outcomes: BidOutcomeTally;
+}
+
+/**
+ * Record what happened to a bid.
+ *
+ * Not gated behind the editor lock: the lock stops two people reordering the
+ * board against each other, but an acceptance is a fact arriving from outside,
+ * often days later, from whoever hears it first.
+ */
+export async function setBidOutcome(
+  pnmId: string,
+  outcome: BidOutcome,
+  declinedReason?: string,
+): Promise<{ pnm_id: string; outcome: BidOutcome; declined_reason: string | null }> {
+  return api(`/chapters/me/bid-list/entries/${pnmId}/outcome`, {
+    method: "PATCH",
+    body: { outcome, declined_reason: declinedReason ?? null },
+  });
 }
 
 /** 404 when the chapter has no bid list yet -- callers treat that as "empty". */
