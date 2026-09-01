@@ -108,6 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const mobileNavItems = [
     { label: "Home", href: "/dashboard" },
     { label: "Rush", href: "/rush" },
+    { label: "Pipeline", href: "/pipeline" },
     { label: "PNMs", href: "/pnms" },
     { label: "Events", href: "/events" },
     { label: "Voting", href: "/voting" },
@@ -146,6 +147,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </TopbarWithLeftNav.NavItem>
                   <TopbarWithLeftNav.NavItem selected={pathname === "/rush"} href="/rush">
                     Rush
+                  </TopbarWithLeftNav.NavItem>
+                  <TopbarWithLeftNav.NavItem selected={pathname === "/pipeline"} href="/pipeline">
+                    Pipeline
                   </TopbarWithLeftNav.NavItem>
                   <TopbarWithLeftNav.NavItem selected={pathname === "/pnms"} href="/pnms">
                     PNMs

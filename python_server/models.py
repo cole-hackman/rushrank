@@ -43,9 +43,44 @@ class Membership(BaseModel):
     created_at: datetime
 
 # PNM Models
+
+# The rush funnel starts before formal rush does. A prospect is someone the
+# chapter is talking to -- an Instagram DM in July, a name from the activities
+# fair -- and lives in the same table as PNMs so that notes, tags, photos and
+# event attendance all work from the first contact. See migration 0015.
+class PNMStage(str, Enum):
+    PROSPECT = "prospect"
+    PNM = "pnm"
+    BID = "bid"
+    PLEDGED = "pledged"
+
+class PNMSource(str, Enum):
+    INSTAGRAM = "instagram"
+    REFERRAL = "referral"
+    TABLING = "tabling"
+    INTEREST_FORM = "interest_form"
+    WALK_UP = "walk_up"
+    IMPORT = "import"
+    MANUAL = "manual"
+    OTHER = "other"
+
+class ContactStatus(str, Enum):
+    NEW = "new"
+    CONTACTED = "contacted"
+    RESPONDED = "responded"
+    INVITED = "invited"
+    NO_RESPONSE = "no_response"
+
 class PNMCreate(BaseModel):
     name: str
-    email: str
+    # Optional so a prospect can be logged from a DM with nothing but a handle.
+    # Formal PNM creation still requires it -- enforced in PNMService.create_pnm,
+    # not here, because the public interest form legitimately has neither.
+    email: Optional[str] = None
+    stage: PNMStage = PNMStage.PNM
+    source: Optional[PNMSource] = None
+    instagram_handle: Optional[str] = None
+    owner_user_id: Optional[str] = None
     phone: Optional[str] = None
     major: Optional[str] = None
     hometown: Optional[str] = None
@@ -89,6 +124,29 @@ class PNM(BaseModel):
     gpa: Optional[float] = None
     gpa_waived: bool = False
     gpa_waived_reason: Optional[str] = None
+    # Pipeline (migration 0015). Defaults match the column defaults so a row
+    # selected before those columns existed still validates.
+    stage: PNMStage = PNMStage.PNM
+    source: Optional[PNMSource] = None
+    instagram_handle: Optional[str] = None
+    contact_status: ContactStatus = ContactStatus.NEW
+    owner_user_id: Optional[str] = None
+    owner_name: Optional[str] = None
+    last_contacted_at: Optional[datetime] = None
+
+class PipelineUpdate(BaseModel):
+    """Move a prospect along. Every field optional -- the board sends one at a time.
+
+    `touch` stamps last_contacted_at, so dragging a card to "contacted" records
+    when, without the caller having to send a timestamp it would get wrong
+    across time zones.
+    """
+    stage: Optional[PNMStage] = None
+    contact_status: Optional[ContactStatus] = None
+    owner_user_id: Optional[str] = None
+    source: Optional[PNMSource] = None
+    instagram_handle: Optional[str] = None
+    touch: bool = False
 
 class PNMWithVotes(PNM):
     # These four were previously declared on BulkArchiveRequest -- a single

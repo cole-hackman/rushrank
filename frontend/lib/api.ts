@@ -684,6 +684,112 @@ export async function setChapterMinGpa(
 ): Promise<{ min_gpa: number | null }> {
   return api(`/chapters/${chapterId}/min-gpa`, { method: "PUT", body: { gpa } });
 }
+// ── Pre-rush pipeline ───────────────────────────────────────────────────────
+// The front half of the funnel: people the chapter is talking to before formal
+// rush starts. Same rows as PNMs, separated by `stage` — see migration 0015.
+
+export type PNMStage = "prospect" | "pnm" | "bid" | "pledged";
+
+export type ContactStatus = "new" | "contacted" | "responded" | "invited" | "no_response";
+
+export type ProspectSource =
+  | "instagram" | "referral" | "tabling" | "interest_form"
+  | "walk_up" | "import" | "manual" | "other";
+
+export const CONTACT_STATUSES: Array<{ key: ContactStatus; label: string; hint: string }> = [
+  { key: "new", label: "New", hint: "Nobody has reached out yet" },
+  { key: "contacted", label: "Reached out", hint: "We messaged them" },
+  { key: "responded", label: "Talking", hint: "They wrote back" },
+  { key: "invited", label: "Invited", hint: "Asked to a rush event" },
+  { key: "no_response", label: "No reply", hint: "Went quiet" },
+];
+
+export const SOURCE_LABELS: Record<string, string> = {
+  instagram: "Instagram",
+  referral: "Brother referral",
+  tabling: "Tabling",
+  interest_form: "Interest form",
+  walk_up: "Walk-up",
+  import: "Imported",
+  manual: "Added by hand",
+  other: "Other",
+  unknown: "Unknown",
+};
+
+export interface Prospect {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  major: string | null;
+  year: string | null;
+  hometown: string | null;
+  photo_url: string | null;
+  instagram_handle: string | null;
+  source: ProspectSource | null;
+  contact_status: ContactStatus;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  last_contacted_at: string | null;
+  created_at: string;
+  tags: string[];
+}
+
+export interface PipelineBoard {
+  prospects: Prospect[];
+  counts: Record<string, number>;
+  by_source: Array<{ source: string; total: number; converted: number }>;
+}
+
+export async function getPipeline(chapterId: string, mine = false): Promise<PipelineBoard> {
+  return api<PipelineBoard>(`/chapters/${chapterId}/pipeline${mine ? "?mine=true" : ""}`);
+}
+
+/** Any field may be omitted; the board sends one change at a time. */
+export async function updatePipeline(
+  pnmId: string,
+  patch: {
+    stage?: PNMStage;
+    contact_status?: ContactStatus;
+    /** A user id, `"me"` to claim it yourself, or `""` to hand it back. */
+    owner_user_id?: string;
+    source?: ProspectSource;
+    instagram_handle?: string;
+    /** Stamp last_contacted_at server-side. */
+    touch?: boolean;
+  },
+): Promise<Prospect> {
+  return api<Prospect>(`/pnms/${pnmId}/pipeline`, { method: "PATCH", body: patch });
+}
+
+export async function findDuplicates(
+  chapterId: string,
+  params: { name: string; email?: string; instagram_handle?: string },
+): Promise<{ matches: Array<{ id: string; name: string; email: string | null; instagram_handle: string | null; stage: string; source: string | null }> }> {
+  const query = new URLSearchParams({ name: params.name });
+  if (params.email) query.set("email", params.email);
+  if (params.instagram_handle) query.set("instagram_handle", params.instagram_handle);
+  return api(`/chapters/${chapterId}/pipeline/duplicates?${query}`);
+}
+
+/** The public interest form — no auth, for the link in the chapter's bio. */
+export async function submitInterest(
+  chapterId: string,
+  source: string,
+  body: {
+    name: string;
+    instagram_handle?: string;
+    email?: string;
+    phone?: string;
+    year?: string;
+    major?: string;
+  },
+): Promise<{ id: string }> {
+  return api(`/public/chapters/${chapterId}/intake?source=${encodeURIComponent(source)}`, {
+    method: "POST",
+    body: { ...body, stage: "prospect" },
+  });
+}
 
 // ── Duplicate merge ─────────────────────────────────────────────────────────
 // Four ways into the roster — intake form, CSV import, walk-ups and the
