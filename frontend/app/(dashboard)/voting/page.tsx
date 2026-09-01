@@ -39,6 +39,9 @@ type PNM = {
   bio?: string | null;
   photo_url?: string | null;
   tags?: string[];
+  /** Distinct brothers who have met him (migration 0016). */
+  met_count?: number;
+  met_by_me?: boolean;
 };
 
 type Session = {
@@ -799,6 +802,19 @@ function VoteCard({
                   className="shrink-0"
                 />
               </div>
+              {/* The nudge. Swiping No on someone you have never spoken to is
+                  worse for the chapter than Unknown -- it reads as a real
+                  opinion in the tally. Shown only when it applies, so it stays
+                  meaningful rather than becoming another badge to ignore. */}
+              {pnm.met_by_me === false && (
+                <div className="rounded-lg bg-white/15 px-3 py-2 text-sm text-white backdrop-blur-sm">
+                  {(pnm.met_count ?? 0) === 0
+                    ? "Nobody in the chapter has met him yet."
+                    : `You haven't met him — ${pnm.met_count} ${
+                        pnm.met_count === 1 ? "brother has" : "brothers have"
+                      }. Unknown is fine.`}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 {pnm.major && (
                   <Badge variant="neutral" className="bg-white/20 text-white backdrop-blur-sm">
