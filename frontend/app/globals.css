@@ -159,14 +159,17 @@ body {
   }
 }
 
-/* Global dark mode overrides for legacy bg-white elements */
+/* Dark-mode bridge for the ~157 literal `bg-white` utilities inherited from the
+   Subframe export. The right fix is `bg-card` at each call site, which is a
+   mechanical change across 51 files that cannot be verified visually from here;
+   until then this at least drives them from the theme tokens rather than two
+   hardcoded greys that drift from the palette every time it is retuned. */
 @layer base {
   .dark .bg-white:not(.dark\:bg-neutral-800):not(.dark\:bg-neutral-900):not(.dark\:bg-black) {
-    background-color: rgb(30, 30, 35);
+    background-color: hsl(var(--card));
   }
 
   .dark .border-neutral-border {
-    border-color: rgb(63, 63, 70);
+    border-color: hsl(var(--border));
   }
-
 }

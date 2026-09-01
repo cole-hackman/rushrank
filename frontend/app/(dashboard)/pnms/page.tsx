@@ -63,6 +63,11 @@ export default function PNMsPage() {
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [pnms, setPnms] = useState<PNM[]>([]);
   const [search, setSearch] = useState("");
+  // Every keystroke used to fire a request. Typing "Christopher" was eleven
+  // round trips, and on a cold Render instance the answers came back out of
+  // order. The local filter below still runs on `search`, so typing stays
+  // instant -- only the fetch waits.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showEmail, setShowEmail] = useState(true);
@@ -114,11 +119,16 @@ export default function PNMsPage() {
   }, [toast]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     if (chapterId) {
       loadPnms();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, search, selectedTags, showArchived]);
+  }, [chapterId, debouncedSearch, selectedTags, showArchived]);
 
   const loadPnms = async () => {
     if (!chapterId) return;
@@ -127,7 +137,7 @@ export default function PNMsPage() {
     try {
       const query = new URLSearchParams();
       query.set("chapter_id", chapterId);
-      if (search.trim()) query.set("search", search.trim());
+      if (debouncedSearch.trim()) query.set("search", debouncedSearch.trim());
       if (selectedTags.length > 0) query.set("tags", selectedTags.join(","));
       if (showArchived) query.set("include_archived", "true");
       const data = await api<PNM[]>(`/pnms?${query.toString()}`);
