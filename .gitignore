@@ -31,3 +31,6 @@ fraternity-colors-top-30.md
 intake.png
 login-desktop.png
 login-mobile.png
+
+# Local database dumps — contain real member data, never commit
+.backups/
