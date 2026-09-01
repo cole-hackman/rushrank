@@ -681,6 +681,7 @@ export async function getContacts(
   pnmId: string,
 ): Promise<ContactSummary & { contacts: ContactEntry[] }> {
   return api(`/pnms/${pnmId}/contacts`);
+}
 
 // ── Duplicate merge ─────────────────────────────────────────────────────────
 // Four ways into the roster — intake form, CSV import, walk-ups and the
