@@ -154,6 +154,8 @@ export async function api<T>(
     timeout?: number;
     /** internal: set when this call is the post-refresh retry */
     __retried?: boolean;
+    /** internal: set when this call is the post-429 retry */
+    __rateLimitRetried?: boolean;
   },
 ): Promise<T> {
   const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
@@ -214,6 +216,22 @@ export async function api<T>(
         errorMessage = "Your session has expired. Please sign in again.";
       } else if (res.status === 403) {
         errorMessage = `Access forbidden (403). You may not have permission to access this resource.`;
+      } else if (res.status === 429 && !opts?.__rateLimitRetried) {
+        // Rate limited. Every write this client makes is either idempotent or an
+        // upsert keyed on the acting user -- a vote is one row per
+        // (round, pnm, voter) -- so replaying the request once is safe and is
+        // far better than telling a brother his vote failed when a one-second
+        // wait would have landed it.
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const waitMs = Math.min(
+          Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500,
+          5000,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        return api<T>(path, { ...opts, __rateLimitRetried: true } as typeof opts);
+      } else if (res.status === 429) {
+        errorMessage =
+          "The server is busy right now and did not record that. Please try again in a moment.";
       } else if (res.status === 404) {
         errorMessage = `Resource not found (404). The requested endpoint does not exist.`;
       } else if (res.status >= 500) {

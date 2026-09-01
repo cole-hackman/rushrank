@@ -58,6 +58,7 @@ You need to copy these from your local `.env` or Supabase dashboard:
     *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon Key (Public).
     *   `NEXT_PUBLIC_API_BASE_URL`: The URL of your **Render Backend** (e.g., `https://rushrank-backend.onrender.com`). The `/api` suffix will be added automatically. **Do not add a trailing slash.**
     *   *Note: `NEXT_PUBLIC_API_URL` is also supported for backwards compatibility.*
+    *   *You do **not** need to set a WebSocket URL. The live voting socket is derived from `NEXT_PUBLIC_API_BASE_URL`, because the backend serves `/ws/session/{id}` on the same origin as `/api`. An optional `NEXT_PUBLIC_WS_BASE_URL` overrides it only if you terminate websockets somewhere else.*
 6.  Click **Deploy**.
 
 ---
@@ -73,4 +74,6 @@ You need to copy these from your local `.env` or Supabase dashboard:
 ## Troubleshooting
 
 *   **CORS Errors**: If you see CORS errors in the browser console, double-check that `ALLOWED_ORIGINS` on Render exactly matches your Vercel URL (including `https://` and no trailing slash).
+*   **Live voting doesn't update across phones**: The session falls back to a 5-second poll whenever the WebSocket is down, so voting still works but tallies lag. Check the browser console for the `/ws/session/...` connection. If it is dialling your *Vercel* domain rather than your Render domain, `NEXT_PUBLIC_API_BASE_URL` is unset in Vercel — the socket URL is derived from it.
+*   **Brothers get "Vote not recorded" during a live session**: Rate limits are keyed per authenticated user, but a shared bucket can still be hit if requests arrive unauthenticated. Raise `RATE_LIMIT_VOTES` on Render and confirm the frontend is sending the `Authorization` header.
 *   **Database Connection**: Ensure `DATABASE_URL` is correct. If using Supabase, ensure "Allow connections from all IPs" is enabled or Render's IP is allowlisted (allowing all is standard for PaaS).
