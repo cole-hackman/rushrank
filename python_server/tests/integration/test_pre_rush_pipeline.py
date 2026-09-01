@@ -317,3 +317,52 @@ async def test_a_prospect_is_not_emailed_or_checked_in(seeded, db, pnms, monkeyp
         """SELECT COUNT(*) FROM event_attendance ea
            JOIN pnms p ON p.id = ea.pnm_id WHERE p.name = 'Quiet Prospect'"""
     ) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_roster_query_survives_both_features(seeded, db, db_manager, monkeypatch):
+    """A merge hazard, not a feature.
+
+    The roster query carries a correlated `met_by_me` subquery from contact
+    coverage that is bound to `$2`, and a stage filter from the pipeline that
+    appends its own placeholder. Numbering them independently is how one of them
+    ends up reading the other's parameter -- a wrong answer if the types happen
+    to line up, a runtime error if they do not. This drives the real handler so
+    the numbering is exercised rather than assumed.
+    """
+    from python_server import routes, services
+
+    monkeypatch.setattr(services, "get_db", lambda: db_manager)
+    monkeypatch.setattr(routes, "get_db", lambda: db_manager)
+
+    await _prospect(db, seeded["chapter"], "Still A Prospect", source="instagram")
+    await db.execute(
+        "INSERT INTO pnm_contacts (pnm_id, user_id) VALUES ($1, $2)",
+        seeded["pnm_a"], seeded["user"],
+    )
+    user = {"user_id": str(seeded["user"])}
+
+    # Default: formal rush only, and the viewer's own contact is reflected.
+    roster = await routes.get_pnms(
+        chapter_id=str(seeded["chapter"]), include_archived=False,
+        stage=None, current_user=user,
+    )
+    assert "Still A Prospect" not in {p["name"] for p in roster}
+    met = next(p for p in roster if p["id"] == str(seeded["pnm_a"]))
+    assert met["met_by_me"] is True and met["met_count"] == 1
+
+    # With a stage filter the placeholder shifts to $3. If the two numbering
+    # schemes disagree this is where it shows.
+    prospects = await routes.get_pnms(
+        chapter_id=str(seeded["chapter"]), include_archived=False,
+        stage="prospect", current_user=user,
+    )
+    assert {p["name"] for p in prospects} == {"Still A Prospect"}
+    assert prospects[0]["met_by_me"] is False
+
+    everyone = await routes.get_pnms(
+        chapter_id=str(seeded["chapter"]), include_archived=False,
+        stage="all", current_user=user,
+    )
+    assert "Still A Prospect" in {p["name"] for p in everyone}
+    assert len(everyone) > len(prospects)

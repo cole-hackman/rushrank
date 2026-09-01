@@ -157,6 +157,10 @@ class PNMWithVotes(PNM):
     favorite_count: int = 0
     yes_percentage: float = 0.0
     controversy_score: float = 0.0
+    # Distinct brothers who have actually spoken to him (migration 0016).
+    # Reading a yes-percentage without this is the difference between "half the
+    # chapter knows him and is split" and "four people know him".
+    met_count: int = 0
 
 class BulkArchiveRequest(BaseModel):
     pnm_ids: List[str]

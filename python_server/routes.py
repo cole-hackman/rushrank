@@ -31,6 +31,7 @@ from .services import (
 )
 from .bid_list import BidListService
 from . import audit
+from . import merge as merge_service
 from .csv_import import parse_and_import
 from .rate_limit import limiter, VOTE_RATE_LIMIT, AUTH_RATE_LIMIT, WRITE_RATE_LIMIT
 from .websocket import manager as ws_manager
@@ -565,6 +566,42 @@ async def patch_my_bid_list_entry(
     )
 
 
+class OutcomeRequest(BaseModel):
+    outcome: str
+    declined_reason: Optional[str] = None
+
+
+@router.patch("/chapters/me/bid-list/entries/{pnm_id}/outcome")
+async def set_bid_outcome(
+    pnm_id: str,
+    payload: OutcomeRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Record what happened to a bid: offered, accepted, or declined.
+
+    Deliberately not gated behind the editor lock. The lock exists so two
+    people do not reorder the board against each other; recording that someone
+    accepted is a fact arriving from the outside world, often days later and
+    from whoever happens to hear it first.
+    """
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+
+    result = await bid_list_service.set_outcome(
+        active["id"], pnm_id, payload.outcome,
+        current_user["user_id"], payload.declined_reason,
+    )
+
+    await audit.record(
+        chapter_id, current_user["user_id"], "bid.outcome",
+        entity_type="pnm", entity_id=pnm_id,
+        after={"outcome": result["outcome"], "declined_reason": result["declined_reason"]},
+    )
+    return result
+
+
 @router.post("/chapters/me/bid-list/finalize")
 async def finalize_my_bid_list(current_user: dict = Depends(get_current_user)):
     chapter_id, _ = await _require_admin_or_exec(current_user)
@@ -726,6 +763,61 @@ async def create_demo_session(request: Request):
     }
 
 
+# ---------------------------------------------------------------------------
+# Duplicate merge
+#
+# The roster has four ways in -- intake form, CSV import, walk-ups, and the
+# interest link -- so the same person arrives more than once routinely. Import
+# refuses to insert a duplicate it recognises; this reunites the two rows that
+# already exist, whose notes and attendance are otherwise split.
+# ---------------------------------------------------------------------------
+
+class MergeRequest(BaseModel):
+    """`winner` survives; `loser` is folded into it and deleted."""
+    loser_id: str
+
+
+@router.get("/chapters/{chapter_id}/duplicates")
+async def list_duplicates(
+    chapter_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Rows that look like the same person, strongest signal first."""
+    await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
+    return {"groups": await merge_service.find_duplicate_groups(chapter_id)}
+
+
+@router.post("/pnms/{winner_id}/merge")
+async def merge_pnm(
+    winner_id: str,
+    payload: MergeRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Fold one PNM into another. Admin only -- this deletes a row.
+
+    Irreversible from the UI, so the before-state of both rows is written to
+    `audit_log` before the response returns.
+    """
+    winner = await pnm_service.get_pnm(winner_id)
+    if not winner:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_admin_access(current_user["user_id"], winner.chapter_id)
+
+    result = await merge_service.merge_pnms(winner_id, payload.loser_id)
+
+    await audit.record(
+        result["chapter_id"], current_user["user_id"], "pnm.merge",
+        entity_type="pnm", entity_id=winner_id,
+        before=result["before"],
+        after={
+            "moved": result["moved"],
+            "dropped_as_duplicate": result["dropped_as_duplicate"],
+            "fields_filled": result["fields_filled"],
+        },
+    )
+    return result
+
+
 # PNM endpoints
 @router.get("/pnms")
 async def get_pnms(
@@ -774,7 +866,14 @@ async def get_pnms(
                 ), 0
             ) as yes_percentage,
             COUNT(CASE WHEN v.favorite = true THEN 1 END) > 0 as is_favorite,
-            COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count
+            COUNT(CASE WHEN v.favorite = true THEN 1 END) as favorite_count,
+            -- How many brothers have actually spoken to him. Subqueries rather
+            -- than another LEFT JOIN: joining a second one-to-many alongside
+            -- votes would multiply the rows and inflate every vote count above.
+            (SELECT COUNT(DISTINCT c.user_id) FROM pnm_contacts c WHERE c.pnm_id = p.id)
+                AS met_count,
+            EXISTS (SELECT 1 FROM pnm_contacts c
+                     WHERE c.pnm_id = p.id AND c.user_id = $2::uuid) AS met_by_me
         FROM pnms p
         LEFT JOIN votes v ON v.pnm_id = p.id
         WHERE p.chapter_id = $1
@@ -786,7 +885,9 @@ async def get_pnms(
     # The roster is people in formal rush. Prospects live on the pipeline board
     # until someone converts them, so they must not silently pad the PNM count,
     # the analytics, or a voting round's candidate list.
-    params: list = [chapter_id]
+    # $2 is the viewer, for met_by_me above. A stage filter therefore starts at
+    # $3, which the len(params) numbering below takes care of.
+    params: list = [chapter_id, current_user["user_id"]]
     if stage == "all":
         pass
     elif stage:
@@ -804,7 +905,8 @@ async def get_pnms(
     """
 
     rows = await db.execute_query(query, *params)
-    
+
+
     return [
         {
             "id": str(row["id"]),
@@ -833,6 +935,8 @@ async def get_pnms(
             "contact_status": row["contact_status"],
             "owner_user_id": str(row["owner_user_id"]) if row["owner_user_id"] else None,
             "last_contacted_at": row["last_contacted_at"],
+            "met_count": int(row["met_count"] or 0),
+            "met_by_me": bool(row["met_by_me"]),
         }
         for row in rows
     ]
@@ -944,6 +1048,63 @@ async def check_pipeline_duplicates(
         chapter_id, name, email, instagram_handle
     )
     return {"matches": matches}
+
+# ---------------------------------------------------------------------------
+# Contact coverage
+#
+# A brother votes on sixty PNMs having genuinely spoken to maybe fifteen. This
+# records which fifteen, so the chapter can tell "forty people know him and half
+# said no" from "four people know him and the rest guessed".
+# ---------------------------------------------------------------------------
+
+class ContactRequest(BaseModel):
+    event_id: Optional[str] = None
+    note: Optional[str] = None
+
+@router.post("/pnms/{pnm_id}/contacts")
+async def log_pnm_contact(
+    pnm_id: str,
+    payload: ContactRequest = ContactRequest(),
+    current_user: dict = Depends(get_current_user)
+):
+    """"I've talked to him." Idempotent per event, so a double-tap is harmless."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    return await pnm_service.log_contact(
+        pnm_id, current_user["user_id"], payload.event_id, payload.note
+    )
+
+@router.delete("/pnms/{pnm_id}/contacts")
+async def remove_pnm_contact(
+    pnm_id: str,
+    event_id: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Undo a tap. A brother can only remove his own."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    return await pnm_service.remove_contact(pnm_id, current_user["user_id"], event_id)
+
+@router.get("/pnms/{pnm_id}/contacts")
+async def get_pnm_contacts(
+    pnm_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Who has met him. Names, because a number does not prompt anyone to act."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    summary = await pnm_service.get_contact_summary(pnm_id, current_user["user_id"])
+    summary["contacts"] = await pnm_service.list_contacts(pnm_id)
+    return summary
 
 @router.post("/pnms/import")
 @limiter.limit(WRITE_RATE_LIMIT)
@@ -2126,7 +2287,15 @@ async def get_next_unvoted_pnm(
     # Find the first PNM this user hasn't voted on yet
     pnm_row = await db.execute_one("""
         SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url,
-               COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags
+               COALESCE(array_agg(DISTINCT t.label) FILTER (WHERE t.label IS NOT NULL), ARRAY[]::text[]) as tags,
+               -- Coverage travels with the card so the voter learns he has
+               -- never met this person *before* swiping, not afterwards.
+               -- Subqueries, not joins: another one-to-many here would
+               -- multiply rows against pnm_tags.
+               (SELECT COUNT(DISTINCT c.user_id) FROM pnm_contacts c
+                 WHERE c.pnm_id = p.id) AS met_count,
+               EXISTS (SELECT 1 FROM pnm_contacts c
+                        WHERE c.pnm_id = p.id AND c.user_id = $3::uuid) AS met_by_me
         FROM pnms p
         LEFT JOIN pnm_tags pt ON pt.pnm_id = p.id
         LEFT JOIN tags t ON t.id = pt.tag_id
@@ -2156,7 +2325,9 @@ async def get_next_unvoted_pnm(
             "year": pnm_row["year"],
             "bio": None,
             "photo_url": pnm_row["photo_url"],
-            "tags": list(pnm_row["tags"]) if pnm_row["tags"] else []
+            "tags": list(pnm_row["tags"]) if pnm_row["tags"] else [],
+            "met_count": int(pnm_row["met_count"] or 0),
+            "met_by_me": bool(pnm_row["met_by_me"]),
         }
     }
 
@@ -2577,11 +2748,21 @@ async def get_session_current(
     
     chapter_id = str(session_row["chapter_id"])
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
-    
+
+    # The chair's progress bar is driven by this count. It arrives over the
+    # websocket on every vote, but the 5s fallback poll is what runs whenever the
+    # socket is down -- and without this the bar froze at its last websocket
+    # value (or at session creation, if the socket never connected at all).
+    voters_row = await db.execute_one("""
+        SELECT COUNT(DISTINCT voter_user_id) as votes_collected
+        FROM votes WHERE round_id = $1
+    """, str(session_row["round_id"]))
+    votes_collected = voters_row["votes_collected"] if voters_row else 0
+
     current_pnm_id = str(session_row["current_pnm_id"]) if session_row["current_pnm_id"] else None
     
     if not current_pnm_id:
-        return {"pnm": None, "locked": session_row["locked"]}
+        return {"pnm": None, "locked": session_row["locked"], "votes_collected": votes_collected}
     
     # Get PNM details with tags
     pnm_row = await db.execute_one("""
@@ -2595,7 +2776,7 @@ async def get_session_current(
     """, current_pnm_id)
     
     if not pnm_row:
-        return {"pnm": None, "locked": session_row["locked"]}
+        return {"pnm": None, "locked": session_row["locked"], "votes_collected": votes_collected}
     
     timer_remaining = None
     if session_row["timer_seconds"] and session_row["current_pnm_started_at"]:
@@ -2616,6 +2797,7 @@ async def get_session_current(
         "locked": session_row["locked"],
         "timer_seconds": session_row["timer_seconds"],
         "timer_remaining": timer_remaining,
+        "votes_collected": votes_collected,
     }
 
 # Unified export endpoint

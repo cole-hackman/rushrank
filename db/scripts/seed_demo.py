@@ -278,6 +278,37 @@ def _vote_value(rng: random.Random, strength: float) -> str:
     return "NO"
 
 
+async def _upsert_contacts(conn, rng, pnm_ids, brother_ids) -> None:
+    """Who has actually met whom.
+
+    Uneven on purpose. The top of the list is well known and the bottom is
+    barely known at all, which is the real pattern -- and it means the demo
+    shows a PNM being voted on that almost nobody has spoken to, which is the
+    argument for the feature.
+    """
+    voters = list(brother_ids.values())
+    for i, pnm_id in enumerate(pnm_ids):
+        if i < 8:
+            met = rng.sample(voters, rng.randint(4, 6))
+        elif i < 20:
+            met = rng.sample(voters, rng.randint(2, 4))
+        elif i < 27:
+            met = rng.sample(voters, rng.randint(0, 2))
+        else:
+            met = []  # nobody has met these -- the list the rush chair needs
+        for user_id in met:
+            await conn.execute(
+                """
+                INSERT INTO pnm_contacts (pnm_id, user_id, event_id)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (pnm_id, user_id,
+                             COALESCE(event_id, '00000000-0000-0000-0000-000000000000'::uuid))
+                DO NOTHING
+                """,
+                pnm_id, user_id, _id("event", EVENTS[i % len(EVENTS)][0]),
+            )
+
+
 async def _upsert_rounds(conn, rng, pnm_ids, brother_ids) -> list[uuid.UUID]:
     now = datetime.now(timezone.utc)
     voters = list(brother_ids.values())
@@ -473,6 +504,7 @@ async def main() -> int:
             pnm_ids = await _upsert_pnms(conn, rng, tag_ids)
             await _upsert_prospects(conn, brother_ids)
             await _upsert_events(conn, rng, pnm_ids, brother_ids)
+            await _upsert_contacts(conn, rng, pnm_ids, brother_ids)
             round_ids = await _upsert_rounds(conn, rng, pnm_ids, brother_ids)
             bid_list_id = await _upsert_bid_list(conn, pnm_ids, round_ids, brother_ids)
             await _upsert_audit(conn, brother_ids, round_ids, bid_list_id)

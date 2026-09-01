@@ -48,6 +48,7 @@ async def _seed(conn, module) -> None:
         pnms = await module._upsert_pnms(conn, rng, tags)
         await module._upsert_prospects(conn, brothers)
         await module._upsert_events(conn, rng, pnms, brothers)
+        await module._upsert_contacts(conn, rng, pnms, brothers)
         rounds = await module._upsert_rounds(conn, rng, pnms, brothers)
         bid_list = await module._upsert_bid_list(conn, pnms, rounds, brothers)
         await module._upsert_audit(conn, brothers, rounds, bid_list)
@@ -75,6 +76,10 @@ async def _counts(conn, chapter_id) -> dict:
                (SELECT COUNT(*) FROM voting_rounds WHERE chapter_id = $1) AS rounds,
                (SELECT COUNT(*) FROM memberships WHERE chapter_id = $1) AS members,
                (SELECT COUNT(*) FROM audit_log WHERE chapter_id = $1) AS audit,
+               (SELECT COUNT(*) FROM pnm_contacts c JOIN pnms p ON p.id = c.pnm_id
+                 WHERE p.chapter_id = $1) AS contacts,
+               (SELECT COUNT(*) FROM pnms p WHERE p.chapter_id = $1
+                 AND NOT EXISTS (SELECT 1 FROM pnm_contacts c WHERE c.pnm_id = p.id)) AS unmet,
                (SELECT COUNT(*) FROM votes v JOIN voting_rounds r ON r.id = v.round_id
                  WHERE r.chapter_id = $1) AS votes,
                (SELECT COUNT(*) FROM bid_list_entries e JOIN bid_lists b ON b.id = e.bid_list_id
@@ -106,6 +111,10 @@ async def test_seeding_twice_produces_the_same_chapter(demo_conn):
     assert first["votes"] > 0
     assert first["bid_entries"] == 24
     assert first["audit"] == 6
+    # The demo has to show coverage working, and the argument for the feature
+    # is a PNM in a round that nobody has spoken to.
+    assert first["contacts"] > 0
+    assert first["unmet"] > 0
 
     assert await demo_conn.fetchval(
         "SELECT COUNT(*) FROM chapters WHERE id = $1", module.CHAPTER_ID

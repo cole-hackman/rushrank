@@ -40,6 +40,7 @@ const config = {
           950: "rgb(9, 9, 11)",
         },
         error: {
+          DEFAULT: "rgb(220, 38, 38)",
           50: "rgb(254, 242, 242)",
           100: "rgb(254, 226, 226)",
           200: "rgb(254, 202, 202)",
@@ -52,6 +53,7 @@ const config = {
           900: "rgb(127, 29, 29)",
         },
         warning: {
+          DEFAULT: "rgb(124, 58, 237)",
           50: "rgb(245, 243, 255)",
           100: "rgb(237, 233, 254)",
           200: "rgb(221, 214, 254)",
@@ -64,6 +66,7 @@ const config = {
           900: "rgb(76, 29, 149)",
         },
         success: {
+          DEFAULT: "rgb(5, 150, 105)",
           50: "rgb(236, 253, 245)",
           100: "rgb(209, 250, 229)",
           200: "rgb(167, 243, 208)",
@@ -211,7 +214,10 @@ const config = {
         "heading-2": '"Work Sans"',
         "heading-1": '"Work Sans"',
         "monospace-body": "monospace",
-        sans: ["Work Sans", "Inter", ...fontFamily.sans],
+        sans: ["var(--font-sans)", "Work Sans", "Inter", ...fontFamily.sans],
+        // Used by the marketing headings. Without this, `font-serif`
+        // resolved to the browser default -- Times on most machines.
+        serif: ["var(--font-serif)", "Instrument Serif", ...fontFamily.serif],
       },
       boxShadow: {
         sm: "0px 1px 2px 0px rgba(0, 0, 0, 0.05)",

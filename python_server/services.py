@@ -827,6 +827,96 @@ class PNMService:
             for row in rows
         ]
     
+    async def log_contact(self, pnm_id: str, user_id: str,
+                          event_id: Optional[str] = None,
+                          note: Optional[str] = None) -> dict:
+        """Record that this brother has actually spoken to this PNM.
+
+        Idempotent per (pnm, brother, event): tapping the button twice at the
+        same event updates the note rather than inflating coverage. Meeting the
+        same PNM again at a *later* event is a genuine second data point and
+        does create a row -- but coverage counts distinct brothers, so it never
+        double-counts either way.
+        """
+        db = get_db()
+        await db.execute_command(
+            """
+            INSERT INTO pnm_contacts (pnm_id, user_id, event_id, note)
+            VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
+            ON CONFLICT (pnm_id, user_id,
+                         COALESCE(event_id, '00000000-0000-0000-0000-000000000000'::uuid))
+            DO UPDATE SET note = COALESCE(EXCLUDED.note, pnm_contacts.note)
+            """,
+            pnm_id, user_id, event_id, note,
+        )
+        return await self.get_contact_summary(pnm_id, user_id)
+
+    async def remove_contact(self, pnm_id: str, user_id: str,
+                             event_id: Optional[str] = None) -> dict:
+        """Undo a tap. Mis-taps happen on a phone at a crowded event."""
+        db = get_db()
+        await db.execute_command(
+            """
+            DELETE FROM pnm_contacts
+            WHERE pnm_id = $1::uuid AND user_id = $2::uuid
+              AND COALESCE(event_id, '00000000-0000-0000-0000-000000000000'::uuid)
+                = COALESCE($3::uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+            """,
+            pnm_id, user_id, event_id,
+        )
+        return await self.get_contact_summary(pnm_id, user_id)
+
+    async def get_contact_summary(self, pnm_id: str, user_id: str) -> dict:
+        """Coverage for one PNM, plus whether this particular brother is in it."""
+        db = get_db()
+        row = await db.execute_one(
+            """
+            SELECT COUNT(DISTINCT user_id) AS met_count,
+                   BOOL_OR(user_id = $2::uuid) AS met_by_me
+            FROM pnm_contacts WHERE pnm_id = $1::uuid
+            """,
+            pnm_id, user_id,
+        )
+        return {
+            "pnm_id": pnm_id,
+            "met_count": (row["met_count"] or 0) if row else 0,
+            "met_by_me": bool(row["met_by_me"]) if row else False,
+        }
+
+    async def list_contacts(self, pnm_id: str) -> list[dict]:
+        """Who has met this PNM, most recent first.
+
+        Names, not just a number: "Devin and Ty have met him" is what makes
+        someone walk over and get a second opinion before the vote.
+        """
+        db = get_db()
+        rows = await db.execute_query(
+            """
+            SELECT DISTINCT ON (c.user_id)
+                   c.user_id, c.created_at, c.note, c.event_id,
+                   u.name AS user_name, u.email AS user_email,
+                   e.name AS event_name
+            FROM pnm_contacts c
+            LEFT JOIN users u ON u.id = c.user_id
+            LEFT JOIN events e ON e.id = c.event_id
+            WHERE c.pnm_id = $1::uuid
+            ORDER BY c.user_id, c.created_at DESC
+            """,
+            pnm_id,
+        )
+        contacts = [
+            {
+                "user_id": str(r["user_id"]),
+                "name": r["user_name"] or r["user_email"],
+                "event_name": r["event_name"],
+                "note": r["note"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+        contacts.sort(key=lambda c: c["created_at"], reverse=True)
+        return contacts
+
     async def get_pnm(self, pnm_id: str) -> Optional[PNM]:
         """Get specific PNM"""
         db = get_db()
@@ -1676,7 +1766,12 @@ class VotingService:
                    -- meaningful. Was hardcoded to 0, so nothing was ever flagged.
                    COALESCE(STDDEV_POP(
                        CASE v.value WHEN 'YES' THEN 1.0 WHEN 'UNKNOWN' THEN 0.5 ELSE 0.0 END
-                   ), 0) * 20 as controversy_score
+                   ), 0) * 20 as controversy_score,
+                   -- How many brothers have actually met him. A 55% yes on
+                   -- forty informed votes and a 55% on four are different
+                   -- numbers, and the results table could not tell them apart.
+                   (SELECT COUNT(DISTINCT c.user_id) FROM pnm_contacts c
+                     WHERE c.pnm_id = p.id) AS met_count
             FROM pnms p
             LEFT JOIN votes v ON v.pnm_id = p.id AND v.round_id = $1
             WHERE p.id IN (
@@ -1708,7 +1803,8 @@ class VotingService:
                 dont_know_count=row["dont_know_count"] or 0,
                 favorite_count=row["favorite_count"] or 0,
                 yes_percentage=float(row["yes_percentage"] or 0),
-                controversy_score=float(row["controversy_score"] or 0)
+                controversy_score=float(row["controversy_score"] or 0),
+                met_count=int(row["met_count"] or 0),
             )
             for row in rows
         ]
