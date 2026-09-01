@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { API_BASE } from "@/lib/api";
 
 type PNM = {
   id: string;
@@ -39,9 +40,27 @@ type UseSessionWebSocketProps = {
   enabled?: boolean;
 };
 
-const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE_URL || 
-  (typeof window !== "undefined" && window.location.origin.replace(/^http/, "ws").replace(":3000", ":8000")) ||
-  "ws://localhost:8000";
+/**
+ * Where the session socket lives.
+ *
+ * The backend mounts `/ws/session/{id}` on the same origin as `/api`, so the
+ * socket base is derived from the API base -- one env var to get right instead
+ * of two.
+ *
+ * This used to read `NEXT_PUBLIC_WS_BASE_URL` and nothing else. That variable is
+ * set in no `.env.example`, no deployment doc and no CI config, so in production
+ * it fell through to `window.location.origin` -- the Vercel domain, which serves
+ * no websocket. The socket never connected, and the "live" session quietly ran
+ * on the 5-second fallback poll instead, which refreshes only the current PNM:
+ * tallies, lock state and session-end never arrived.
+ *
+ * The override is kept for deployments that terminate websockets elsewhere.
+ */
+function getWsBase(): string {
+  const override = process.env.NEXT_PUBLIC_WS_BASE_URL;
+  if (override) return override.replace(/\/+$/, "");
+  return API_BASE.replace(/\/api$/, "").replace(/^http/, "ws");
+}
 
 export function useSessionWebSocket({
   sessionId,
@@ -52,59 +71,92 @@ export function useSessionWebSocket({
   enabled = true,
 }: UseSessionWebSocketProps) {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intentionalCloseRef = useRef(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Handlers live in a ref so re-rendering the voting page does not change the
+  // identity of `connect`.
+  //
+  // `connect` used to list the handler props in its dependency array. On the
+  // voting page `onLockChange` closes over the whole session object and
+  // `onVoteCast` calls setSession on every vote -- so every broadcast vote
+  // produced new handler identities, a new `connect`, and an effect re-run that
+  // tore the socket down and rebuilt it. With a room full of brothers voting
+  // that is a reconnect storm. It was invisible only because the socket never
+  // connected at all (see getWsBase).
+  const handlersRef = useRef({ onPnmAdvance, onLockChange, onVoteCast, onSessionEnd });
+  useEffect(() => {
+    handlersRef.current = { onPnmAdvance, onLockChange, onVoteCast, onSessionEnd };
+  });
+
+  const clearTimers = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (!sessionId || !enabled) return;
 
-    const wsUrl = `${WS_BASE}/ws/session/${sessionId}`;
-    console.log("[WS] Connecting to:", wsUrl);
+    // A socket for this session is already live or on its way up.
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
+    const wsUrl = `${getWsBase()}/ws/session/${sessionId}`;
 
     try {
+      intentionalCloseRef.current = false;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("[WS] Connected to session:", sessionId);
         setConnected(true);
         setError(null);
 
-        // Start ping interval to keep connection alive
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send("ping");
           }
-        }, 30000); // Ping every 30 seconds
+        }, 30000);
       };
 
       ws.onmessage = (event) => {
         try {
-          // Handle pong responses
           if (event.data === "pong") return;
 
           const message: SessionMessage = JSON.parse(event.data);
-          console.log("[WS] Received message:", message);
+          const handlers = handlersRef.current;
 
           switch (message.type) {
             case "pnm_advance":
-              onPnmAdvance?.(message.current_pnm_id || null, message.pnm || null);
+              handlers.onPnmAdvance?.(message.current_pnm_id || null, message.pnm || null);
               break;
             case "lock_change":
               if (message.locked !== undefined) {
-                onLockChange?.(message.locked);
+                handlers.onLockChange?.(message.locked);
               }
               break;
             case "vote_cast":
               if (message.pnm_id && message.tallies) {
-                onVoteCast?.(message.pnm_id, message.tallies);
+                handlers.onVoteCast?.(message.pnm_id, message.tallies);
               }
               break;
             case "session_ended":
               if (message.round_id) {
-                onSessionEnd?.(message.round_id);
+                handlers.onSessionEnd?.(message.round_id);
               }
               break;
           }
@@ -113,25 +165,26 @@ export function useSessionWebSocket({
         }
       };
 
-      ws.onerror = (event) => {
-        console.error("[WS] Error:", event);
+      ws.onerror = () => {
         setError("WebSocket error occurred");
       };
 
       ws.onclose = (event) => {
-        console.log("[WS] Disconnected:", event.code, event.reason);
         setConnected(false);
 
-        // Clear ping interval
         if (pingIntervalRef.current) {
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
         }
 
-        // Attempt to reconnect after 3 seconds if not a clean close
-        if (event.code !== 1000 && enabled && sessionId) {
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+
+        // Reconnect unless we closed it ourselves (unmount, tab change, or the
+        // session going away).
+        if (!intentionalCloseRef.current && event.code !== 1000) {
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log("[WS] Attempting to reconnect...");
             connect();
           }, 3000);
         }
@@ -140,29 +193,19 @@ export function useSessionWebSocket({
       console.error("[WS] Failed to connect:", e);
       setError("Failed to establish WebSocket connection");
     }
-  }, [sessionId, enabled, onPnmAdvance, onLockChange, onVoteCast, onSessionEnd]);
+  }, [sessionId, enabled]);
 
   const disconnect = useCallback(() => {
-    // Clear reconnect timeout
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
+    intentionalCloseRef.current = true;
+    clearTimers();
 
-    // Clear ping interval
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = null;
-    }
-
-    // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close(1000, "Component unmounted");
       wsRef.current = null;
     }
 
     setConnected(false);
-  }, []);
+  }, [clearTimers]);
 
   useEffect(() => {
     connect();
