@@ -12,7 +12,8 @@ import {
   Users,
   Loader2,
 } from "lucide-react";
-import { api, API_BASE } from "@/lib/api";
+import { api, API_BASE, getContacts, type ContactEntry, type ContactSummary } from "@/lib/api";
+import { MetButton } from "@/components/pnm/MetButton";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
@@ -78,19 +79,23 @@ export default function PNMProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const [coverage, setCoverage] = useState<(ContactSummary & { contacts: ContactEntry[] }) | null>(null);
+
   const loadProfile = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [pnmData, attendanceData, commentsData] = await Promise.all([
+      const [pnmData, attendanceData, commentsData, coverageData] = await Promise.all([
         api<PNM>(`/pnms/${id}`),
         api<AttendanceEvent[]>(`/pnms/${id}/attendance`).catch(() => [] as AttendanceEvent[]),
         api<Comment[]>(`/pnms/${id}/notes`).catch(() => [] as Comment[]),
+        getContacts(String(id)).catch(() => null),
       ]);
 
       setPnm(pnmData);
       setAttendance(attendanceData || []);
       setComments(commentsData || []);
+      setCoverage(coverageData);
     } catch (e: any) {
       const message = e?.message || "Unable to load PNM profile";
       setError(message);
@@ -271,6 +276,46 @@ export default function PNMProfilePage() {
               />
               <StatRow label="Favorites" value={(pnm.favorite_count || 0).toString()} />
             </div>
+          </div>
+
+          {/* Who has actually met him. Names rather than a number, because
+              "ask Devin" is what makes someone walk over and get a second
+              opinion before the vote -- a count on its own prompts nothing. */}
+          <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-beta-navy">Who&apos;s met him</span>
+              <MetButton
+                size="compact"
+                pnmId={String(id)}
+                metByMe={Boolean(coverage?.met_by_me)}
+                metCount={coverage?.met_count ?? 0}
+                onChange={(next) =>
+                  setCoverage((current) =>
+                    current
+                      ? { ...current, met_by_me: next.met_by_me, met_count: next.met_count }
+                      : current,
+                  )
+                }
+              />
+            </div>
+
+            {coverage && coverage.contacts.length > 0 ? (
+              <ul className="mt-4 space-y-2 text-sm text-beta-gray">
+                {coverage.contacts.map((contact) => (
+                  <li key={contact.user_id} className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-beta-navy">{contact.name ?? "A brother"}</span>
+                    {contact.event_name && (
+                      <span className="shrink-0 text-xs">{contact.event_name}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-beta-gray">
+                Nobody has logged a conversation with him yet. If you have, tap above — it&apos;s
+                what tells the chapter whether a vote on him means anything.
+              </p>
+            )}
           </div>
         </div>
 
