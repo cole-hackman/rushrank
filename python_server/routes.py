@@ -764,6 +764,124 @@ async def create_demo_session(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Academic eligibility
+#
+# Most chapters have a GPA minimum and most campuses require the chapter to
+# certify that every man it bids meets it. The exception process is the part
+# that matters: a chapter will bid someone below the floor, and today that
+# decision lives in a group chat and leaves no record.
+# ---------------------------------------------------------------------------
+
+def _eligibility(gpa, min_gpa, waived) -> str:
+    """One of: no_minimum | unknown | waived | eligible | below.
+
+    `unknown` is deliberately not `below`. A transfer in his first semester
+    genuinely has no GPA on file, and showing him as failing a check nobody has
+    run yet would get him cut for a missing spreadsheet row.
+    """
+    if min_gpa is None:
+        return "no_minimum"
+    if waived:
+        return "waived"
+    if gpa is None:
+        return "unknown"
+    return "eligible" if gpa >= min_gpa else "below"
+
+
+@router.patch("/pnms/{pnm_id}/gpa", response_model=APIResponse)
+async def update_pnm_gpa(
+    pnm_id: str,
+    payload: GpaUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Record a PNM's GPA. Any member -- this is data entry, not a decision."""
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    db = get_db()
+    await db.execute_command(
+        "UPDATE pnms SET gpa = $2 WHERE id = $1::uuid", pnm_id, payload.gpa
+    )
+    return APIResponse(success=True, message="GPA updated")
+
+
+@router.post("/pnms/{pnm_id}/gpa-waiver")
+async def set_gpa_waiver(
+    pnm_id: str,
+    payload: GpaWaiverRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Grant or revoke an exception to the chapter's GPA floor (admin or exec).
+
+    A reason is mandatory, and the grant is written to `audit_log`. The point is
+    that "why was he bid at 2.4 against a 2.5 floor" has an answer in March.
+    """
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+
+    role = await chapter_service.get_user_role(pnm.chapter_id, current_user["user_id"])
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+
+    reason = (payload.reason or "").strip()
+    if payload.waived and not reason:
+        raise HTTPException(
+            status_code=400,
+            detail="A waiver needs a reason -- it is the record of why the exception was made",
+        )
+
+    db = get_db()
+    row = await db.execute_one(
+        """UPDATE pnms
+              SET gpa_waived = $2,
+                  gpa_waived_reason = CASE WHEN $2 THEN $3 ELSE NULL END,
+                  gpa_waived_by_user_id = CASE WHEN $2 THEN $4::uuid ELSE NULL END,
+                  gpa_waived_at = CASE WHEN $2 THEN NOW() ELSE NULL END
+            WHERE id = $1::uuid
+        RETURNING gpa, gpa_waived, gpa_waived_reason""",
+        pnm_id, payload.waived, reason or None, current_user["user_id"],
+    )
+
+    await audit.record(
+        pnm.chapter_id, current_user["user_id"],
+        "pnm.gpa_waiver" if payload.waived else "pnm.gpa_waiver_revoked",
+        entity_type="pnm", entity_id=pnm_id,
+        after={"name": pnm.name, "gpa": float(row["gpa"]) if row["gpa"] is not None else None,
+               "reason": row["gpa_waived_reason"]},
+    )
+
+    return {
+        "pnm_id": pnm_id,
+        "gpa_waived": row["gpa_waived"],
+        "gpa_waived_reason": row["gpa_waived_reason"],
+    }
+
+
+@router.put("/chapters/{chapter_id}/min-gpa")
+async def set_chapter_min_gpa(
+    chapter_id: str,
+    payload: GpaUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Set the chapter's GPA floor (admin only). None turns the check off."""
+    await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
+
+    db = get_db()
+    await db.execute_command(
+        "UPDATE chapters SET min_gpa = $2 WHERE id = $1::uuid", chapter_id, payload.gpa
+    )
+    await audit.record(
+        chapter_id, current_user["user_id"], "chapter.min_gpa",
+        entity_type="chapter", entity_id=chapter_id,
+        after={"min_gpa": payload.gpa},
+    )
+    return {"min_gpa": payload.gpa}
+
+
+# ---------------------------------------------------------------------------
 # Duplicate merge
 #
 # The roster has four ways in -- intake form, CSV import, walk-ups, and the
@@ -841,6 +959,8 @@ async def get_pnms(
         SELECT
             p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
             p.photo_url, p.created_at, p.archived,
+            p.gpa, p.gpa_waived, p.gpa_waived_reason,
+            (SELECT c.min_gpa FROM chapters c WHERE c.id = p.chapter_id) AS min_gpa,
             p.stage, p.source, p.instagram_handle, p.contact_status,
             p.owner_user_id, p.last_contacted_at,
             COALESCE(ARRAY(
@@ -899,6 +1019,7 @@ async def get_pnms(
     query += """
         GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
                  p.photo_url, p.created_at, p.archived,
+                 p.gpa, p.gpa_waived, p.gpa_waived_reason,
                  p.stage, p.source, p.instagram_handle, p.contact_status,
                  p.owner_user_id, p.last_contacted_at
         ORDER BY p.name
@@ -929,6 +1050,11 @@ async def get_pnms(
             "yes_percentage": float(row["yes_percentage"]) if row["yes_percentage"] else None,
             "is_favorite": bool(row["is_favorite"]),
             "favorite_count": int(row["favorite_count"]) if row["favorite_count"] else 0,
+            "gpa": float(row["gpa"]) if row["gpa"] is not None else None,
+            "gpa_waived": bool(row["gpa_waived"]),
+            "gpa_waived_reason": row["gpa_waived_reason"],
+            "min_gpa": float(row["min_gpa"]) if row["min_gpa"] is not None else None,
+            "eligibility": _eligibility(row["gpa"], row["min_gpa"], row["gpa_waived"]),
             "stage": row["stage"],
             "source": row["source"],
             "instagram_handle": row["instagram_handle"],
