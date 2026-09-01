@@ -30,6 +30,7 @@ import { Badge } from "@/ui/components/Badge";
 import { Avatar } from "@/ui/components/Avatar";
 import { BulkTagModal } from "@/components/admin/BulkTagModal";
 import { SkeletonTable } from "@/components/ui/SkeletonTable";
+import { MetButton } from "@/components/pnm/MetButton";
 import { useRouter } from "next/navigation";
 import { cn, downloadFileForMobile } from "@/lib/utils";
 
@@ -54,6 +55,8 @@ type PNM = {
   gpa_waived_reason?: string | null;
   min_gpa?: number | null;
   eligibility?: Eligibility;
+  met_count?: number;
+  met_by_me?: boolean;
 };
 
 
@@ -80,6 +83,9 @@ export default function PNMsPage() {
   const [showArchived, setShowArchived] = useState(false);
   // The list the academic chair needs before bids go out.
   const [belowMinOnly, setBelowMinOnly] = useState(false);
+  // The list the rush chair reads out on Thursday: who is going into a vote
+  // that nobody in the room has actually spoken to.
+  const [unmetOnly, setUnmetOnly] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -175,8 +181,11 @@ export default function PNMsPage() {
     if (belowMinOnly) {
       data = data.filter((p) => p.eligibility === "below");
     }
+    if (unmetOnly) {
+      data = data.filter((p) => !(p.met_count ?? 0));
+    }
     return data;
-  }, [pnms, search, selectedTags, showArchived, belowMinOnly]);
+  }, [pnms, search, selectedTags, showArchived, belowMinOnly, unmetOnly]);
 
   const stats = useMemo(() => {
     const total = pnms.length;
@@ -450,6 +459,7 @@ export default function PNMsPage() {
             {pnms.some((p) => p.min_gpa != null) && (
               <Checkbox label="Below GPA minimum" checked={belowMinOnly} onCheckedChange={setBelowMinOnly} />
             )}
+            <Checkbox label="Nobody's met" checked={unmetOnly} onCheckedChange={setUnmetOnly} />
           </div>
         </div>
         {/* Quick filter chips */}
@@ -537,6 +547,7 @@ export default function PNMsPage() {
                     <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
                     <Table.HeaderCell className="w-[130px] min-w-[130px]">GPA</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[150px] min-w-[150px]">Met by</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px] max-w-[120px] text-right sticky right-0 bg-white dark:bg-neutral-800 z-10">Actions</Table.HeaderCell>
                   </Table.HeaderRow>
                 }
@@ -616,6 +627,28 @@ export default function PNMsPage() {
                           </span>
                         )}
                       </div>
+                    </Table.Cell>
+                    <Table.Cell className="w-[150px] min-w-[150px]">
+                      <MetButton
+                        size="compact"
+                        pnmId={pnm.id}
+                        metByMe={Boolean(pnm.met_by_me)}
+                        metCount={pnm.met_count ?? 0}
+                        onChange={(next) =>
+                          setPnms((current) =>
+                            current.map((row) =>
+                              row.id === pnm.id
+                                ? { ...row, met_by_me: next.met_by_me, met_count: next.met_count }
+                                : row,
+                            ),
+                          )
+                        }
+                      />
+                      {(pnm.met_count ?? 0) > 0 && (
+                        <span className="mt-1 block text-caption font-caption text-subtext-color">
+                          {pnm.met_count} total
+                        </span>
+                      )}
                     </Table.Cell>
                     <Table.Cell className="w-[120px] min-w-[120px] max-w-[120px] text-right sticky right-0 bg-white dark:bg-neutral-800 z-10">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">

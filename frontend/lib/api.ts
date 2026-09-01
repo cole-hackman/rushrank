@@ -154,6 +154,8 @@ export async function api<T>(
     timeout?: number;
     /** internal: set when this call is the post-refresh retry */
     __retried?: boolean;
+    /** internal: set when this call is the post-429 retry */
+    __rateLimitRetried?: boolean;
   },
 ): Promise<T> {
   const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
@@ -214,6 +216,22 @@ export async function api<T>(
         errorMessage = "Your session has expired. Please sign in again.";
       } else if (res.status === 403) {
         errorMessage = `Access forbidden (403). You may not have permission to access this resource.`;
+      } else if (res.status === 429 && !opts?.__rateLimitRetried) {
+        // Rate limited. Every write this client makes is either idempotent or an
+        // upsert keyed on the acting user -- a vote is one row per
+        // (round, pnm, voter) -- so replaying the request once is safe and is
+        // far better than telling a brother his vote failed when a one-second
+        // wait would have landed it.
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const waitMs = Math.min(
+          Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500,
+          5000,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        return api<T>(path, { ...opts, __rateLimitRetried: true } as typeof opts);
+      } else if (res.status === 429) {
+        errorMessage =
+          "The server is busy right now and did not record that. Please try again in a moment.";
       } else if (res.status === 404) {
         errorMessage = `Resource not found (404). The requested endpoint does not exist.`;
       } else if (res.status >= 500) {
@@ -354,9 +372,16 @@ export async function provisionChapter(req: ProvisionRequest): Promise<{ chapter
 
 export type BidBucket = "bid" | "maybe" | "cut";
 
+export type BidOutcome = "pending" | "offered" | "accepted" | "declined";
+
 export interface BidListEntry {
   pnm_id: string;
   bucket: BidBucket;
+  /** What happened after the list was finalized. Only meaningful in the bid bucket. */
+  outcome: BidOutcome;
+  outcome_at: string | null;
+  declined_reason: string | null;
+  outcome_by_name: string | null;
   position: number;
   name: string;
   year: string;
@@ -378,9 +403,37 @@ export interface BidList {
   updated_at: string;
 }
 
+export interface BidOutcomeTally {
+  offered: number;
+  accepted: number;
+  declined: number;
+  pending: number;
+  /** Against the cap, counting acceptances and outstanding offers. null = no cap set. */
+  remaining: number | null;
+}
+
 export interface BidListWithEntries {
   bid_list: BidList;
   entries: BidListEntry[];
+  outcomes: BidOutcomeTally;
+}
+
+/**
+ * Record what happened to a bid.
+ *
+ * Not gated behind the editor lock: the lock stops two people reordering the
+ * board against each other, but an acceptance is a fact arriving from outside,
+ * often days later, from whoever hears it first.
+ */
+export async function setBidOutcome(
+  pnmId: string,
+  outcome: BidOutcome,
+  declinedReason?: string,
+): Promise<{ pnm_id: string; outcome: BidOutcome; declined_reason: string | null }> {
+  return api(`/chapters/me/bid-list/entries/${pnmId}/outcome`, {
+    method: "PATCH",
+    body: { outcome, declined_reason: declinedReason ?? null },
+  });
 }
 
 /** 404 when the chapter has no bid list yet -- callers treat that as "empty". */
@@ -630,4 +683,88 @@ export async function setChapterMinGpa(
   gpa: number | null,
 ): Promise<{ min_gpa: number | null }> {
   return api(`/chapters/${chapterId}/min-gpa`, { method: "PUT", body: { gpa } });
+}
+
+// ── Duplicate merge ─────────────────────────────────────────────────────────
+// Four ways into the roster — intake form, CSV import, walk-ups and the
+// interest link — means the same person arrives more than once routinely.
+// Import refuses to insert a duplicate it recognises; this reunites the two
+// rows that already exist, whose notes and attendance are otherwise split.
+
+export interface DuplicateMember {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  major: string | null;
+  year: string | null;
+  photo_url: string | null;
+  created_at: string;
+  /** Shown so whoever merges can keep the richer row rather than guess. */
+  notes: number;
+  attendance: number;
+  votes: number;
+}
+
+export interface DuplicateGroup {
+  reason: "email" | "phone" | "name";
+  key: string;
+  members: DuplicateMember[];
+}
+
+export async function getDuplicates(chapterId: string): Promise<{ groups: DuplicateGroup[] }> {
+  return api(`/chapters/${chapterId}/duplicates`);
+}
+
+/** Destructive and not undoable from the UI — confirm before calling. */
+export async function mergePnms(
+  winnerId: string,
+  loserId: string,
+): Promise<{
+  winner_id: string;
+  loser_id: string;
+  moved: Record<string, number>;
+  dropped_as_duplicate: Record<string, number>;
+  fields_filled: string[];
+}> {
+  return api(`/pnms/${winnerId}/merge`, { method: "POST", body: { loser_id: loserId } });
+}
+
+// ── Contact coverage ────────────────────────────────────────────────────────
+// A brother votes on sixty PNMs having genuinely spoken to maybe fifteen. This
+// records which fifteen, so a yes-percentage can be read in context — see
+// migration 0016.
+
+export interface ContactSummary {
+  pnm_id: string;
+  /** Distinct brothers who have met him. Never a row count. */
+  met_count: number;
+  met_by_me: boolean;
+}
+
+export interface ContactEntry {
+  user_id: string;
+  name: string | null;
+  event_name: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/** Idempotent per event, so a double-tap at a crowded event is harmless. */
+export async function logContact(
+  pnmId: string,
+  body?: { event_id?: string; note?: string },
+): Promise<ContactSummary> {
+  return api<ContactSummary>(`/pnms/${pnmId}/contacts`, { method: "POST", body: body ?? {} });
+}
+
+export async function removeContact(pnmId: string, eventId?: string): Promise<ContactSummary> {
+  const query = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
+  return api<ContactSummary>(`/pnms/${pnmId}/contacts${query}`, { method: "DELETE" });
+}
+
+export async function getContacts(
+  pnmId: string,
+): Promise<ContactSummary & { contacts: ContactEntry[] }> {
+  return api(`/pnms/${pnmId}/contacts`);
 }

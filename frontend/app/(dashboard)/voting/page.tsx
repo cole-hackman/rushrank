@@ -39,6 +39,9 @@ type PNM = {
   bio?: string | null;
   photo_url?: string | null;
   tags?: string[];
+  /** Distinct brothers who have met him (migration 0016). */
+  met_count?: number;
+  met_by_me?: boolean;
 };
 
 type Session = {
@@ -61,7 +64,10 @@ export default function VotingPage() {
   const { toast } = useToast();
   const router = useRouter();
   
-  const [activeTab, setActiveTab] = useState<"open" | "session">("open");
+  // Live Session is the default: it is the flow the whole chapter runs together
+  // during rush, and the one the chair drives. Open Voting stays reachable on the
+  // second tab for anyone catching up outside a session.
+  const [activeTab, setActiveTab] = useState<"open" | "session">("session");
   const [chapterId, setChapterId] = useState<string | null | undefined>(undefined);
 
   // Open voting
@@ -232,10 +238,23 @@ export default function VotingPage() {
         locked?: boolean;
         timer_seconds?: number | null;
         timer_remaining?: number | null;
+        votes_collected?: number;
       }>(`/sessions/${id}/current`);
       setSessionPNM(res?.pnm || null);
-      if (res?.locked !== undefined) {
-        setSession((prev) => (prev ? { ...prev, locked: res.locked } : prev));
+      if (res?.locked !== undefined || res?.votes_collected !== undefined) {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...(res.locked !== undefined ? { locked: res.locked } : {}),
+                // Without this the progress bar only ever moved over the
+                // websocket, so it froze whenever the socket was down.
+                ...(res.votes_collected !== undefined
+                  ? { votes_collected: res.votes_collected }
+                  : {}),
+              }
+            : prev
+        );
       }
       setTimerRemaining(res?.timer_remaining ?? null);
     } catch {
@@ -271,9 +290,17 @@ export default function VotingPage() {
       }
     } catch (e: any) {
       const locked = e?.status === 409;
+      // api() already retried a 429 once. If it still failed, say plainly that
+      // the vote did not land -- the old generic "Vote failed" left brothers
+      // believing they had voted when they had not.
+      const busy = e?.status === 429;
       toast({
-        title: locked ? "Voting is locked" : "Vote failed",
-        description: locked ? "The chair has locked voting for this PNM." : e?.message,
+        title: locked ? "Voting is locked" : busy ? "Vote not recorded" : "Vote failed",
+        description: locked
+          ? "The chair has locked voting for this PNM."
+          : busy
+            ? "The server was busy. Swipe again to record your vote."
+            : e?.message,
       });
     }
   };
@@ -487,11 +514,11 @@ export default function VotingPage() {
   return (
     <div className="flex w-full flex-col gap-6">
       <Tabs>
-        <Tabs.Item active={activeTab === "open"} onClick={() => setActiveTab("open")}>
-          Open Voting
-        </Tabs.Item>
         <Tabs.Item active={activeTab === "session"} onClick={() => setActiveTab("session")}>
           Live Session
+        </Tabs.Item>
+        <Tabs.Item active={activeTab === "open"} onClick={() => setActiveTab("open")}>
+          Open Voting
         </Tabs.Item>
       </Tabs>
 
@@ -799,6 +826,19 @@ function VoteCard({
                   className="shrink-0"
                 />
               </div>
+              {/* The nudge. Swiping No on someone you have never spoken to is
+                  worse for the chapter than Unknown -- it reads as a real
+                  opinion in the tally. Shown only when it applies, so it stays
+                  meaningful rather than becoming another badge to ignore. */}
+              {pnm.met_by_me === false && (
+                <div className="rounded-lg bg-white/15 px-3 py-2 text-sm text-white backdrop-blur-sm">
+                  {(pnm.met_count ?? 0) === 0
+                    ? "Nobody in the chapter has met him yet."
+                    : `You haven't met him — ${pnm.met_count} ${
+                        pnm.met_count === 1 ? "brother has" : "brothers have"
+                      }. Unknown is fine.`}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 {pnm.major && (
                   <Badge variant="neutral" className="bg-white/20 text-white backdrop-blur-sm">
