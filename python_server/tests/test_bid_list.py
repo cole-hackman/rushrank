@@ -97,10 +97,14 @@ async def test_get_with_entries_groups_by_bucket():
     seq_q = [[
         {"pnm_id": "p-1", "bucket": "bid",   "position": 0,
          "name": "A", "year": "Fr", "major": "CS", "photo_url": None,
-         "up_count": 10, "down_count": 0, "star_count": 1},
+         "up_count": 10, "down_count": 0, "star_count": 1,
+         "outcome": "accepted", "outcome_at": now, "declined_reason": None,
+         "outcome_by_name": "Marcus"},
         {"pnm_id": "p-2", "bucket": "maybe", "position": 0,
          "name": "B", "year": "So", "major": "ME", "photo_url": None,
-         "up_count": 5, "down_count": 2, "star_count": 0},
+         "up_count": 5, "down_count": 2, "star_count": 0,
+         "outcome": "pending", "outcome_at": None, "declined_reason": None,
+         "outcome_by_name": None},
     ]]
     db = _mock_db(execute_one_seq=seq_one, execute_query_seq=seq_q)
     with patch("python_server.bid_list.get_db", return_value=db):
@@ -108,6 +112,9 @@ async def test_get_with_entries_groups_by_bucket():
     assert out["bid_list"]["id"] == "list-A"
     assert len(out["entries"]) == 2
     assert out["entries"][0]["bucket"] == "bid"
+    # The maybe-bucket entry must not count against the cap.
+    assert out["outcomes"]["accepted"] == 1
+    assert out["outcomes"]["pending"] == 0
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,7 @@ import { Badge } from "@/ui/components/Badge";
 import { Avatar } from "@/ui/components/Avatar";
 import { BulkTagModal } from "@/components/admin/BulkTagModal";
 import { SkeletonTable } from "@/components/ui/SkeletonTable";
+import { MetButton } from "@/components/pnm/MetButton";
 import { useRouter } from "next/navigation";
 import { cn, downloadFileForMobile } from "@/lib/utils";
 
@@ -48,6 +49,8 @@ type PNM = {
   favorite_count?: number;
   is_favorite?: boolean;
   archived?: boolean;
+  met_count?: number;
+  met_by_me?: boolean;
 };
 
 
@@ -57,6 +60,11 @@ export default function PNMsPage() {
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [pnms, setPnms] = useState<PNM[]>([]);
   const [search, setSearch] = useState("");
+  // Every keystroke used to fire a request. Typing "Christopher" was eleven
+  // round trips, and on a cold Render instance the answers came back out of
+  // order. The local filter below still runs on `search`, so typing stays
+  // instant -- only the fetch waits.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showEmail, setShowEmail] = useState(true);
@@ -67,6 +75,9 @@ export default function PNMsPage() {
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // The list the rush chair reads out on Thursday: who is going into a vote
+  // that nobody in the room has actually spoken to.
+  const [unmetOnly, setUnmetOnly] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -106,11 +117,16 @@ export default function PNMsPage() {
   }, [toast]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     if (chapterId) {
       loadPnms();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, search, selectedTags, showArchived]);
+  }, [chapterId, debouncedSearch, selectedTags, showArchived]);
 
   const loadPnms = async () => {
     if (!chapterId) return;
@@ -119,7 +135,7 @@ export default function PNMsPage() {
     try {
       const query = new URLSearchParams();
       query.set("chapter_id", chapterId);
-      if (search.trim()) query.set("search", search.trim());
+      if (debouncedSearch.trim()) query.set("search", debouncedSearch.trim());
       if (selectedTags.length > 0) query.set("tags", selectedTags.join(","));
       if (showArchived) query.set("include_archived", "true");
       const data = await api<PNM[]>(`/pnms?${query.toString()}`);
@@ -154,8 +170,11 @@ export default function PNMsPage() {
     if (selectedTags.length) {
       data = data.filter((p) => selectedTags.some((tag) => (p.tags || []).includes(tag)));
     }
+    if (unmetOnly) {
+      data = data.filter((p) => !(p.met_count ?? 0));
+    }
     return data;
-  }, [pnms, search, selectedTags, showArchived]);
+  }, [pnms, search, selectedTags, showArchived, unmetOnly]);
 
   const stats = useMemo(() => {
     const total = pnms.length;
@@ -426,6 +445,7 @@ export default function PNMsPage() {
             <Checkbox label="Show email" checked={showEmail} onCheckedChange={setShowEmail} />
             <Checkbox label="Show phone" checked={showPhone} onCheckedChange={setShowPhone} />
             <Checkbox label="Show archived" checked={showArchived} onCheckedChange={setShowArchived} />
+            <Checkbox label="Nobody's met" checked={unmetOnly} onCheckedChange={setUnmetOnly} />
           </div>
         </div>
         {/* Quick filter chips */}
@@ -512,6 +532,7 @@ export default function PNMsPage() {
                     {showPhone && <Table.HeaderCell className="w-[160px] min-w-[160px]">Phone</Table.HeaderCell>}
                     <Table.HeaderCell className="w-[180px] min-w-[180px]">Tags</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px]">Attendance</Table.HeaderCell>
+                    <Table.HeaderCell className="w-[150px] min-w-[150px]">Met by</Table.HeaderCell>
                     <Table.HeaderCell className="w-[120px] min-w-[120px] max-w-[120px] text-right sticky right-0 bg-white dark:bg-neutral-800 z-10">Actions</Table.HeaderCell>
                   </Table.HeaderRow>
                 }
@@ -571,6 +592,28 @@ export default function PNMsPage() {
                     <Table.Cell className="w-[120px] min-w-[120px] text-subtext-color whitespace-nowrap">
                       {pnm.attendance_count || 0} / {pnm.total_events || 0}
                     </Table.Cell>
+                    <Table.Cell className="w-[150px] min-w-[150px]">
+                      <MetButton
+                        size="compact"
+                        pnmId={pnm.id}
+                        metByMe={Boolean(pnm.met_by_me)}
+                        metCount={pnm.met_count ?? 0}
+                        onChange={(next) =>
+                          setPnms((current) =>
+                            current.map((row) =>
+                              row.id === pnm.id
+                                ? { ...row, met_by_me: next.met_by_me, met_count: next.met_count }
+                                : row,
+                            ),
+                          )
+                        }
+                      />
+                      {(pnm.met_count ?? 0) > 0 && (
+                        <span className="mt-1 block text-caption font-caption text-subtext-color">
+                          {pnm.met_count} total
+                        </span>
+                      )}
+                    </Table.Cell>
                     <Table.Cell className="w-[120px] min-w-[120px] max-w-[120px] text-right sticky right-0 bg-white dark:bg-neutral-800 z-10">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         <IconButton
@@ -603,7 +646,7 @@ export default function PNMsPage() {
                 {filteredPnms.length === 0 && pnms.length > 0 && (
                   <Table.Row>
                     <Table.Cell
-                      colSpan={7 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
+                      colSpan={8 + (showEmail ? 1 : 0) + (showPhone ? 1 : 0)}
                       className="py-10 text-center text-subtext-color"
                     >
                       <span className="text-body font-body">

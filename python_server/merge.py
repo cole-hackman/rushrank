@@ -62,6 +62,10 @@ CHILD_TABLES: list[ChildTable] = [
     ChildTable("event_attendance", conflict_key=("event_id",)),
     ChildTable("round_pnms", conflict_key=("round_id",)),
     ChildTable("bid_list_entries", conflict_key=("bid_list_id",)),
+    # Added by the contact-coverage work. Uniqueness is
+    # (pnm_id, user_id, COALESCE(event_id, sentinel)) -- one brother, one event.
+    # event_id is nullable, which is why the predicate below has to be NULL-safe.
+    ChildTable("pnm_contacts", conflict_key=("user_id", "event_id")),
     # Not a duplicate risk -- a session points at whoever is on screen. If the
     # loser was up, the session should follow the surviving row.
     ChildTable("sessions", column="current_pnm_id"),
@@ -186,8 +190,14 @@ async def merge_pnms(winner_id: str, loser_id: str) -> dict:
 
     for child in CHILD_TABLES:
         if child.conflict_key:
+            # NULL-safe: `existing.col = child.col` evaluates to NULL, not
+            # true, when both sides are NULL, so two contacts logged with no
+            # event looked non-colliding and were reassigned straight into a
+            # unique-index violation. Every other conflict_key column is NOT
+            # NULL, so this changes nothing for them.
             predicate = " AND ".join(
-                f"existing.{col} = child.{col}" for col in child.conflict_key
+                f"existing.{col} IS NOT DISTINCT FROM child.{col}"
+                for col in child.conflict_key
             )
             result = await db.execute_command(
                 f"""
