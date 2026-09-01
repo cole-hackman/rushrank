@@ -128,10 +128,10 @@ chapter what it looks like with real data in it.
 The feature list above is what exists in code. Three things sit between it and a chapter
 using it in a live rush:
 
-1. **Six of these features are on unmerged branches.** Pre-rush pipeline + interest form,
-   contact coverage, bid outcomes, duplicate merge, GPA eligibility, and the frontend
-   design pass are all built and tested but sitting in draft pull requests (#10–#15).
-   Everything else in this document is on `main`.
+1. **Five of these features are on unmerged branches.** Pre-rush pipeline + interest form,
+   contact coverage, bid outcomes, duplicate merge, and GPA eligibility are all built and
+   tested but sitting in draft pull requests (#10–#13, #15). The frontend design pass
+   merged on 1 September; everything else in this document is on `main`.
 
 2. **The database migrations have never been applied to a live database.** Migrations
    0013 and 0015–0018 exist, apply cleanly twice against a local Postgres 16, and roll
