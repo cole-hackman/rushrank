@@ -962,16 +962,30 @@ class PNMService:
         
         # Insert into pnms table (only columns that exist in the migration)
         query = """
-            INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact, created_at, archived
+            INSERT INTO pnms (chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact,
+                              stage, source, instagram_handle, owner_user_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::uuid)
+            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, fun_fact,
+                      created_at, archived, stage, source, instagram_handle, contact_status,
+                      owner_user_id, last_contacted_at
         """
-        # Validate email is required and not empty
-        if not pnm_data.email or not pnm_data.email.strip():
+        stage = pnm_data.stage.value if pnm_data.stage else "pnm"
+
+        # A prospect is often just a name and an Instagram handle -- that is the
+        # whole point of logging them early. Requiring an email would push the
+        # July DMs back into the inbox this feature exists to empty. Formal PNMs
+        # still need one, because that is how the roster is deduplicated.
+        if stage == "prospect":
+            if not (pnm_data.email or pnm_data.instagram_handle or pnm_data.phone):
+                raise HTTPException(
+                    status_code=400,
+                    detail="A prospect needs at least one of: email, phone, or Instagram handle",
+                )
+        elif not pnm_data.email or not pnm_data.email.strip():
             raise HTTPException(status_code=400, detail="Email is required")
-        
+
         # Normalize optional string fields: strip if present, convert empty strings to None
-        email = pnm_data.email.strip()
+        email = pnm_data.email.strip() if pnm_data.email and pnm_data.email.strip() else None
         phone = pnm_data.phone.strip() if pnm_data.phone and pnm_data.phone.strip() else None
         major = pnm_data.major.strip() if pnm_data.major and pnm_data.major.strip() else None
         hometown = pnm_data.hometown.strip() if pnm_data.hometown and pnm_data.hometown.strip() else None
@@ -988,9 +1002,13 @@ class PNMService:
             hometown,
             year,
             pnm_data.photo_url,
-            fun_fact
+            fun_fact,
+            stage,
+            pnm_data.source.value if pnm_data.source else None,
+            pnm_data.instagram_handle,
+            pnm_data.owner_user_id,
         )
-        
+
         pnm_id = str(row["id"])
         
         # Generate QR code and upload to storage
@@ -1043,19 +1061,32 @@ class PNMService:
             fun_fact=row.get("fun_fact"),
             chick_fil_a_order=None,
             created_at=row["created_at"],
-            archived=row["archived"]
+            archived=row["archived"],
+            stage=row["stage"],
+            source=row["source"],
+            instagram_handle=row["instagram_handle"],
+            contact_status=row["contact_status"],
+            owner_user_id=str(row["owner_user_id"]) if row["owner_user_id"] else None,
+            last_contacted_at=row["last_contacted_at"],
         )
-        
+
         # Run email and attendance in background (don't block response)
         import asyncio
         
         async def background_tasks():
+            # A prospect is somebody the chapter is still talking to. Mailing
+            # them a rush QR code the moment their name is written down, and
+            # checking them in to an event they did not attend, are both wrong
+            # -- so neither runs until they are converted to a PNM.
+            if stage == "prospect":
+                return
+
             # Send QR code email (don't block on failure)
             try:
                 await self.send_qr_email(pnm, qr_code_url)
             except Exception as e:
                 logger.error(f"Error sending QR email for PNM {pnm_id}: {e}", exc_info=True)
-            
+
             # Auto-log attendance for any events happening today in this chapter
             try:
                 from datetime import date as date_type
@@ -1085,6 +1116,210 @@ class PNMService:
         
         return pnm
     
+    async def list_pipeline(self, chapter_id: str, owner_user_id: Optional[str] = None) -> dict:
+        """Prospects grouped for the pipeline board, plus the counts above it.
+
+        Returns every prospect in one call rather than one call per column: a
+        chapter's pre-rush list is hundreds of rows at most, and paging a
+        drag-and-drop board is worse than loading it.
+        """
+        db = get_db()
+
+        conditions = ["p.chapter_id = $1::uuid", "p.stage = 'prospect'", "p.archived = false"]
+        args: list = [chapter_id]
+        if owner_user_id:
+            args.append(owner_user_id)
+            conditions.append(f"p.owner_user_id = ${len(args)}::uuid")
+
+        rows = await db.execute_query(
+            f"""
+            SELECT p.id, p.name, p.email, p.phone, p.major, p.year, p.hometown,
+                   p.photo_url, p.instagram_handle, p.source, p.contact_status,
+                   p.owner_user_id, p.last_contacted_at, p.created_at,
+                   u.name AS owner_name, u.email AS owner_email,
+                   COALESCE(ARRAY(
+                       SELECT t.label FROM pnm_tags pt
+                       JOIN tags t ON t.id = pt.tag_id
+                       WHERE pt.pnm_id = p.id
+                   ), ARRAY[]::text[]) AS tags
+            FROM pnms p
+            LEFT JOIN users u ON u.id = p.owner_user_id
+            WHERE {' AND '.join(conditions)}
+            ORDER BY p.last_contacted_at DESC NULLS FIRST, p.created_at DESC
+            """,
+            *args,
+        )
+
+        prospects = [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "email": r["email"],
+                "phone": r["phone"],
+                "major": r["major"],
+                "year": r["year"],
+                "hometown": r["hometown"],
+                "photo_url": r["photo_url"],
+                "instagram_handle": r["instagram_handle"],
+                "source": r["source"],
+                "contact_status": r["contact_status"],
+                "owner_user_id": str(r["owner_user_id"]) if r["owner_user_id"] else None,
+                "owner_name": r["owner_name"] or r["owner_email"],
+                "last_contacted_at": r["last_contacted_at"],
+                "created_at": r["created_at"],
+                "tags": list(r["tags"] or []),
+            }
+            for r in rows
+        ]
+
+        # Counts are chapter-wide even when the board is filtered to one owner,
+        # so "my 4 prospects" still shows against the chapter's 60.
+        totals = await db.execute_one(
+            """
+            SELECT
+              COUNT(*) FILTER (WHERE stage = 'prospect') AS prospects,
+              COUNT(*) FILTER (WHERE stage = 'prospect' AND owner_user_id IS NULL) AS unowned,
+              COUNT(*) FILTER (WHERE stage = 'pnm') AS pnms,
+              COUNT(*) FILTER (WHERE stage = 'prospect' AND contact_status = 'new') AS new,
+              COUNT(*) FILTER (WHERE stage = 'prospect' AND contact_status = 'contacted') AS contacted,
+              COUNT(*) FILTER (WHERE stage = 'prospect' AND contact_status = 'responded') AS responded,
+              COUNT(*) FILTER (WHERE stage = 'prospect' AND contact_status = 'invited') AS invited,
+              COUNT(*) FILTER (WHERE stage = 'prospect' AND contact_status = 'no_response') AS no_response
+            FROM pnms WHERE chapter_id = $1::uuid AND archived = false
+            """,
+            chapter_id,
+        )
+
+        by_source = await db.execute_query(
+            """
+            SELECT COALESCE(source, 'unknown') AS source, COUNT(*) AS n,
+                   COUNT(*) FILTER (WHERE stage <> 'prospect') AS converted
+            FROM pnms WHERE chapter_id = $1::uuid AND archived = false
+            GROUP BY 1 ORDER BY n DESC
+            """,
+            chapter_id,
+        )
+
+        return {
+            "prospects": prospects,
+            "counts": {k: (totals[k] or 0) for k in totals.keys()} if totals else {},
+            # Which channel actually works. A chapter that learns Instagram
+            # converts at 40% and tabling at 5% runs next year differently.
+            "by_source": [
+                {"source": r["source"], "total": r["n"], "converted": r["converted"]}
+                for r in by_source
+            ],
+        }
+
+    async def update_pipeline(self, pnm_id: str, patch: PipelineUpdate) -> dict:
+        """Apply a pipeline change and report what actually moved.
+
+        Returns before/after so the caller can write a meaningful audit entry
+        without reading the row twice.
+        """
+        db = get_db()
+
+        before = await db.execute_one(
+            """SELECT chapter_id, name, stage, contact_status, owner_user_id, source
+               FROM pnms WHERE id = $1::uuid""",
+            pnm_id,
+        )
+        if not before:
+            raise HTTPException(status_code=404, detail="PNM not found")
+
+        assignments: list[str] = []
+        args: list = [pnm_id]
+
+        def _set(column: str, value, cast: str = ""):
+            args.append(value)
+            assignments.append(f"{column} = ${len(args)}{cast}")
+
+        if patch.stage is not None:
+            _set("stage", patch.stage.value)
+        if patch.contact_status is not None:
+            _set("contact_status", patch.contact_status.value)
+        if patch.source is not None:
+            _set("source", patch.source.value)
+        if patch.instagram_handle is not None:
+            _set("instagram_handle", patch.instagram_handle)
+        if patch.owner_user_id is not None:
+            # "" clears the owner; the board sends it when a card is unassigned.
+            _set("owner_user_id", patch.owner_user_id or None, "::uuid")
+        if patch.touch:
+            assignments.append("last_contacted_at = NOW()")
+
+        if not assignments:
+            raise HTTPException(status_code=400, detail="Nothing to update")
+
+        row = await db.execute_one(
+            f"""
+            UPDATE pnms SET {', '.join(assignments)}
+            WHERE id = $1::uuid
+            RETURNING id, chapter_id, name, stage, contact_status, owner_user_id,
+                      source, instagram_handle, last_contacted_at
+            """,
+            *args,
+        )
+
+        return {
+            "chapter_id": str(before["chapter_id"]),
+            "name": before["name"],
+            "before": {
+                "stage": before["stage"],
+                "contact_status": before["contact_status"],
+                "owner_user_id": str(before["owner_user_id"]) if before["owner_user_id"] else None,
+            },
+            "after": {
+                "id": str(row["id"]),
+                "stage": row["stage"],
+                "contact_status": row["contact_status"],
+                "owner_user_id": str(row["owner_user_id"]) if row["owner_user_id"] else None,
+                "source": row["source"],
+                "instagram_handle": row["instagram_handle"],
+                "last_contacted_at": row["last_contacted_at"],
+            },
+        }
+
+    async def find_possible_duplicates(self, chapter_id: str, name: str,
+                                       email: Optional[str] = None,
+                                       instagram_handle: Optional[str] = None) -> list[dict]:
+        """Rows that might already be this person.
+
+        With DMs, an interest form, a CSV and walk-ups all feeding the same
+        table, the same person arrives three times. This does not merge -- it
+        surfaces, so whoever is logging the prospect can see it before adding
+        a fourth.
+        """
+        db = get_db()
+        handle = (instagram_handle or "").lstrip("@").lower() or None
+        rows = await db.execute_query(
+            """
+            SELECT id, name, email, instagram_handle, stage, source, created_at
+            FROM pnms
+            WHERE chapter_id = $1::uuid
+              AND archived = false
+              AND (
+                    ($2::text IS NOT NULL AND lower(email) = lower($2))
+                 OR ($3::text IS NOT NULL AND instagram_handle = $3)
+                 OR lower(name) = lower($4)
+              )
+            LIMIT 5
+            """,
+            chapter_id, email, handle, name,
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "email": r["email"],
+                "instagram_handle": r["instagram_handle"],
+                "stage": r["stage"],
+                "source": r["source"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
     async def update_pnm(self, pnm_id: str, pnm_data: PNMCreate) -> PNM:
         """Update PNM"""
         db = get_db()
@@ -1101,7 +1336,8 @@ class PNMService:
             UPDATE pnms
             SET name = $2, email = $3, phone = $4, major = $5, hometown = $6, year = $7, photo_url = $8
             WHERE id = $1
-            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, created_at
+            RETURNING id, chapter_id, name, email, phone, major, hometown, year, photo_url, created_at,
+                      stage, source, instagram_handle, contact_status, owner_user_id, last_contacted_at
         """
         
         row = await db.execute_one(
@@ -1145,9 +1381,17 @@ class PNMService:
             weirdest_talent=None,
             fun_fact=pnm_data.fun_fact if hasattr(pnm_data, 'fun_fact') else None,
             chick_fil_a_order=None,
-            created_at=row["created_at"]
+            created_at=row["created_at"],
+            # Echoed back so editing a prospect's details does not make the
+            # response claim they were promoted to a PNM.
+            stage=row["stage"],
+            source=row["source"],
+            instagram_handle=row["instagram_handle"],
+            contact_status=row["contact_status"],
+            owner_user_id=str(row["owner_user_id"]) if row["owner_user_id"] else None,
+            last_contacted_at=row["last_contacted_at"],
         )
-    
+
     async def delete_pnm(self, pnm_id: str) -> bool:
         """Delete PNM"""
         db = get_db()

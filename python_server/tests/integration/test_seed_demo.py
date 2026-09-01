@@ -46,6 +46,7 @@ async def _seed(conn, module) -> None:
         brothers = await module._upsert_brothers(conn)
         tags = await module._upsert_tags(conn)
         pnms = await module._upsert_pnms(conn, rng, tags)
+        await module._upsert_prospects(conn, brothers)
         await module._upsert_events(conn, rng, pnms, brothers)
         await module._upsert_contacts(conn, rng, pnms, brothers)
         rounds = await module._upsert_rounds(conn, rng, pnms, brothers)
@@ -67,7 +68,10 @@ async def demo_conn():
 async def _counts(conn, chapter_id) -> dict:
     row = await conn.fetchrow(
         """
-        SELECT (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1) AS pnms,
+        SELECT (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1 AND stage <> 'prospect') AS pnms,
+               (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1 AND stage = 'prospect') AS prospects,
+               (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1
+                  AND stage = 'prospect' AND owner_user_id IS NULL) AS unowned,
                (SELECT COUNT(*) FROM events WHERE chapter_id = $1) AS events,
                (SELECT COUNT(*) FROM voting_rounds WHERE chapter_id = $1) AS rounds,
                (SELECT COUNT(*) FROM memberships WHERE chapter_id = $1) AS members,
@@ -98,6 +102,10 @@ async def test_seeding_twice_produces_the_same_chapter(demo_conn):
 
     assert first == second, f"seed is not idempotent: {first} then {second}"
     assert first["pnms"] == 30
+    # The demo has to show the pipeline, and the pipeline is only interesting
+    # when some prospects have nobody chasing them.
+    assert first["prospects"] == 12
+    assert first["unowned"] > 0
     assert first["rounds"] == 2
     assert first["members"] == 6
     assert first["votes"] > 0

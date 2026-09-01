@@ -674,12 +674,45 @@ async def get_public_chapter(chapter_id: str, request: Request):
 
 @router.post("/public/chapters/{chapter_id}/intake")
 @limiter.limit(WRITE_RATE_LIMIT)
-async def public_intake(chapter_id: str, pnm_data: PNMCreate, request: Request):
-    """Self-registration by a PNM. No auth; the chapter comes from the URL."""
+async def public_intake(
+    chapter_id: str,
+    pnm_data: PNMCreate,
+    request: Request,
+    source: Optional[str] = Query(
+        None,
+        description="Where the link was shared: instagram, tabling, referral. "
+                    "Set by the shareable link so the chapter can see which "
+                    "channel actually converts.",
+    ),
+):
+    """Self-registration. No auth; the chapter comes from the URL.
+
+    Serves two flows off one endpoint. At a rush table a brother hands over a
+    phone and the person becomes a PNM. From the link in the chapter's Instagram
+    bio, months earlier, they become a *prospect* -- somebody to follow up with,
+    not a candidate to vote on. The caller says which via `stage`.
+    """
     db = get_db()
     exists = await db.execute_one("SELECT 1 FROM chapters WHERE id = $1", chapter_id)
     if not exists:
         raise HTTPException(status_code=404, detail="Chapter not found")
+
+    if source and not pnm_data.source:
+        try:
+            pnm_data.source = PNMSource(source.lower())
+        except ValueError:
+            # An unrecognized ?source= is a mistyped link, not a reason to lose
+            # the submission. The trigger in 0015 folds it to 'other' anyway.
+            pnm_data.source = PNMSource.OTHER
+    if not pnm_data.source:
+        pnm_data.source = PNMSource.INTEREST_FORM
+
+    # Nobody self-registers as anything but the front of the funnel.
+    if pnm_data.stage not in (PNMStage.PROSPECT, PNMStage.PNM):
+        pnm_data.stage = PNMStage.PNM
+    # A public form can never assign an owner.
+    pnm_data.owner_user_id = None
+
     return await pnm_service.create_pnm(pnm_data, chapter_id)
 
 
@@ -790,19 +823,26 @@ async def merge_pnm(
 async def get_pnms(
     chapter_id: str = Query(..., description="Chapter ID"),
     include_archived: bool = Query(False, description="Include archived PNMs"),
+    stage: Optional[str] = Query(
+        None,
+        description="Filter by pipeline stage. Defaults to everyone in formal "
+                    "rush (pnm/bid/pledged); pass 'all' to include prospects.",
+    ),
     current_user: dict = Depends(get_current_user)
 ):
     """Get PNMs for a chapter with stats"""
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
-    
+
     db = get_db()
-    
+
     # `archived` is guaranteed present by 0013; the include_archived flag simply
     # widens the filter.
     query = """
         SELECT
             p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
             p.photo_url, p.created_at, p.archived,
+            p.stage, p.source, p.instagram_handle, p.contact_status,
+            p.owner_user_id, p.last_contacted_at,
             COALESCE(ARRAY(
                 SELECT t.label FROM pnm_tags pt
                 JOIN tags t ON t.id = pt.tag_id
@@ -842,13 +882,30 @@ async def get_pnms(
     if not include_archived:
         query += " AND p.archived = false"
 
+    # The roster is people in formal rush. Prospects live on the pipeline board
+    # until someone converts them, so they must not silently pad the PNM count,
+    # the analytics, or a voting round's candidate list.
+    # $2 is the viewer, for met_by_me above. A stage filter therefore starts at
+    # $3, which the len(params) numbering below takes care of.
+    params: list = [chapter_id, current_user["user_id"]]
+    if stage == "all":
+        pass
+    elif stage:
+        params.append(stage)
+        query += f" AND p.stage = ${len(params)}"
+    else:
+        query += " AND p.stage <> 'prospect'"
+
     query += """
         GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
-                 p.photo_url, p.created_at, p.archived
+                 p.photo_url, p.created_at, p.archived,
+                 p.stage, p.source, p.instagram_handle, p.contact_status,
+                 p.owner_user_id, p.last_contacted_at
         ORDER BY p.name
     """
 
-    rows = await db.execute_query(query, chapter_id, current_user["user_id"])
+    rows = await db.execute_query(query, *params)
+
 
     return [
         {
@@ -872,6 +929,12 @@ async def get_pnms(
             "yes_percentage": float(row["yes_percentage"]) if row["yes_percentage"] else None,
             "is_favorite": bool(row["is_favorite"]),
             "favorite_count": int(row["favorite_count"]) if row["favorite_count"] else 0,
+            "stage": row["stage"],
+            "source": row["source"],
+            "instagram_handle": row["instagram_handle"],
+            "contact_status": row["contact_status"],
+            "owner_user_id": str(row["owner_user_id"]) if row["owner_user_id"] else None,
+            "last_contacted_at": row["last_contacted_at"],
             "met_count": int(row["met_count"] or 0),
             "met_by_me": bool(row["met_by_me"]),
         }
@@ -887,6 +950,104 @@ async def create_pnm(
     """Create new PNM (all members)"""
     await chapter_service.verify_membership(current_user["user_id"], chapter_id)
     return await pnm_service.create_pnm(pnm_data, chapter_id)
+
+# ---------------------------------------------------------------------------
+# Pre-rush pipeline
+#
+# The front half of the funnel: people the chapter is talking to before formal
+# rush starts. Same table as PNMs (see migration 0015), so notes, tags and
+# photos all work from the first DM.
+# ---------------------------------------------------------------------------
+
+@router.get("/chapters/{chapter_id}/pipeline")
+async def get_pipeline(
+    chapter_id: str,
+    mine: bool = Query(False, description="Only prospects this user owns"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Prospect board, plus counts and per-source conversion."""
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    return await pnm_service.list_pipeline(
+        chapter_id,
+        owner_user_id=current_user["user_id"] if mine else None,
+    )
+
+@router.patch("/pnms/{pnm_id}/pipeline")
+async def update_pnm_pipeline(
+    pnm_id: str,
+    patch: PipelineUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Move a prospect: change stage, owner, contact status, or stamp a touch.
+
+    Any member can do this. Claiming a prospect and replying to him is the whole
+    job of rush, and gating it behind exec would put the follow-up back in the
+    group chat this feature exists to replace.
+    """
+    pnm = await pnm_service.get_pnm(pnm_id)
+    if not pnm:
+        raise HTTPException(status_code=404, detail="PNM not found")
+    await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+
+    # "I'll take this" is the common case by a wide margin, and the sentinel
+    # spares every client from having to know its own user id.
+    if patch.owner_user_id == "me":
+        patch.owner_user_id = current_user["user_id"]
+
+    result = await pnm_service.update_pipeline(pnm_id, patch)
+
+    # A stage change is a real decision -- converting a prospect into formal
+    # rush, or marking a bid accepted. Status and owner churn is not, and
+    # logging every drag would bury the decisions.
+    if result["before"]["stage"] != result["after"]["stage"]:
+        await audit.record(
+            result["chapter_id"], current_user["user_id"], "pnm.stage_change",
+            entity_type="pnm", entity_id=pnm_id,
+            before={"stage": result["before"]["stage"], "name": result["name"]},
+            after={"stage": result["after"]["stage"]},
+        )
+
+    return result["after"]
+
+@router.get("/chapters/{chapter_id}/interest-qr")
+async def get_interest_qr(
+    chapter_id: str,
+    source: str = Query("tabling", description="Tagged onto the encoded link"),
+    current_user: dict = Depends(get_current_user)
+):
+    """QR for the public interest form, to print for a tabling sign.
+
+    The same link that goes in the Instagram bio, in a form somebody can point a
+    phone at across a table at the activities fair.
+    """
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+
+    import qrcode
+    from io import BytesIO
+
+    site = os.getenv("PUBLIC_SITE_URL", "https://rushrank.app").rstrip("/")
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(f"{site}/interest?chapter={chapter_id}&source={source}")
+    qr.make(fit=True)
+
+    buf = BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+@router.get("/chapters/{chapter_id}/pipeline/duplicates")
+async def check_pipeline_duplicates(
+    chapter_id: str,
+    name: str = Query(...),
+    email: Optional[str] = Query(None),
+    instagram_handle: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Anyone already in this chapter who might be the same person."""
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    matches = await pnm_service.find_possible_duplicates(
+        chapter_id, name, email, instagram_handle
+    )
+    return {"matches": matches}
 
 # ---------------------------------------------------------------------------
 # Contact coverage

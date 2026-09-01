@@ -184,6 +184,59 @@ async def _upsert_pnms(conn, rng: random.Random, tag_ids: dict) -> list[uuid.UUI
     return pnm_ids
 
 
+async def _upsert_prospects(conn, brother_ids) -> list[uuid.UUID]:
+    """The pre-rush pipeline: people the chapter is still talking to.
+
+    Spread across contact statuses and sources, with a few deliberately
+    unowned, because "nobody has replied to this guy" is the state the board
+    exists to make visible.
+    """
+    marcus = brother_ids[BROTHERS[0][1]]
+    devin = brother_ids[BROTHERS[1][1]]
+    ty = brother_ids[BROTHERS[2][1]]
+
+    prospects = [
+        # (name, handle, source, contact_status, owner, days since contact)
+        ("Theo Lindqvist", "theo.lqv", "instagram", "responded", devin, 2),
+        ("Mateo Guerrero", "mateoguerrero", "instagram", "contacted", devin, 5),
+        ("Callum Reyes", "callum.r", "instagram", "new", None, None),
+        ("Anders Holm", "andersholm", "instagram", "invited", marcus, 1),
+        ("Rafael Duarte", "rafduarte", "tabling", "contacted", ty, 6),
+        ("Nico Bellandi", None, "tabling", "new", None, None),
+        ("Jamie Okonkwo", "jamie.oko", "referral", "responded", marcus, 3),
+        ("Simon Vas", "simonvas", "referral", "invited", ty, 1),
+        ("Beau Trenton", None, "interest_form", "new", None, None),
+        ("Kai Fontaine", "kaifontaine", "interest_form", "no_response", devin, 21),
+        ("Emil Nagy", "emilnagy", "instagram", "no_response", None, 18),
+        ("Dashiell Wren", "dashwren", "walk_up", "responded", ty, 4),
+    ]
+
+    now = datetime.now(timezone.utc)
+    ids: list[uuid.UUID] = []
+    for name, handle, source, status, owner, days_ago in prospects:
+        prospect_id = _id("prospect", name)
+        ids.append(prospect_id)
+        await conn.execute(
+            """
+            INSERT INTO pnms (id, chapter_id, name, email, instagram_handle,
+                              stage, source, contact_status, owner_user_id, last_contacted_at)
+            VALUES ($1, $2, $3, $4, $5, 'prospect', $6, $7, $8, $9)
+            ON CONFLICT (id) DO UPDATE SET
+                stage = 'prospect', source = EXCLUDED.source,
+                contact_status = EXCLUDED.contact_status,
+                owner_user_id = EXCLUDED.owner_user_id,
+                instagram_handle = EXCLUDED.instagram_handle,
+                last_contacted_at = EXCLUDED.last_contacted_at
+            """,
+            prospect_id, CHAPTER_ID, name,
+            # Most prospects have not given an email yet -- that is the point.
+            f"{handle}@riverside.edu" if handle and status == "invited" else None,
+            handle, source, status, owner,
+            now - timedelta(days=days_ago) if days_ago is not None else None,
+        )
+    return ids
+
+
 async def _upsert_events(conn, rng, pnm_ids, brother_ids) -> None:
     now = datetime.now(timezone.utc)
     checker = next(iter(brother_ids.values()))
@@ -449,6 +502,7 @@ async def main() -> int:
             brother_ids = await _upsert_brothers(conn)
             tag_ids = await _upsert_tags(conn)
             pnm_ids = await _upsert_pnms(conn, rng, tag_ids)
+            await _upsert_prospects(conn, brother_ids)
             await _upsert_events(conn, rng, pnm_ids, brother_ids)
             await _upsert_contacts(conn, rng, pnm_ids, brother_ids)
             round_ids = await _upsert_rounds(conn, rng, pnm_ids, brother_ids)
@@ -459,7 +513,8 @@ async def main() -> int:
 
         counts = await conn.fetchrow(
             """
-            SELECT (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1) AS pnms,
+            SELECT (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1 AND stage <> 'prospect') AS pnms,
+                   (SELECT COUNT(*) FROM pnms WHERE chapter_id = $1 AND stage = 'prospect') AS prospects,
                    (SELECT COUNT(*) FROM events WHERE chapter_id = $1) AS events,
                    (SELECT COUNT(*) FROM voting_rounds WHERE chapter_id = $1) AS rounds,
                    (SELECT COUNT(*) FROM votes v JOIN voting_rounds r ON r.id = v.round_id
@@ -472,7 +527,8 @@ async def main() -> int:
         await conn.close()
 
     print(f"Demo chapter {CHAPTER_ID} ({CHAPTER_NAME})")
-    print(f"  {counts['pnms']} PNMs, {counts['events']} events, {counts['rounds']} rounds, "
+    print(f"  {counts['pnms']} PNMs, {counts['prospects']} prospects, "
+          f"{counts['events']} events, {counts['rounds']} rounds, "
           f"{counts['votes']} votes, {counts['members']} members")
     print(f"  demo login: {login}")
     return 0
