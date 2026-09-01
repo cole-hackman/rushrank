@@ -10,7 +10,7 @@ export function MarketingFooter() {
           {/* Brand */}
           <div>
             <h3 className="font-semibold text-fg">RushRank</h3>
-            <p className="mt-2 text-sm text-muted">
+            <p className="mt-2 text-sm text-muted-foreground">
               Modern rush management for fraternities.
             </p>
           </div>
@@ -18,7 +18,7 @@ export function MarketingFooter() {
           {/* Links */}
           <div>
             <h4 className="font-semibold text-fg">Product</h4>
-            <ul className="mt-2 space-y-1 text-sm text-muted">
+            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
               <li>
                 <a href="#" className="hover:text-accent-fg transition">
                   Features
@@ -40,7 +40,7 @@ export function MarketingFooter() {
           {/* Company */}
           <div>
             <h4 className="font-semibold text-fg">Company</h4>
-            <ul className="mt-2 space-y-1 text-sm text-muted">
+            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
               <li>
                 <a href="#" className="hover:text-accent-fg transition">
                   About
@@ -61,7 +61,7 @@ export function MarketingFooter() {
         </div>
 
         <div className="mt-8 border-t border-border pt-8">
-          <p className="text-center text-sm text-muted">
+          <p className="text-center text-sm text-muted-foreground">
             &copy; {currentYear} RushRank. All rights reserved.
           </p>
         </div>
