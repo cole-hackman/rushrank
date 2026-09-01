@@ -565,6 +565,42 @@ async def patch_my_bid_list_entry(
     )
 
 
+class OutcomeRequest(BaseModel):
+    outcome: str
+    declined_reason: Optional[str] = None
+
+
+@router.patch("/chapters/me/bid-list/entries/{pnm_id}/outcome")
+async def set_bid_outcome(
+    pnm_id: str,
+    payload: OutcomeRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Record what happened to a bid: offered, accepted, or declined.
+
+    Deliberately not gated behind the editor lock. The lock exists so two
+    people do not reorder the board against each other; recording that someone
+    accepted is a fact arriving from the outside world, often days later and
+    from whoever happens to hear it first.
+    """
+    chapter_id, _ = await _require_admin_or_exec(current_user)
+    active = await bid_list_service.get_active(chapter_id)
+    if not active:
+        raise HTTPException(status_code=404, detail="No bid list yet")
+
+    result = await bid_list_service.set_outcome(
+        active["id"], pnm_id, payload.outcome,
+        current_user["user_id"], payload.declined_reason,
+    )
+
+    await audit.record(
+        chapter_id, current_user["user_id"], "bid.outcome",
+        entity_type="pnm", entity_id=pnm_id,
+        after={"outcome": result["outcome"], "declined_reason": result["declined_reason"]},
+    )
+    return result
+
+
 @router.post("/chapters/me/bid-list/finalize")
 async def finalize_my_bid_list(current_user: dict = Depends(get_current_user)):
     chapter_id, _ = await _require_admin_or_exec(current_user)
