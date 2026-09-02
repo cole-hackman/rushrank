@@ -131,24 +131,33 @@ Hardened anyway because the failure mode is silent and the fix is three lines.
 
 ---
 
-## Open — needs your call
+## Product calls — decided and implemented
 
-### The chair cannot end a live session from the UI
+### 8. The chair can now end a live session
 
-The chair's controls are "Lock Voting" and "Next PNM". There is no End Session
-button, so a session can only be closed by advancing through every remaining
-PNM. If the room needs to stop early — running late, taking a break, wrong
-round started — there is no way out from the interface.
+New `POST /sessions/{id}/end` performs the same close-out `advance` already did
+when it ran off the end of the list, but callable at any point: a room that
+needs to stop early — running late, wrong round opened — no longer has to
+advance through every remaining PNM to get out. Votes already cast are kept;
+ending closes the room, it does not discard the round. Voters are told over the
+websocket rather than being left voting into a closed session.
 
-Adding one is easy; where it goes and whether it needs a confirm is a product
-decision, so I have left it.
+The button sits on its own row rather than beside "Next PNM" on purpose. The
+chair taps Next PNM dozens of times a session, usually on a phone, and a
+destructive control the same size and colour immediately next to it is a
+mis-tap waiting to happen.
 
-### Voting is missing from the mobile bottom navigation
+Verified end to end: chair-only (hidden from members), confirms before firing,
+closes the session in the database, keeps all 2,345 votes, redirects the chair
+to results, redirects watching voters too, and returns 404 rather than 500 when
+called on an already-ended session.
 
-The bottom nav is Home / Rush / PNMs / Events. On Thursday the voting screen is
-the one every brother needs, and it is the one flow not reachable from the
-persistent mobile nav — you go through the hamburger instead. Which four items
-earn a slot is your call.
+### 9. Voting is in the mobile bottom nav
+
+Added after PNMs — you look at the candidate, then you vote on him. Five items
+fit a 390px phone with the rightmost edge at 373px and every touch target at
+56×56, comfortably above the 44px threshold. Horizontal padding dropped from
+`px-3` to `px-2` to make room without shrinking the targets.
 
 ---
 
@@ -168,6 +177,10 @@ earn a slot is your call.
 - **Two logo images have no alt text** (landing, get-started).
 - **Tag deletion is behind a kebab menu the harness could not reach**, so it is
   untested rather than known-good.
+- **The live-session header crowds on a phone.** "Live Voting Session" wraps to
+  two lines and "Join Code:" wraps beneath it, pushing the code itself out of
+  alignment with its label. Cosmetic, but it is the first thing the room looks
+  at when reading out the code.
 
 ---
 

@@ -2798,6 +2798,51 @@ async def toggle_session_lock(
     
     return {"success": True, "locked": locked}
 
+@router.post("/sessions/{session_id}/end")
+async def end_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """End a live session early (chair only).
+
+    The same close-out `advance` performs when it runs off the end of the list,
+    but callable at any point. Previously the only way out of a session was to
+    advance through every remaining PNM, so a room that needed to stop -- running
+    late, wrong round opened, taking a break -- had no way to do it from the
+    interface.
+
+    Votes already cast are left exactly as they are: ending the session closes
+    the room, it does not discard the round.
+    """
+    db = get_db()
+
+    session_row = await db.execute_one(
+        """
+        SELECT s.id, s.round_id, vr.chapter_id
+        FROM sessions s
+        JOIN voting_rounds vr ON vr.id = s.round_id
+        WHERE s.id = $1 AND s.ended_at IS NULL
+        """,
+        session_id,
+    )
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found or already ended")
+
+    await chapter_service.verify_admin_access(current_user["user_id"], str(session_row["chapter_id"]))
+
+    round_id = str(session_row["round_id"])
+    await db.execute_command("UPDATE sessions SET ended_at = NOW() WHERE id = $1", session_id)
+    await db.execute_command(
+        "UPDATE voting_rounds SET status = 'ENDED', ended_at = NOW() WHERE id = $1", round_id
+    )
+
+    # Everyone still on the swipe card needs to be told, or they keep voting
+    # into a session that is closed and get a 400 for their trouble.
+    await ws_manager.broadcast_session_end(session_id, round_id)
+
+    return {"success": True, "session_ended": True, "round_id": round_id}
+
+
 @router.post("/sessions/{session_id}/advance")
 async def advance_session(
     session_id: str,
