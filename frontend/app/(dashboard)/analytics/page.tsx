@@ -69,6 +69,9 @@ type BrotherVotingPattern = {
   unknown_votes: number;
   pattern: "Supportive" | "Harsh" | "Balanced";
   status: "Active" | "Low Activity" | "Top Contributor";
+  /** False when the brother has cast no votes, so the row shows "—" rather
+   *  than labelling someone on the strength of no data at all. */
+  hasVoted: boolean;
 };
 
 type Event = {
@@ -82,7 +85,8 @@ type Event = {
 
 type AnalyticsStats = {
   totalVotes: number;
-  avgParticipation: number;
+  /** null when it cannot be computed for this viewer -- shown as "—". */
+  avgParticipation: number | null;
   controversialPnms: number;
   completedRounds: number;
   roundsInProgress: number;
@@ -95,7 +99,7 @@ export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState("round-comparison");
   const [stats, setStats] = useState<AnalyticsStats>({
     totalVotes: 0,
-    avgParticipation: 0,
+    avgParticipation: null,
     controversialPnms: 0,
     completedRounds: 0,
     roundsInProgress: 0,
@@ -103,6 +107,9 @@ export default function AnalyticsPage() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [pnmResults, setPnmResults] = useState<PNMResult[]>([]);
   const [votingPatterns, setVotingPatterns] = useState<BrotherVotingPattern[]>([]);
+  // The chapter's own average yes-rate; "harsh" and "supportive" are only
+  // meaningful relative to it.
+  const [chapterAverageYes, setChapterAverageYes] = useState<number | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedRoundRange, setSelectedRoundRange] = useState("all");
 
@@ -171,8 +178,20 @@ export default function AnalyticsPage() {
       const completedRounds = roundsData.filter((r) => r.status === "completed" || r.status === "COMPLETED").length;
       const roundsInProgress = roundsData.filter((r) => r.status === "active" || r.status === "ACTIVE").length;
 
-      // Calculate average participation (simplified - would need actual voting data)
-      const avgParticipation = roundsData.length > 0 ? 87 : 0; // Placeholder
+      // Real participation: votes cast over votes available, computed server
+      // side from the votes table. This was hardcoded to 87 with a comment
+      // calling it a placeholder, and rendered to the chapter as a fact.
+      let avgParticipation: number | null = null;
+      try {
+        const patterns = await api<{ average_participation: number | null }>(
+          `/chapters/${cid}/voting-patterns`
+        );
+        avgParticipation = patterns.average_participation;
+      } catch {
+        // Members (not admins) cannot read this; the tile shows "—" for them
+        // rather than a number nobody can stand behind.
+        avgParticipation = null;
+      }
 
       setStats({
         totalVotes,
@@ -275,45 +294,63 @@ export default function AnalyticsPage() {
   const loadVotingPatterns = async () => {
     if (!chapterId) return;
     try {
-      // Get memberships
-      const memberships = await api<any[]>(`/memberships?chapter_id=${chapterId}`);
-      const roundsData = await api<Round[]>(`/rounds?chapter_id=${chapterId}`);
+      // Every figure here is computed from the votes table by
+      // VotingService.get_voting_patterns.
+      //
+      // This function used to generate the whole panel with Math.random() --
+      // participation, vote counts, and the Supportive/Harsh label derived from
+      // them -- while the tooltip beside it described a methodology that did not
+      // exist. Real brothers were labelled by a coin flip, the numbers changed
+      // on every render, and the CSV button exported it.
+      const data = await api<{
+        chapter_average_yes: number | null;
+        opportunities: number;
+        average_participation: number | null;
+        members: Array<{
+          user_id: string;
+          name: string | null;
+          email: string;
+          role: string;
+          votes_cast: number;
+          yes_votes: number;
+          no_votes: number;
+          unknown_votes: number;
+          participation: number | null;
+          yes_percentage: number | null;
+          pattern: "Supportive" | "Harsh" | "Balanced" | null;
+        }>;
+      }>(`/chapters/${chapterId}/voting-patterns`);
 
-      // For each member, calculate voting patterns
-      // Note: This is a simplified version - would need actual vote data from backend
-      const patterns: BrotherVotingPattern[] = memberships.map((member) => {
-        // Placeholder data - would need backend endpoint for actual voting patterns
-        const participation = Math.floor(Math.random() * 30) + 70; // 70-100%
-        const yesVotes = Math.floor(Math.random() * 50) + 30;
-        const noVotes = Math.floor(Math.random() * 30) + 10;
-        const unknownVotes = Math.floor(Math.random() * 5);
-
-        const yesPercentage = (yesVotes / (yesVotes + noVotes + unknownVotes)) * 100;
-        let pattern: "Supportive" | "Harsh" | "Balanced" = "Balanced";
-        if (yesPercentage > 65) pattern = "Supportive";
-        else if (yesPercentage < 40) pattern = "Harsh";
-
-        let status: "Active" | "Low Activity" | "Top Contributor" = "Active";
-        if (participation < 50) status = "Low Activity";
-        else if (participation > 95 && yesVotes > 60) status = "Top Contributor";
-
-        return {
-          id: member.id,
-          name: member.email.split("@")[0].replace(/\./g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase()),
-          email: member.email,
-          role: member.role,
-          participation,
-          yes_votes: yesVotes,
-          no_votes: noVotes,
-          unknown_votes: unknownVotes,
-          pattern,
-          status,
-        };
-      });
-
-      setVotingPatterns(patterns);
+      setChapterAverageYes(data.chapter_average_yes);
+      setVotingPatterns(
+        data.members.map((m) => ({
+          id: m.user_id,
+          name: m.name || m.email.split("@")[0].replace(/\./g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase()),
+          email: m.email,
+          role: m.role,
+          participation: Math.round(m.participation ?? 0),
+          yes_votes: m.yes_votes,
+          no_votes: m.no_votes,
+          unknown_votes: m.unknown_votes,
+          // Someone who has not voted yet gets no label rather than a guess.
+          pattern: m.pattern ?? "Balanced",
+          hasVoted: m.votes_cast > 0,
+          status:
+            m.votes_cast === 0
+              ? "Low Activity"
+              : (m.participation ?? 0) >= 90
+                ? "Top Contributor"
+                : (m.participation ?? 0) < 50
+                  ? "Low Activity"
+                  : "Active",
+        }))
+      );
     } catch (e: any) {
       console.error("Failed to load voting patterns:", e);
+      toast({
+        title: "Could not load voting patterns",
+        description: e?.status === 403 ? "Voting patterns are admin-only." : e?.message,
+      });
     }
   };
 
@@ -500,16 +537,16 @@ export default function AnalyticsPage() {
               </span>
             </div>
             <span className="text-heading-1 font-heading-1 text-default-font">
-              {loading ? "..." : `${stats.avgParticipation}%`}
+              {loading ? "..." : stats.avgParticipation === null ? "—" : `${stats.avgParticipation}%`}
             </span>
-            <div className="flex items-center gap-1">
-              <Badge variant="success" icon={<FeatherTrendingUp />}>
-                +5%
-              </Badge>
-              <span className="text-caption font-caption text-subtext-color">
-                vs last round
-              </span>
-            </div>
+            {/* The "+5% vs last round" badge that used to sit here was a
+                constant, not a trend -- it read as a measurement and never
+                moved. Say what the number actually means instead. */}
+            <span className="text-caption font-caption text-subtext-color">
+              {stats.avgParticipation === null
+                ? "Admins only"
+                : "votes cast vs votes available"}
+            </span>
           </div>
           <div className="flex flex-col items-start gap-3 rounded-lg border border-solid border-neutral-border bg-white px-6 py-4">
             <div className="flex items-center gap-2">
@@ -731,7 +768,15 @@ export default function AnalyticsPage() {
             <Alert
               variant="brand"
               title="How voting patterns are calculated"
-              description="Harshness is determined by yes-vote percentage relative to chapter average. Participation shows votes cast vs total opportunities."
+              description={
+                "Computed from votes actually cast. Participation is votes cast divided by " +
+                "votes available across every round the chapter has run. A brother is " +
+                "Supportive or Harsh when his yes-rate is more than 10 points above or below " +
+                (chapterAverageYes !== null
+                  ? `the chapter average of ${chapterAverageYes}%`
+                  : "the chapter average") +
+                ". Brothers who have not voted yet are not labelled."
+              }
             />
             <Table
               header={
@@ -787,17 +832,24 @@ export default function AnalyticsPage() {
                     </span>
                   </Table.Cell>
                   <Table.Cell>
-                    <Badge
-                      variant={
-                        pattern.pattern === "Supportive"
-                          ? "success"
-                          : pattern.pattern === "Harsh"
-                            ? "error"
-                            : "neutral"
-                      }
-                    >
-                      {pattern.pattern}
-                    </Badge>
+                    {/* No votes, no verdict. Calling someone "Balanced" on the
+                        strength of nothing is the same mistake as calling them
+                        "Harsh" at random. */}
+                    {pattern.hasVoted ? (
+                      <Badge
+                        variant={
+                          pattern.pattern === "Supportive"
+                            ? "success"
+                            : pattern.pattern === "Harsh"
+                              ? "error"
+                              : "neutral"
+                        }
+                      >
+                        {pattern.pattern}
+                      </Badge>
+                    ) : (
+                      <span className="text-body font-body text-subtext-color">—</span>
+                    )}
                   </Table.Cell>
                   <Table.Cell>
                     {pattern.status === "Top Contributor" ? (

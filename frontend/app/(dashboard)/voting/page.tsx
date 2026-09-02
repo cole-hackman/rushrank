@@ -12,6 +12,7 @@ import {
   Lock,
   ShieldCheck,
   SkipForward,
+  Square,
   Star,
   Unlock,
   Users,
@@ -380,6 +381,35 @@ export default function VotingPage() {
     }
   };
 
+  const endSession = async () => {
+    if (!session) return;
+    // Ending closes the room for everyone, not just this device, so it asks
+    // first. Votes already cast are kept -- the round is closed, not discarded.
+    const confirmed = window.confirm(
+      "End the session for everyone? Votes already cast are kept, and you'll be taken to the results."
+    );
+    if (!confirmed) return;
+
+    const roundId = session.round_id;
+    try {
+      await api(`/sessions/${session.id}/end`, { method: "POST" });
+      toast({ title: "Session ended", description: "Taking you to the results…" });
+      setSession(null);
+      setSessionPNM(null);
+      setTimeout(() => router.push(`/results?roundId=${roundId}`), 900);
+    } catch (e: any) {
+      // Someone else may have ended it, or it ran off the end of the list.
+      if (e?.status === 404) {
+        toast({ title: "Session already ended", description: "Taking you to the results…" });
+        setSession(null);
+        setSessionPNM(null);
+        setTimeout(() => router.push(`/results?roundId=${roundId}`), 900);
+        return;
+      }
+      toast({ title: "Could not end the session", description: e?.message });
+    }
+  };
+
   const toggleLock = async () => {
     if (!session) return;
     const nextLocked = !session.locked;
@@ -655,22 +685,37 @@ export default function VotingPage() {
                         onDragEnd={handleDragEnd}
                       />
                       {isChair && (
-                        <div className="flex gap-3">
+                        <div className="space-y-3">
+                          <div className="flex gap-3">
+                            <Button
+                              variant="neutral-secondary"
+                              icon={session.locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                              onClick={toggleLock}
+                              className="flex-1"
+                            >
+                              {session.locked ? "Unlock Voting" : "Lock Voting"}
+                            </Button>
+                            <Button
+                              variant="neutral-secondary"
+                              icon={<SkipForward className="h-4 w-4" />}
+                              onClick={advanceSession}
+                              className="flex-1"
+                            >
+                              Next PNM
+                            </Button>
+                          </div>
+                          {/* Deliberately on its own row rather than beside
+                              "Next PNM". The chair taps Next PNM dozens of times
+                              in a session, often on a phone; a destructive
+                              control the same size and colour immediately next
+                              to it is a mis-tap waiting to happen. */}
                           <Button
-                            variant="neutral-secondary"
-                            icon={session.locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                            onClick={toggleLock}
-                            className="flex-1"
+                            variant="destructive-secondary"
+                            icon={<Square className="h-4 w-4" />}
+                            onClick={endSession}
+                            className="w-full"
                           >
-                            {session.locked ? "Unlock Voting" : "Lock Voting"}
-                          </Button>
-                          <Button
-                            variant="neutral-secondary"
-                            icon={<SkipForward className="h-4 w-4" />}
-                            onClick={advanceSession}
-                            className="flex-1"
-                          >
-                            Next PNM
+                            End Session
                           </Button>
                         </div>
                       )}

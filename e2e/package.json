@@ -1,0 +1,12 @@
+{
+  "name": "rushrank-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Local end-to-end harness. Not part of the app build.",
+  "scripts": {
+    "voting": "node voting.mjs",
+    "crawl": "node crawl.mjs",
+    "visual": "node visual.mjs"
+  },
+  "dependencies": { "playwright": "^1.62.1" }
+}

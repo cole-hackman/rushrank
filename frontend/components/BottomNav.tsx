@@ -3,7 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Home, ClipboardList, Users, Calendar } from "lucide-react";
+import { Home, ClipboardList, Users, Calendar, Vote } from "lucide-react";
 
 interface NavItem {
     label: string;
@@ -11,10 +11,14 @@ interface NavItem {
     icon: React.ReactNode;
 }
 
+// Voting sits after PNMs: you look at the candidate, then you vote on him.
+// It was previously reachable only through the hamburger, which is a poor place
+// for the one screen the whole chapter is on during a live session.
 const navItems: NavItem[] = [
     { label: "Home", href: "/dashboard", icon: <Home className="h-5 w-5" /> },
     { label: "Rush", href: "/rush", icon: <ClipboardList className="h-5 w-5" /> },
     { label: "PNMs", href: "/pnms", icon: <Users className="h-5 w-5" /> },
+    { label: "Voting", href: "/voting", icon: <Vote className="h-5 w-5" /> },
     { label: "Events", href: "/events", icon: <Calendar className="h-5 w-5" /> },
 ];
 
@@ -31,7 +35,10 @@ export function BottomNav() {
                             key={item.href}
                             href={item.href}
                             className={cn(
-                                "flex flex-col items-center justify-center min-w-[48px] min-h-[48px] px-3 py-2 rounded-xl transition-all duration-200",
+                                // px-2 rather than px-3: five items have to fit
+                                // across a 390px phone without the labels
+                                // colliding. The 48px touch target is kept.
+                                "flex flex-col items-center justify-center min-w-[48px] min-h-[48px] px-2 py-2 rounded-xl transition-all duration-200",
                                 "active:scale-95",
                                 isActive
                                     ? "text-beta-navy dark:text-white"
