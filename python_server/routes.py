@@ -1606,6 +1606,20 @@ async def delete_note(
     return APIResponse(success=True, message="Note deleted")
 
 # Voting endpoints
+@router.get("/chapters/{chapter_id}/voting-patterns")
+async def get_voting_patterns(
+    chapter_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Per-brother voting behaviour for the analytics panel.
+
+    Admin-only: it attributes vote counts and a Supportive/Harsh label to named
+    members, which is not something the whole chapter should be browsing.
+    """
+    await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
+    return await voting_service.get_voting_patterns(chapter_id)
+
+
 @router.get("/rounds", response_model=List[VotingRound])
 async def get_rounds(
     chapter_id: str = Query(..., description="Chapter ID"),
@@ -2335,8 +2349,17 @@ async def ensure_open_round(
             # Generate room code
             room_code = voting_service._generate_room_code()
             
-            # Get all PNM IDs for this chapter
-            pnm_ids_row = await db.execute_query("SELECT id FROM pnms WHERE chapter_id = $1", chapter_id)
+            # Everyone in formal rush, and only them. Prospects belong to the
+            # pipeline board until someone converts them, and archived rows are
+            # archived for a reason -- neither should turn up on a swipe card,
+            # or pad the denominator every percentage in the round is read
+            # against. Ordered so the round is stable across restarts.
+            pnm_ids_row = await db.execute_query(
+                """SELECT id FROM pnms
+                   WHERE chapter_id = $1 AND archived = false AND stage <> 'prospect'
+                   ORDER BY name""",
+                chapter_id,
+            )
             pnm_ids_array = [str(r["id"]) for r in pnm_ids_row] if pnm_ids_row else []
             
             round_row = await db.execute_one("""
@@ -2491,12 +2514,26 @@ async def create_session(
             logger.warning(f"Error ending existing sessions: {e}")
             # Continue anyway
         
-        # Create new round for this session
-        pnm_ids_row = await db.execute_query("SELECT id FROM pnms WHERE chapter_id = $1", chapter_id)
+        # Create new round for this session.
+        #
+        # Everyone in formal rush, and only them. A live session that includes
+        # prospects puts people the chapter has not actually rushed onto the
+        # swipe card in front of the whole room, and archived rows drag the
+        # count up with candidates nobody meant to consider. Ordered by name so
+        # the running order is stable if the session has to be restarted.
+        pnm_ids_row = await db.execute_query(
+            """SELECT id FROM pnms
+               WHERE chapter_id = $1 AND archived = false AND stage <> 'prospect'
+               ORDER BY name""",
+            chapter_id,
+        )
         pnm_ids = [str(r["id"]) for r in pnm_ids_row] if pnm_ids_row else []
-        
+
         if not pnm_ids:
-            raise HTTPException(status_code=400, detail="No PNMs found for this chapter")
+            raise HTTPException(
+                status_code=400,
+                detail="No PNMs in formal rush for this chapter. Convert prospects on the pipeline board first.",
+            )
         
         room_code = voting_service._generate_room_code()
         join_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))

@@ -168,7 +168,19 @@ class ChapterService:
         # asyncpg may return JSONB as dict or as JSON string depending on codec setup
         if isinstance(theme, str):
             theme = json.loads(theme)
-        return dict(theme)
+        theme = dict(theme or {})
+
+        # Normalise before returning. The column default has the right shape, but
+        # nothing stops a row carrying something else -- an older theme written
+        # before this shape existed, a hand-edited row, a partial write. Handing
+        # that straight to the client meant the settings card read `enabled` as
+        # undefined, JSON.stringify dropped the key on save, and the PATCH came
+        # back 422 "Field required: enabled" with nothing on screen to explain it.
+        return {
+            "enabled": bool(theme.get("enabled", False)),
+            "accent_hex": theme.get("accent_hex") if isinstance(theme.get("accent_hex"), str) else None,
+            "source": theme.get("source") if theme.get("source") in ("auto", "manual") else "auto",
+        }
 
     async def update_theme(self, chapter_id: str, user_id: str, patch: dict) -> dict:
         """Admin-only: validate + persist new theme."""
@@ -1809,6 +1821,117 @@ class VotingService:
             for row in rows
         ]
 
+    async def get_voting_patterns(self, chapter_id: str) -> Dict[str, Any]:
+        """Per-brother voting behaviour, computed from the votes actually cast.
+
+        The analytics panel that shows this used to invent every number with
+        Math.random() on each render, while a tooltip explained a methodology
+        that did not exist -- so real, named brothers were labelled "Harsh" or
+        "Low Activity" by a coin flip, and the CSV export circulated it. Every
+        figure here comes out of the votes table instead.
+
+        Participation is votes cast over votes available: the number of PNMs in
+        every round the chapter has actually run, not the number of rounds. A
+        brother who voted on half the board in one round and skipped another
+        round entirely should not read as fully participating.
+        """
+        db = get_db()
+
+        rows = await db.execute_query(
+            """
+            WITH round_sizes AS (
+                -- Only rounds that really happened. A draft round nobody has
+                -- opened is not a missed opportunity.
+                SELECT r.id AS round_id, COUNT(rp.pnm_id) AS pnm_count
+                FROM voting_rounds r
+                JOIN round_pnms rp ON rp.round_id = r.id
+                WHERE r.chapter_id = $1::uuid
+                  AND r.status IN ('ACTIVE', 'LOCKED', 'ENDED')
+                GROUP BY r.id
+            ),
+            opportunities AS (
+                SELECT COALESCE(SUM(pnm_count), 0) AS total FROM round_sizes
+            ),
+            member_votes AS (
+                SELECT v.voter_user_id,
+                       COUNT(*)                                   AS votes_cast,
+                       COUNT(*) FILTER (WHERE v.value = 'YES')     AS yes_votes,
+                       COUNT(*) FILTER (WHERE v.value = 'NO')      AS no_votes,
+                       COUNT(*) FILTER (WHERE v.value = 'UNKNOWN') AS unknown_votes,
+                       COUNT(DISTINCT v.round_id)                  AS rounds_voted
+                FROM votes v
+                JOIN round_sizes rs ON rs.round_id = v.round_id
+                GROUP BY v.voter_user_id
+            )
+            SELECT u.id, u.name, u.email, m.role,
+                   COALESCE(mv.votes_cast, 0)     AS votes_cast,
+                   COALESCE(mv.yes_votes, 0)      AS yes_votes,
+                   COALESCE(mv.no_votes, 0)       AS no_votes,
+                   COALESCE(mv.unknown_votes, 0)  AS unknown_votes,
+                   COALESCE(mv.rounds_voted, 0)   AS rounds_voted,
+                   (SELECT total FROM opportunities) AS opportunities
+            FROM memberships m
+            JOIN users u ON u.id = m.user_id
+            LEFT JOIN member_votes mv ON mv.voter_user_id = u.id
+            WHERE m.chapter_id = $1::uuid
+            ORDER BY u.name
+            """,
+            chapter_id,
+        )
+
+        opportunities = int(rows[0]["opportunities"]) if rows else 0
+
+        members = []
+        for r in rows:
+            decided = int(r["yes_votes"]) + int(r["no_votes"]) + int(r["unknown_votes"])
+            yes_pct = (int(r["yes_votes"]) / decided * 100) if decided else None
+            members.append(
+                {
+                    "user_id": str(r["id"]),
+                    "name": r["name"],
+                    "email": r["email"],
+                    "role": r["role"],
+                    "votes_cast": int(r["votes_cast"]),
+                    "yes_votes": int(r["yes_votes"]),
+                    "no_votes": int(r["no_votes"]),
+                    "unknown_votes": int(r["unknown_votes"]),
+                    "rounds_voted": int(r["rounds_voted"]),
+                    "opportunities": opportunities,
+                    "participation": round(int(r["votes_cast"]) / opportunities * 100, 1)
+                    if opportunities
+                    else None,
+                    "yes_percentage": round(yes_pct, 1) if yes_pct is not None else None,
+                }
+            )
+
+        # "Harsh" and "supportive" only mean anything next to the rest of the
+        # chapter, so the comparison is against the chapter's own average rather
+        # than an invented constant.
+        voted = [m for m in members if m["yes_percentage"] is not None]
+        chapter_avg = round(sum(m["yes_percentage"] for m in voted) / len(voted), 1) if voted else None
+
+        for m in members:
+            if m["yes_percentage"] is None or chapter_avg is None:
+                # Never label someone who has not voted. The honest answer is
+                # that there is nothing to say about them yet.
+                m["pattern"] = None
+            elif m["yes_percentage"] >= chapter_avg + 10:
+                m["pattern"] = "Supportive"
+            elif m["yes_percentage"] <= chapter_avg - 10:
+                m["pattern"] = "Harsh"
+            else:
+                m["pattern"] = "Balanced"
+
+        participations = [m["participation"] for m in members if m["participation"] is not None]
+        return {
+            "chapter_average_yes": chapter_avg,
+            "opportunities": opportunities,
+            "average_participation": round(sum(participations) / len(participations), 1)
+            if participations
+            else None,
+            "members": members,
+        }
+
     async def apply_cutoff(
         self,
         round_id: str,
@@ -2297,15 +2420,29 @@ class ExportService:
                 "Content-Type": "image/png",
                 "x-upsert": "true"  # Allow overwriting if file exists
             }
-            async with httpx.AsyncClient(timeout=20) as client:
-                r = await client.put(upload_url, headers=headers, content=image_bytes)
-                if r.status_code in (200, 201):
-                    public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{filename}"
-                    return public_url
-                else:
-                    error_detail = r.text if hasattr(r, 'text') else str(r.status_code)
-                    logger.error(f"Supabase upload failed: {r.status_code} - {error_detail}")
-                    raise HTTPException(status_code=500, detail=f"Upload failed: {r.status_code} - {error_detail[:200]}")
+            # The card image is already rendered by this point. A storage
+            # problem is worth reporting, but it is not an internal error and
+            # the raw Supabase response body is not something to hand back to a
+            # rush chair mid-meeting -- previously a DNS failure or timeout
+            # escaped this block uncaught and surfaced as a bare 500.
+            try:
+                async with httpx.AsyncClient(timeout=20) as client:
+                    r = await client.put(upload_url, headers=headers, content=image_bytes)
+            except httpx.HTTPError as e:
+                logger.error(f"Supabase storage unreachable for {filename}: {e}")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Could not reach image storage. The card was generated but not saved; try again in a moment.",
+                )
+
+            if r.status_code in (200, 201):
+                return f"{supabase_url}/storage/v1/object/public/{bucket}/{filename}"
+
+            logger.error(f"Supabase upload failed: {r.status_code} - {r.text[:500]}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Image storage rejected the upload ({r.status_code}). Check the exports bucket exists and the service role key is set.",
+            )
         else:
             return f"/exports/{filename}"
     
@@ -2340,6 +2477,9 @@ class ExportService:
             """
             rows = await db.execute_query(query, pnm_ids)
         elif chapter_id:
+            # Everyone in formal rush, and only them. This deck gets projected
+            # at the bid meeting; prospects the chapter has not rushed and rows
+            # somebody archived on purpose should not be in it.
             query = """
                 SELECT p.id, p.name, p.major, p.hometown, p.year, p.photo_url, p.fun_fact,
                        COALESCE(ARRAY(
@@ -2349,6 +2489,8 @@ class ExportService:
                        ), ARRAY[]::text[]) AS tags
                 FROM pnms p
                 WHERE p.chapter_id = $1
+                  AND p.archived = false
+                  AND p.stage <> 'prospect'
                 ORDER BY p.name
             """
             rows = await db.execute_query(query, chapter_id)

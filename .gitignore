@@ -34,3 +34,9 @@ login-mobile.png
 
 # Local database dumps — contain real member data, never commit
 .backups/
+
+# E2E harness artifacts — screenshots, reports, and generated fixtures
+e2e/screens/
+e2e/report-*.json
+e2e/fixtures.json
+e2e/node_modules/

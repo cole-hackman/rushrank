@@ -374,8 +374,12 @@ export default function PNMsPage() {
         </span>
       </div>
 
-      <div className="flex w-full items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Wrapping is not cosmetic here. On a 390px phone this row did not
+          wrap and did not scroll, so "New PNM" -- the primary action on the
+          roster -- was pushed past the right edge and could not be reached at
+          all. Brothers use this on their phones. */}
+      <div className="flex w-full flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selectedPnmIds.length > 0 && (
             <>
               <Button
@@ -452,7 +456,9 @@ export default function PNMsPage() {
               />
             </TextField>
           </div>
-          <div className="flex items-center gap-3">
+          {/* Five checkboxes do not fit across a phone. Without wrapping, the
+              last of them sat off the right edge with no way to scroll to it. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Checkbox label="Show email" checked={showEmail} onCheckedChange={setShowEmail} />
             <Checkbox label="Show phone" checked={showPhone} onCheckedChange={setShowPhone} />
             <Checkbox label="Show archived" checked={showArchived} onCheckedChange={setShowArchived} />

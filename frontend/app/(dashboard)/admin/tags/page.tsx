@@ -250,7 +250,12 @@ export default function TagManagementPage() {
                 <span className="text-heading-2 font-heading-2 text-white">
                   {tagStats.total_tags}
                 </span>
-                <span className="text-body font-body text-default-font">
+                {/* The number was white but the label kept the default
+                    near-black, so "Total Tags" sat at 1.24:1 on this card's
+                    dark navy -- effectively invisible. Its two sibling cards
+                    pair a light background with a dark label; this one is the
+                    inverse and its label has to follow. */}
+                <span className="text-body font-body text-white/80">
                   Total Tags
                 </span>
               </div>
