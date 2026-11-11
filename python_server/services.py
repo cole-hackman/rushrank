@@ -1742,38 +1742,6 @@ class VotingService:
             round_id, [str(pid) for pid in pnm_ids],
         )
 
-    async def cast_vote(self, round_id: str, vote_data: VoteCreate, voter_id: str) -> Vote:
-        """Cast or update vote in a round"""
-        db = get_db()
-        
-        # Use UPSERT to handle vote updates
-        query = """
-            INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (round_id, pnm_id, voter_user_id)
-            DO UPDATE SET value = $4, favorite = $5, voted_at = NOW()
-            RETURNING id, round_id, pnm_id, voter_user_id, value, favorite, voted_at
-        """
-
-        row = await db.execute_one(
-            query,
-            round_id,
-            vote_data.pnm_id,
-            voter_id,
-            vote_data.value.value,
-            vote_data.favorite
-        )
-
-        return Vote(
-            id=str(row["id"]),
-            round_id=str(row["round_id"]),
-            pnm_id=str(row["pnm_id"]),
-            voter_id=str(row["voter_user_id"]),
-            value=row["value"],
-            favorite=row["favorite"],
-            created_at=row["voted_at"]
-        )
-    
     async def get_round_summary(self, chapter_id: str) -> Dict[str, Any]:
         """Every round's results for a chapter, in two queries.
 
@@ -2675,7 +2643,8 @@ class NoteService:
             Note(
                 id=str(r["id"]),
                 pnm_id=str(r["pnm_id"]),
-                author_id=str(r["author_user_id"]) if r["author_user_id"] else None,
+                # An anonymous note names nobody, in any field.
+                author_id=str(r["author_user_id"]) if r["author_user_id"] and not r["anonymous"] else None,
                 author="Anonymous" if r["anonymous"] else (r["author_email"] or "Member"),
                 body=r["body"],
                 anonymous=r["anonymous"],
@@ -2695,7 +2664,7 @@ class NoteService:
         return Note(
             id=str(row["id"]),
             pnm_id=str(row["pnm_id"]),
-            author_id=str(row["author_user_id"]) if row["author_user_id"] else None,
+            author_id=str(row["author_user_id"]) if row["author_user_id"] and not row["anonymous"] else None,
             body=row["body"],
             anonymous=row["anonymous"],
             likes_count=row["likes_count"] or 0,
@@ -2750,14 +2719,16 @@ class TagService:
             "chapter_id": str(row["chapter_id"]),
         }
     
-    async def update_tag(self, tag_id: str, label: str, color: Optional[str]) -> Dict[str, Any]:
+    async def update_tag(self, tag_id: str, chapter_id: str, label: str, color: Optional[str]) -> Dict[str, Any]:
         db = get_db()
         row = await db.execute_one("""
             UPDATE tags
             SET label = $2, color = $3
-            WHERE id = $1
+            WHERE id = $1 AND chapter_id = $4
             RETURNING id, label, color, chapter_id
-        """, tag_id, label, color)
+        """, tag_id, label, color, chapter_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Tag not found")
         return {
             "id": str(row["id"]),
             "label": row["label"],
@@ -2765,18 +2736,29 @@ class TagService:
             "chapter_id": str(row["chapter_id"]),
         }
     
-    async def delete_tag(self, tag_id: str) -> bool:
+    async def delete_tag(self, tag_id: str, chapter_id: str) -> bool:
         db = get_db()
-        res = await db.execute_command("DELETE FROM tags WHERE id = $1", tag_id)
+        res = await db.execute_command(
+            "DELETE FROM tags WHERE id = $1 AND chapter_id = $2", tag_id, chapter_id
+        )
         return "DELETE 1" in res
     
     async def add_tag_to_pnm(self, pnm_id: str, tag_id: str) -> bool:
+        """Attach a tag to a PNM. False when the tag is not one of the PNM's chapter's."""
         db = get_db()
-        await db.execute_command("""
+        res = await db.execute_command("""
             INSERT INTO pnm_tags (pnm_id, tag_id)
-            VALUES ($1, $2) ON CONFLICT DO NOTHING
+            SELECT p.id, t.id
+            FROM pnms p JOIN tags t ON t.chapter_id = p.chapter_id
+            WHERE p.id = $1 AND t.id = $2
+            ON CONFLICT DO NOTHING
         """, pnm_id, tag_id)
-        return True
+        if "INSERT 0 1" in res:
+            return True
+        # Nothing inserted: already attached, or the tag belongs elsewhere.
+        return bool(await db.execute_one("""
+            SELECT 1 FROM pnm_tags WHERE pnm_id = $1 AND tag_id = $2
+        """, pnm_id, tag_id))
     
     async def remove_tag_from_pnm(self, pnm_id: str, tag_id: str) -> bool:
         db = get_db()
@@ -2827,45 +2809,6 @@ class TagService:
             "total_tags": total_tags,
             "most_used_tag": most_used_tag,
             "tagged_pnms_count": tagged_pnms
-        }
-
-class SessionService:
-    """Voting session state (advance/lock)"""
-    
-    async def set_current(self, round_id: str, current_pnm_id: Optional[str]) -> Dict[str, Any]:
-        db = get_db()
-        row = await db.execute_one("""
-            INSERT INTO sessions (round_id, current_pnm_id, locked, started_at)
-            VALUES ($1, $2, false, NOW())
-            ON CONFLICT (round_id)
-            DO UPDATE SET current_pnm_id = EXCLUDED.current_pnm_id
-            RETURNING id, round_id, current_pnm_id, locked, started_at, ended_at
-        """, round_id, current_pnm_id)
-        return {
-            "id": str(row["id"]),
-            "round_id": str(row["round_id"]),
-            "current_pnm_id": str(row["current_pnm_id"]) if row["current_pnm_id"] else None,
-            "locked": row["locked"],
-            "started_at": row["started_at"],
-            "ended_at": row["ended_at"],
-        }
-    
-    async def set_locked(self, round_id: str, locked: bool) -> Dict[str, Any]:
-        db = get_db()
-        row = await db.execute_one("""
-            INSERT INTO sessions (round_id, current_pnm_id, locked, started_at)
-            VALUES ($1, NULL, $2, NOW())
-            ON CONFLICT (round_id)
-            DO UPDATE SET locked = EXCLUDED.locked
-            RETURNING id, round_id, current_pnm_id, locked, started_at, ended_at
-        """, round_id, locked)
-        return {
-            "id": str(row["id"]),
-            "round_id": str(row["round_id"]),
-            "current_pnm_id": str(row["current_pnm_id"]) if row["current_pnm_id"] else None,
-            "locked": row["locked"],
-            "started_at": row["started_at"],
-            "ended_at": row["ended_at"],
         }
 
 class UploadService:
@@ -3379,7 +3322,6 @@ class InvitationService:
             
             # Log credentials for manual verification/debugging
             logger.info(f"📧 Sending invitation to {email}")
-            logger.info(f"🔑 Credentials -> Email: {email} | Password: {password}")
             logger.info(f"👉 Login URL: {login_url}")
             
             # Add group ID if provided (triggers automation)

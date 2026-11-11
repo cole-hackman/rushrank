@@ -53,8 +53,11 @@ def get_rate_limit_key(request: Request) -> str:
 
     The `sub` claim is read WITHOUT verifying the signature. This only selects a
     counter -- it never grants access. Every protected route still verifies the
-    token through get_current_user, so a forged token buys you your own rate
-    limit bucket and nothing else.
+    token through get_current_user, so a forged token gets a 401 there.
+
+    Routes that need no sign-in must not use this key: a forged token with a
+    fresh `sub` on every request would get a fresh bucket every time. They pass
+    key_func=get_ip_rate_limit_key instead.
     """
     auth_header = request.headers.get("authorization") or ""
     if auth_header.lower().startswith("bearer "):
@@ -67,6 +70,11 @@ def get_rate_limit_key(request: Request) -> str:
             # Malformed or unparseable token -- fall through to IP.
             pass
 
+    return f"ip:{get_client_ip(request)}"
+
+
+def get_ip_rate_limit_key(request: Request) -> str:
+    """Rate-limit bucket for routes that need no sign-in: the client address only."""
     return f"ip:{get_client_ip(request)}"
 
 

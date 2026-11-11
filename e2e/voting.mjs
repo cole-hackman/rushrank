@@ -16,6 +16,10 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fixtures, signIn, watch, settle, sleep, APP, ROOT } from "./lib/harness.mjs";
+import { guard } from "./guard.mjs";
+
+// Refuses (exit 2) unless the database and the running backend are the local e2e ones.
+await guard();
 
 const VOTERS = Number(process.argv[2] || 10);
 const PNMS_TO_RUN = 4;
@@ -34,7 +38,7 @@ const note = (severity, title, detail) => {
 function sql(query) {
   const out = execFileSync(
     "psql",
-    [process.env.E2E_DATABASE_URL || "postgresql://coleh@localhost:5432/rushrank_e2e", "-tAF", "|", "-c", query],
+    [process.env.E2E_DATABASE_URL, "-tAF", "|", "-c", query],
     { encoding: "utf8", env: { ...process.env, PATH: `/opt/homebrew/opt/libpq@17/bin:${process.env.PATH}` } }
   );
   return out.trim().split("\n").filter(Boolean).map((l) => l.split("|"));

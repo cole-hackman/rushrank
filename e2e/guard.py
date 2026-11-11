@@ -1,9 +1,10 @@
 """
 Database guard for the Python side of the e2e harness.
 
-e2e/seed.py TRUNCATEs eighteen tables (users and chapters included) on
-`E2E_DATABASE_URL or DATABASE_URL`, with no check on where that points. This
-wrapper is how the runbook invokes it instead:
+e2e/seed.py TRUNCATEs eighteen tables (users and chapters included). It calls
+check() from this module before it touches anything, so it cannot be pointed
+at a real database even when run directly. The runbook still goes through
+this wrapper:
 
     python3 e2e/guard.py            # check only: print the target and exit
     python3 e2e/guard.py --seed     # check, then run seed.py and fixtures.py
@@ -38,6 +39,8 @@ from urllib.parse import unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SEED_CHAPTER_NAME = "Beta Theta Pi - Cal Poly SLO"
+# A second, small chapter the seed creates so cross-chapter access can be tested.
+OTHER_CHAPTER_NAME = "Sigma Nu - E2E Other Campus"
 TEMP_CHAPTER_PREFIX = "E2E Temp "  # api-contract.mjs creates and deletes these
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", ""}
 FORBIDDEN = re.compile(r"supabase|render\.com|onrender|pooler|neon\.tech|amazonaws|rds\.|azure|gcp|cloud", re.I)
@@ -98,7 +101,7 @@ async def check() -> str:
         chapters = await conn.fetch("select name from chapters")
         foreign = [
             c["name"] for c in chapters
-            if c["name"] != SEED_CHAPTER_NAME and not c["name"].startswith(TEMP_CHAPTER_PREFIX)
+            if c["name"] not in (SEED_CHAPTER_NAME, OTHER_CHAPTER_NAME) and not c["name"].startswith(TEMP_CHAPTER_PREFIX)
         ]
         if foreign:
             refuse(

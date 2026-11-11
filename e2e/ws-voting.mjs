@@ -386,11 +386,11 @@ console.log("\n--- lock ---");
   if (forced.status === 409 && before === after) pass("direct POST /votes while locked returns 409 and writes nothing");
   else note("blocker", "Lock is not enforced server-side", `status=${forced.status}, rows ${before} -> ${after}`);
 
-  // Known gap (docs/reboot-2026-11/02): the legacy endpoint has no lock check.
+  // The legacy endpoint had no lock check; it has been removed.
   const legacy = await call(victim.user, "POST", `/rounds/${roundId}/votes`, { pnm_id: cur, value: "YES" });
   const afterLegacy = Number(sql(`select count(*) from votes where round_id='${roundId}' and pnm_id='${cur}'`)[0][0]);
   if (legacy.status >= 200 && legacy.status < 300 && afterLegacy > after) {
-    note("high", "Lock bypass through POST /rounds/{id}/votes (known)",
+    note("high", "Lock bypass through POST /rounds/{id}/votes",
       `status=${legacy.status}, rows ${after} -> ${afterLegacy}. This endpoint does not check sessions.locked.`);
     sql(`delete from votes where round_id='${roundId}' and pnm_id='${cur}' and voter_user_id='${victim.user.id}'`);
   } else {
@@ -457,21 +457,33 @@ console.log("\n--- lock ---");
   else note("high", "End Session button is visible to a member", "");
 }
 
-// ------------------------------------------- unauthenticated socket (known gap)
-let eavesdropper = null;
+// ------------------------------------------------- sockets that must hear nothing
+// Three listeners that are not members of this session's chapter: one that never
+// authenticates, one with a made-up token, and one with a valid token for the
+// second seeded chapter's admin. None may receive a session frame.
+let eavesdroppers = null;
 if (typeof globalThis.WebSocket === "function") {
   const wsUrl = `${API.replace(/^http/, "ws")}/ws/session/${sessionId}`;
-  eavesdropper = { frames: [], opened: false };
-  const ws = new globalThis.WebSocket(wsUrl);
-  ws.addEventListener("open", () => (eavesdropper.opened = true));
-  ws.addEventListener("message", (ev) => {
-    try {
-      eavesdropper.frames.push(JSON.parse(String(ev.data)));
-    } catch {
-      /* pong */
-    }
-  });
-  eavesdropper.ws = ws;
+  const listen = (label, token) => {
+    const e = { label, frames: [], opened: false, closeCode: null };
+    const ws = new globalThis.WebSocket(wsUrl);
+    ws.addEventListener("open", () => {
+      e.opened = true;
+      if (token) ws.send(JSON.stringify({ type: "auth", token }));
+    });
+    ws.addEventListener("message", (ev) => {
+      try {
+        e.frames.push(JSON.parse(String(ev.data)));
+      } catch {
+        /* pong */
+      }
+    });
+    ws.addEventListener("close", (ev) => (e.closeCode = ev.code));
+    e.ws = ws;
+    return e;
+  };
+  eavesdroppers = [listen("no token", null), listen("made-up token", "not-a-real-token")];
+  if (fx.other?.admin?.token) eavesdroppers.push(listen("another chapter's admin", fx.other.admin.token));
   await sleep(800);
 } else {
   console.log("  (no global WebSocket in this Node; skipping the unauthenticated-socket check. Node 22+ has it.)");
@@ -530,18 +542,20 @@ console.log("\n--- end session ---");
       "The 5 s poll swallows the 404 from GET /sessions/{id}/current, so a client without a socket stays on a dead card.");
   }
 
-  if (eavesdropper) {
-    const saw = eavesdropper.frames.some((f) => f.type === "session_ended");
-    if (eavesdropper.opened && saw) {
-      note("high", "Websocket accepts unauthenticated listeners (known)",
-        `A socket with no token connected to /ws/session/${sessionId} and received ${eavesdropper.frames.length} frame(s), including session_ended.`);
-    } else {
-      pass("an unauthenticated socket received nothing");
-    }
-    try {
-      eavesdropper.ws.close();
-    } catch {
-      /* already closed */
+  if (eavesdroppers) {
+    for (const e of eavesdroppers) {
+      const heard = e.frames.filter((f) => f.type !== "auth_ok");
+      if (heard.length || e.frames.some((f) => f.type === "auth_ok")) {
+        note("high", `Websocket let in a listener with ${e.label}`,
+          `It was sent ${e.frames.length} frame(s): ${e.frames.map((f) => f.type).join(", ")}.`);
+      } else {
+        pass(`a socket with ${e.label} received nothing${e.closeCode ? ` (closed ${e.closeCode})` : ""}`);
+      }
+      try {
+        e.ws.close();
+      } catch {
+        /* already closed */
+      }
     }
   }
 }
@@ -571,7 +585,7 @@ const report = {
     ...new Set(
       [chairSink, ...clients.map((c) => c.sink)]
         .flatMap((s) => s.frames.map((f) => f.type))
-        .filter((t) => !["pnm_advance", "lock_change", "vote_cast", "session_ended"].includes(t))
+        .filter((t) => !["auth_ok", "pnm_advance", "lock_change", "vote_cast", "session_ended"].includes(t))
     ),
   ],
   passed: checks,

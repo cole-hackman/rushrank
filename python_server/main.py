@@ -7,6 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import asyncpg
 import httpx
 import os
+import asyncio
 from typing import Optional, Dict, Any
 import logging
 import json
@@ -17,7 +18,7 @@ from datetime import datetime
 
 from .auth import get_current_user, verify_token
 from .site import public_site_url
-from .database import get_db_pool, close_db_pool, set_db_manager
+from .database import get_db, get_db_pool, close_db_pool, set_db_manager
 from .routes import router
 from .exceptions import AppException, register_exception_handlers
 from .rate_limit import setup_rate_limiting
@@ -295,24 +296,83 @@ async def health_storage():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Storage error: {e}")
 
+# Close codes in the application range, so the client can tell "sign in again"
+# from "this session is not yours" and stop reconnecting on the second.
+WS_CLOSE_UNAUTHENTICATED = 4401
+WS_CLOSE_FORBIDDEN = 4403
+WS_AUTH_TIMEOUT_SECONDS = 10
+
+
+async def _authorize_session_socket(websocket: WebSocket, session_id: str) -> Optional[int]:
+    """Return None when the socket may join the session, else the close code.
+
+    The first message must be {"type": "auth", "token": "<access token>"}. The
+    token travels in a message rather than the URL so it never reaches a log.
+    """
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=WS_AUTH_TIMEOUT_SECONDS)
+        message = json.loads(raw)
+        token = message.get("token") if isinstance(message, dict) and message.get("type") == "auth" else None
+    except (asyncio.TimeoutError, ValueError):
+        return WS_CLOSE_UNAUTHENTICATED
+    if not token or not isinstance(token, str):
+        return WS_CLOSE_UNAUTHENTICATED
+
+    try:
+        claims = await verify_token(token)
+    except HTTPException:
+        return WS_CLOSE_UNAUTHENTICATED
+    user_id = claims.get("sub")
+    if not user_id:
+        return WS_CLOSE_UNAUTHENTICATED
+
+    try:
+        member = await get_db().execute_one(
+            """
+            SELECT 1
+              FROM sessions s
+              JOIN voting_rounds r ON r.id = s.round_id
+              JOIN memberships m ON m.chapter_id = r.chapter_id
+             WHERE s.id = $1 AND m.user_id = $2
+            """,
+            session_id, user_id,
+        )
+    except Exception:
+        # A malformed session id is not a server error, it is not your session.
+        return WS_CLOSE_FORBIDDEN
+    return None if member else WS_CLOSE_FORBIDDEN
+
+
 @app.websocket("/ws/session/{session_id}")
 async def websocket_session(websocket: WebSocket, session_id: str):
     """
     WebSocket endpoint for real-time session updates.
-    
-    Client connects to /ws/session/{session_id} and receives:
+
+    The client connects to /ws/session/{session_id}, sends
+    {"type": "auth", "token": "<access token>"} as its first message, and once
+    that is verified against the session's chapter receives:
     - pnm_advance: When chair advances to next PNM
     - lock_change: When session is locked/unlocked
     - vote_cast: When a vote is cast (with updated tallies)
     - session_ended: When the session ends
+
+    Nothing is broadcast to a socket until it has authenticated.
     """
+    await websocket.accept()
+    try:
+        refusal = await _authorize_session_socket(websocket, session_id)
+    except WebSocketDisconnect:
+        return
+    if refusal is not None:
+        await websocket.close(code=refusal)
+        return
+
     await ws_manager.connect(websocket, session_id)
     try:
+        await websocket.send_text(json.dumps({"type": "auth_ok"}))
         while True:
             # Keep connection alive, waiting for messages
-            # We don't expect messages from client, but need to handle them
             data = await websocket.receive_text()
-            # Client can send ping messages to keep connection alive
             if data == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:

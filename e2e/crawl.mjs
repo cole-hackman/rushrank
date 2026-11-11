@@ -18,6 +18,10 @@ import { chromium } from "playwright";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fixtures, signIn, watch, settle, sleep, routes, publicRoutes, APP, ROOT } from "./lib/harness.mjs";
+import { guard } from "./guard.mjs";
+
+// Refuses (exit 2) unless the database and the running backend are the local e2e ones.
+await guard();
 
 const DESTRUCTIVE = /delete|remove|archive|revoke|end session|sign out|log out|reset|clear all|merge|finalize|unlink|discard/i;
 const NAV_AWAY = /sign out|log out/i;

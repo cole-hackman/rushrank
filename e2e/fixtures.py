@@ -48,7 +48,24 @@ async def main() -> None:
         sys.exit("set E2E_DATABASE_URL and SUPABASE_JWT_SECRET")
 
     conn = await asyncpg.connect(url)
-    chapter = await conn.fetchrow("SELECT id, name, min_gpa FROM chapters LIMIT 1")
+    # The main seed chapter is the oldest; the second one exists for cross-chapter checks.
+    chapter = await conn.fetchrow("SELECT id, name, min_gpa FROM chapters ORDER BY created_at, name LIMIT 1")
+    other = await conn.fetchrow(
+        "SELECT id, name FROM chapters WHERE id <> $1 ORDER BY created_at, name LIMIT 1", chapter["id"])
+    other_data = None
+    if other:
+        o_admin = await conn.fetchrow(
+            """SELECT u.id, u.email, u.name FROM users u JOIN memberships m ON m.user_id = u.id
+               WHERE m.chapter_id = $1 AND m.role = 'admin' LIMIT 1""", other["id"])
+        other_data = {
+            "chapter": {"id": str(other["id"]), "name": other["name"]},
+            "admin": {"id": str(o_admin["id"]), "email": o_admin["email"], "name": o_admin["name"],
+                      "role": "admin", "token": mint(secret, o_admin["id"], o_admin["email"])},
+            "pnm": str(await conn.fetchval("SELECT id FROM pnms WHERE chapter_id=$1 LIMIT 1", other["id"])),
+            "tag": str(await conn.fetchval("SELECT id FROM tags WHERE chapter_id=$1 LIMIT 1", other["id"])),
+            "event": str(await conn.fetchval("SELECT id FROM events WHERE chapter_id=$1 LIMIT 1", other["id"])),
+            "round": str(await conn.fetchval("SELECT id FROM voting_rounds WHERE chapter_id=$1 LIMIT 1", other["id"])),
+        }
     users = await conn.fetch(
         """SELECT u.id, u.email, u.name, m.role
            FROM users u JOIN memberships m ON m.user_id = u.id
@@ -99,6 +116,7 @@ async def main() -> None:
         "roster": [{"id": str(p["id"]), "name": p["name"]} for p in roster],
         "event": {"id": str(event["id"]), "name": event["name"], "code": event["check_in_code"]} if event else None,
         "bidList": {"id": str(bid_list["id"]), "name": bid_list["name"]} if bid_list else None,
+        "other": other_data,
     }
 
     with open(OUT, "w") as fh:

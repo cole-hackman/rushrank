@@ -114,9 +114,12 @@ def name_pool(n: int, offset: int = 0) -> list[str]:
 
 
 async def main() -> None:
-    url = os.environ.get("E2E_DATABASE_URL") or os.environ.get("DATABASE_URL")
-    if not url:
-        sys.exit("set E2E_DATABASE_URL")
+    # Refuses (exit 2) unless E2E_DATABASE_URL is a local, disposable database.
+    # DATABASE_URL is never a fallback: that is the variable the real backend reads.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from guard import OTHER_CHAPTER_NAME, check
+
+    url = await check()
     conn = await asyncpg.connect(url)
     now = datetime.now(timezone.utc)
 
@@ -344,6 +347,32 @@ async def main() -> None:
             now - timedelta(days=1) if outcome and outcome != "pending" else None,
             chair["id"] if outcome and outcome != "pending" else None,
             random.choice(DECLINE_REASONS) if outcome == "declined" else None)
+
+    # ---- A second chapter ---------------------------------------------------
+    # Small on purpose. It exists so the suites can prove that an admin of one
+    # chapter cannot read or change another chapter's rows by id.
+    other_id = await conn.fetchval(
+        "INSERT INTO chapters (name, school, fraternity) VALUES ($1,$2,$3) RETURNING id",
+        OTHER_CHAPTER_NAME, "E2E Other Campus", "Sigma Nu")
+    other_admin = await conn.fetchval(
+        """INSERT INTO users (chapter_id, email, name, role, is_exec)
+           VALUES ($1,'rival.admin@other-campus.test','Rival Admin','ADMIN'::role_type,true) RETURNING id""",
+        other_id)
+    await conn.execute(
+        "INSERT INTO memberships (user_id, chapter_id, role) VALUES ($1,$2,'admin')", other_admin, other_id)
+    other_pnm = await conn.fetchval(
+        "INSERT INTO pnms (chapter_id, name, major) VALUES ($1,'Otto Rival','History') RETURNING id",
+        other_id)
+    await conn.execute(
+        "INSERT INTO tags (chapter_id, label, color) VALUES ($1,'Rival Tag','#444444')", other_id)
+    await conn.execute(
+        "INSERT INTO events (chapter_id, name, date) VALUES ($1,'Rival Smoker',$2)", other_id, now)
+    other_round = await conn.fetchval(
+        """INSERT INTO voting_rounds (chapter_id, type, status, room_code, selected_pnm_ids, started_at, ended_at)
+           VALUES ($1,'GENERAL','ENDED','OTHER1',$2,$3,$3) RETURNING id""",
+        other_id, [str(other_pnm)], now - timedelta(days=2))
+    await conn.execute(
+        "INSERT INTO round_pnms (round_id, pnm_id, order_index) VALUES ($1,$2,0)", other_round, other_pnm)
 
     counts = {}
     for t in ("chapters", "users", "memberships", "pnms", "tags", "pnm_tags",

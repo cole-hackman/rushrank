@@ -36,6 +36,8 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const SEED_CHAPTER_NAME = "Beta Theta Pi - Cal Poly SLO";
+// A second, small chapter the seed creates so cross-chapter access can be tested.
+export const OTHER_CHAPTER_NAME = "Sigma Nu - E2E Other Campus";
 // api-contract.mjs creates and immediately deletes chapters with this prefix.
 export const TEMP_CHAPTER_PREFIX = "E2E Temp ";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", ""]);
@@ -125,7 +127,7 @@ export function assertDisposableDb({ allowEmpty = true, quiet = false } = {}) {
   } catch {
     fail(`database "${name}" has no chapters table. Apply supabase/migrations/*.sql to it first.`);
   }
-  const foreign = chapters.filter(([, n]) => n !== SEED_CHAPTER_NAME && !n.startsWith(TEMP_CHAPTER_PREFIX));
+  const foreign = chapters.filter(([, n]) => n !== SEED_CHAPTER_NAME && n !== OTHER_CHAPTER_NAME && !n.startsWith(TEMP_CHAPTER_PREFIX));
   if (foreign.length) {
     fail(
       `database "${name}" contains ${foreign.length} chapter(s) that the seed did not create ` +
