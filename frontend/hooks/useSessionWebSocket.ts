@@ -1,5 +1,9 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { API_BASE } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth";
+
+// Close codes the server uses when it refuses a socket (python_server/main.py).
+const WS_CLOSE_FORBIDDEN = 4403;
 
 type PNM = {
   id: string;
@@ -122,7 +126,12 @@ export function useSessionWebSocket({
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
-      ws.onopen = () => {
+      ws.onopen = async () => {
+        // The server sends nothing until the first message proves who we are.
+        const token = await getAccessToken();
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "auth", token }));
+
         setConnected(true);
         setError(null);
 
@@ -137,7 +146,8 @@ export function useSessionWebSocket({
         try {
           if (event.data === "pong") return;
 
-          const message: SessionMessage = JSON.parse(event.data);
+          const message: SessionMessage | { type: "auth_ok" } = JSON.parse(event.data);
+          if (message.type === "auth_ok") return;
           const handlers = handlersRef.current;
 
           switch (message.type) {
@@ -183,6 +193,12 @@ export function useSessionWebSocket({
 
         // Reconnect unless we closed it ourselves (unmount, tab change, or the
         // session going away).
+        // Not a member of this session's chapter: retrying cannot help.
+        if (event.code === WS_CLOSE_FORBIDDEN) {
+          setError("You do not have access to this session");
+          return;
+        }
+
         if (!intentionalCloseRef.current && event.code !== 1000) {
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
