@@ -98,6 +98,10 @@ You will see "Voted YES", "Voted NO" or "Voted Don't Know". You can change your 
 
 If you have not met the PNM, **Don't Know** is the honest vote.
 
+### Voting at your own pace
+
+Sometimes the rush chair opens a round outside a meeting. Tap **Voting**, then **Open Voting**. You see the PNMs you have not voted on yet, one at a time; vote the same way. When you have voted on all of them you see **All caught up**. If nothing is open you see **No open round right now**.
+
 ### What the chair controls
 
 - **Locked:** when the chair locks voting, your buttons grey out and you see "Voting is currently locked". Wait for the next PNM.
@@ -128,7 +132,6 @@ If you have not met the PNM, **Don't Know** is the honest vote.
 |---|---|
 | **You may not get an invitation email.** | Use **Forgot password?** as in step 1. |
 | **Some buttons will not work for you** and show an error: Start Session, Add Event, Make cuts, Bulk Tag, and editing or deleting an event. They are for admins. | Ignore them. |
-| **The "Open Voting" tab does not work for members.** You get "Failed to start open voting". | Vote in live sessions. |
 | **If you star a PNM and then vote, the star is removed.** | Vote first, then tap the star. |
 | **Tapping the star without voting counts as a "Don't Know" vote.** | Vote first, then star. |
 | **The star still looks tappable when voting is locked,** then shows "Failed to favorite". | Wait for the next PNM. |

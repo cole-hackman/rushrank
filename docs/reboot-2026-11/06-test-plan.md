@@ -54,7 +54,7 @@ None of the existing scripts checks which database it is pointed at.
 | `e2e/ws-voting.mjs [N] [pnms]` | 1 chair + N voters in separate browser contexts. Records every websocket frame per client and asserts `pnm_advance`, `lock_change`, `vote_cast` and `session_ended`: delivery to every client, payload shape, and tallies equal to the database. Also: join by code, favourite, a voter with the socket blocked (polling fallback), members refused chair actions, End Session, and whether a socket with no token can listen. | Yes |
 | `e2e/api-contract.mjs` | No browser. Reads `/openapi.json`, then calls every operation signed out, as a member and as admin (exec where relevant). Fails if any operation in the API has no case. | **Yes, and deletes** |
 | `e2e/roles.mjs` | Loads every page signed out, as member, as exec and as admin. Checks redirects, the admin gate, 4xx/5xx at load, the menus each role sees, and Open Voting as a member. | One rejected request |
-| `e2e/flows.mjs` | Eight real flows through the UI, each verified in the database: interest form, CSV import, create event, check-in, note and "met", cut preview, bid outcome, intake question. | Yes |
+| `e2e/flows.mjs` | Real flows through the UI, each verified in the database: interest form, CSV import, create event, check-in, note and "met", cut preview, bid outcome, intake questions and answers, Open Voting as a member. | Yes |
 
 ### What the guard checks
 
@@ -407,7 +407,7 @@ node smoke.mjs
 node roles.mjs
 ```
 
-**Expected (about 4 minutes):** `88 page loads`, and `0 new`. Six findings tagged `(known)` are listed in section 6. Exit code 0. It also checks, per role, that Compare opens `/compare` from two ticked rows and that only admin and exec are offered the PowerPoint export.
+**Expected (about 4 minutes):** `88 page loads`, and `0 new`. Five findings tagged `(known)` are listed in section 6. Exit code 0. It also checks, per role, that Compare opens `/compare` from two ticked rows and that only admin and exec are offered the PowerPoint export.
 
 ```bash
 node visual.mjs
@@ -437,7 +437,7 @@ node guard.mjs --api && node voting.mjs 24
 node api-contract.mjs
 ```
 
-**Expected (about 15 seconds):** `286 assertions over 108 operations`, `FAILED 0`, `uncovered 0`, `external 9`, and twelve `known` lines. Exit code 0.
+**Expected (about 15 seconds):** `288 assertions over 108 operations`, `FAILED 0`, `uncovered 0`, `external 9`, and eight `known` lines. Exit code 0.
 
 Then reseed, because this script deletes PNMs and finalizes the bid list:
 
@@ -451,7 +451,7 @@ cd .. && python3 e2e/guard.py --seed && cd e2e
 node flows.mjs
 ```
 
-**Expected (about 90 seconds):** `10 flows: 7 ok, 3 known defect(s), 0 new failure(s)`. Exit code 0. The three known: `/events?action=add` does not open the form, check-in search lists the whole roster, and saving an intake question returns 500.
+**Expected (about 2 minutes):** `12 flows: 10 ok, 2 known defect(s), 0 new failure(s)`. Exit code 0. The two known: `/events?action=add` does not open the form, and check-in search lists the whole roster. Flows 8, 8b and 9 cover intake questions (saved in Settings, asked on the public link, shown on the PNM page) and Open Voting for a member.
 
 ```bash
 cd .. && python3 e2e/guard.py --seed && cd e2e
@@ -497,7 +497,7 @@ pytest -q -m "not integration"
 TEST_DATABASE_URL=postgresql://$(whoami)@localhost:5432/postgres pytest -q -m integration
 ```
 
-**Expected:** `153 passed`.
+**Expected:** `159 passed`.
 
 The integration tests create and drop three databases of their own on that server: `rr_it_fresh`, `rr_it_legacy` and `rr_it_demo`. They do not touch `rushrank_e2e`. **Only ever point `TEST_DATABASE_URL` at your local Postgres**, because the suite issues `DROP DATABASE`.
 
@@ -571,12 +571,12 @@ Environment: Linux container, PostgreSQL 16 on localhost, one `uvicorn` process,
 |---|---|
 | `guard.mjs`, `guard.py` | Passed on the local database. Refused, with exit code 2: a hosted-looking URL, a database named `postgres`, an unset `E2E_DATABASE_URL`, and a conflicting `DATABASE_URL`. |
 | `ws-voting.mjs 24 4` | 59 checks passed (including End Session's confirm dialog and a PNM added mid-session joining the end of the order). 4 known findings. Exit 0. |
-| `api-contract.mjs` | 286 assertions over 108 operations (the new round-summary endpoint is checked against the per-round results and the votes table). 0 failed, 0 uncovered, 9 external, 12 known. Exit 0. |
-| `roles.mjs` | 88 page loads. 6 known findings, 0 new. Exit 0. |
-| `flows.mjs` | 10 flows: 7 ok, 3 known. Exit 0. |
+| `api-contract.mjs` | 288 assertions over 108 operations (the new round-summary endpoint is checked against the per-round results and the votes table). 0 failed, 0 uncovered, 9 external, 8 known. Exit 0. |
+| `roles.mjs` | 88 page loads. 5 known findings, 0 new. Exit 0. |
+| `flows.mjs` | 12 flows: 10 ok, 2 known. Exit 0. |
 | `voting.mjs 8` (existing) | 0 findings |
 | `pytest -m "not integration"` | 84 passed |
-| `pytest -m integration` | 153 passed |
+| `pytest -m integration` | 159 passed |
 | `smoke.mjs` (existing) | Landed on `/dashboard`, 0 errors |
 | `next build`, `tsc --noEmit` | Passed |
 | `npm run lint`, `npm run test` | Lint: warnings only. Vitest: 12 passed. |
@@ -597,8 +597,8 @@ Defects the new scripts confirmed at runtime, all detailed in `02-unfinished-and
 | S12 anonymous note returns the author id | api-contract |
 | S16 any user can create a chapter | api-contract |
 | S17 `GET /rounds` returns 500 to a non-member | api-contract |
-| F1, F2, F3 questionnaire save, answer save and answer read all return 500 | api-contract, flows |
-| F4 Open Voting refused for members | roles |
+| F1, F2, F3 questionnaire save, answer save and answer read all return 500 (since fixed) | api-contract, flows |
+| F4 Open Voting refused for members (since fixed) | roles |
 | F5 anonymous session still stores the voter | api-contract |
 | F6 `exec` cannot be assigned | api-contract |
 | F7 exec admitted to pages whose API refuses them | roles |

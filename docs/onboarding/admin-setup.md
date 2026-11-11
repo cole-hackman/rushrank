@@ -76,6 +76,16 @@ Whoever will create events and run voting sessions needs to be an **Admin**. See
 
 Role changes are recorded in the Activity Log.
 
+## 6b. Add intake questions (optional)
+
+Questions every PNM answers when they sign up, such as "Why this chapter?".
+
+1. **Admin → Settings**, under **PNM Intake Form Questions**.
+2. Enter the **Question Text**, pick a **Field Type** (Text, Textarea, Number or Email), tick **Required field** if it must be answered, and choose **Add Question**.
+3. The trash icon removes a question. Answers already given to it are kept, labelled "(question removed)".
+
+The questions appear on the intake form, on Rush Mode's Add PNM, and on the public `/intake?chapter=` link. A PNM's answers show on their page under **Intake answers**.
+
 ## 7. Create your tags
 
 Tags are labels such as "Athlete" or "Legacy" that you can put on PNMs.
@@ -165,7 +175,6 @@ These do not work as you would expect today. Each has a workaround where one exi
 
 | Problem | What to do |
 |---|---|
-| **Intake form questions cannot be saved.** Adding a question under **PNM Intake Form Questions** fails. | None today. Collect extra answers in notes. |
 | **There is no place to set a GPA minimum,** enter a GPA by hand, or record a waiver. | GPA can only come in through a CSV import column. Track eligibility outside RushRank for now. |
 | The welcome message says "Invite your team from Settings". | Invites are on **User Management**. |
 
@@ -174,7 +183,7 @@ These do not work as you would expect today. Each has a workaround where one exi
 | Problem | What to do |
 |---|---|
 | **In the import preview, a GPA column shows as "Ignore this column".** | It is imported anyway. Leave it. |
-| **The full intake form has no shareable link in the app,** and when opened by someone who is not signed in, its photo upload fails and it ends on a sign-in page. | Use the interest link (step 8) for the public, and Rush Mode's Add PNM at events. |
+| **The full intake form has no shareable link in the app,** and when opened by someone who is not signed in, its photo upload fails. | Build the link yourself: your site address, then `/intake?chapter=` and your chapter id (the id is in your interest link). Or use Rush Mode's Add PNM at events. |
 | **Imported PNMs are not emailed a check-in QR code.** | Check them in by name at events. |
 | **The public forms do not check for duplicates.** Submitting twice creates two records. | Merge them on the Duplicates page. |
 

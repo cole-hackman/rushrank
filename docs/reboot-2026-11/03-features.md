@@ -42,8 +42,8 @@ Effort is working time for one person who knows the code: **S** under a day, **M
 | Rank | Enhancement | Why it matters to a chapter running rush | Effort |
 |---|---|---|---|
 | 1 | **Make anonymous voting real, or remove the checkbox** [F5] | Brothers vote differently when they think it is private. Telling them it is anonymous while the admin page lists every brother's votes is a trust problem the first time someone notices. | M |
-| 2 | **Fix intake questions end to end** [F1, F2, F3]: save the questionnaire, save the answers, show them on the PNM page | Every chapter has its own three questions. Right now the builder errors and the answers a PNM types are thrown away. | S |
-| 3 | **Fix Open Voting for members** [F4] | It is the way to collect votes from brothers who cannot make the meeting. Today only an admin can use it. | S |
+| 2 | **Done on this branch.** **Fix intake questions end to end** [F1, F2, F3]: save the questionnaire, save the answers, show them on the PNM page | Every chapter has its own three questions. Right now the builder errors and the answers a PNM types are thrown away. | S |
+| 3 | **Done on this branch.** **Fix Open Voting for members** [F4] | It is the way to collect votes from brothers who cannot make the meeting. Today only an admin can use it. | S |
 | 4 | **Make exec a real role** [F6, F7]: assignable, with a menu, and decide what it may do | Most chapters have a rush chair and two or three committee members who run events but should not manage accounts. Today they all have to be full admins. | M |
 | 5 | **Fix check-in search** [F10] | At the door with a queue, typing a name and tapping the first result checks in the wrong person. | S |
 | 6 | **GPA eligibility UI** [F8, F9]: set the minimum, enter a GPA, grant a waiver | Many campuses require the chapter to certify grades. The rules and audit trail exist; nobody can reach them. | M |

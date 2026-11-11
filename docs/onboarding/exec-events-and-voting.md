@@ -119,6 +119,16 @@ Any admin in the session has the chair controls, not only the person who started
 
 Either way, everyone is taken to the **Results** page for that round.
 
+### Voting outside a meeting: Open Voting
+
+For brothers who cannot make the meeting, open a round they can vote on at their own pace.
+
+1. **Voting → Open Voting**. If no round is open you see **No open round right now** and, as an admin, an **Open a round** button.
+2. Choose **Open a round**. Everyone in formal rush is put up for voting.
+3. Brothers open the same tab and vote one PNM after another; each sees only the PNMs he has not voted on yet.
+
+The round stays open until you make cuts from it on **Results**. A round that a live session is running never appears here, so nobody can vote on a session's PNMs out of turn.
+
 ## Part 5: Results and cuts
 
 ### Read the results
@@ -217,7 +227,6 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 | **You cannot see who has not voted,** only how many have. | Ask the room. |
 | **You cannot go back to an earlier PNM.** | Start a new session if you must revote. |
 | **A brother whose phone shows "Polling" is not sent to Results when the session ends.** His screen stays on the last PNM. | Tell him to open Results himself. |
-| **The "Open Voting" tab does not work for members.** | Use live sessions only. |
 
 ### Results, cuts and bids
 

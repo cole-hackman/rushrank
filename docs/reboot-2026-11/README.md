@@ -4,7 +4,7 @@
 
 The assessment itself changed no application code. It added documents here and in `docs/onboarding/`, and new test scripts in `e2e/`.
 
-**Follow-up on the same branch:** 25 of the 37 items the August audit left open were then fixed in the application, and the keep-warm item was improved as far as code can take it (see the update at the top of [`02-unfinished-and-broken.md`](02-unfinished-and-broken.md)). The four points below are unaffected; none of those fixes touched security, row-level security or the broken features listed in point 4.
+**Follow-up on the same branch:** 25 of the 37 items the August audit left open were then fixed in the application, and the keep-warm item was improved as far as code can take it (see the update at the top of [`02-unfinished-and-broken.md`](02-unfinished-and-broken.md)). A later commit fixed intake questions and Open Voting for members. Points 1 to 3 below are unaffected: nothing on this branch touches security or row-level security.
 
 ## Where things stand
 
@@ -15,7 +15,7 @@ Four things need attention before feature work resumes:
 1. **Production did not answer.** Three health checks timed out on 11 Nov. Both GitHub workflows (CI and keep-warm) have been disabled since early 2026.
 2. **Any signed-up user can reset any other user's password.** Two unused admin endpoints check only that the caller is an admin of some chapter, and signup makes everyone an admin of their own.
 3. **Row-level security is claimed but appears in no migration.** Whether production tables are readable with the public key has to be checked in the Supabase dashboard.
-4. **Several features on the screen do not work:** saving intake questions (returns 500), Open Voting for members, anonymous voting (changes nothing), the exec role (cannot be assigned), GPA eligibility (no UI).
+4. **Several features on the screen do not work:** anonymous voting (changes nothing), the exec role (cannot be assigned), GPA eligibility (no UI). Intake questions and Open Voting for members were in this list and are now fixed on this branch.
 
 ## Read in this order
 
