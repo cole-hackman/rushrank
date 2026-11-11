@@ -184,11 +184,35 @@ for (const role of ["member", "exec", "admin"]) {
     note("medium", "exec has no Admin menu, so no link to the bid list they are allowed to use (known)",
       "layout.tsx shows the menu for role admin only; AdminProtected and the bid-list API both admit exec.");
   }
-  const links = await page.locator("a[href]").evaluateAll((as) => [...new Set(as.map((a) => a.getAttribute("href")))]);
-  if (!links.some((h) => h === "/compare" || h?.startsWith("/compare?"))) {
-    if (role === "admin") note("medium", "Nothing links to /compare (known)", "the page only opens by typing ?ids=a,b");
-  }
   await page.close();
+
+  // Roster: Compare is reachable from the multi-select, and the PowerPoint
+  // export is offered only to the roles the backend allows (admin, exec).
+  {
+    const p = await ctx.newPage();
+    await p.goto(`${APP}/pnms`, { waitUntil: "domcontentloaded" });
+    await settle(p, 1500);
+    const deck = await p.getByRole("button", { name: /Export → PowerPoint/ }).isVisible().catch(() => false);
+    if (role === "member" && deck) note("medium", "A member is offered the PowerPoint export, which the API refuses", "");
+    if (role !== "member" && !deck) note("medium", `${role} is not offered the PowerPoint export`, "the API allows admin and exec");
+
+    const boxes = p.locator('table tbody input[type="checkbox"]');
+    if ((await boxes.count()) >= 2) {
+      await boxes.nth(0).check().catch(() => {});
+      await boxes.nth(1).check().catch(() => {});
+      const compare = p.getByRole("button", { name: /^Compare \(2\)$/ });
+      if (await compare.isEnabled().catch(() => false)) {
+        await compare.click();
+        await p.waitForURL(/\/compare\?ids=/, { timeout: 8000 }).catch(() => {});
+        if (!/\/compare\?ids=[^,]+,[^,]+/.test(p.url())) {
+          note("high", `${role}: Compare did not open /compare with the two ticked PNMs`, p.url());
+        }
+      } else {
+        note("high", `${role}: no enabled Compare button after ticking two rows`, "");
+      }
+    }
+    await p.close();
+  }
 
   // Mobile: is Results reachable?
   if (role === "member") {

@@ -71,15 +71,15 @@ Run from `e2e/`. "Reseed" means `cd .. && python3 e2e/guard.py --seed && cd e2e`
 | Order | Command | Writes | Expected | Then |
 |---|---|---|---|---|
 | 1 | `node smoke.mjs` | no | `redirected to login: false`, `errors : 0` | |
-| 2 | `node roles.mjs` | no | `88 page loads`, `0 new` (7 known) | |
-| 3 | `node visual.mjs` | no | screenshots in `screens/` | |
-| 4 | `node ws-voting.mjs 24 4` | yes | `57 checks passed`, `0 new blocker/high` (4 known) | |
+| 2 | `node roles.mjs` | no | `88 page loads`, `0 new` (6 known) | |
+| 3 | `node visual.mjs` | no | `0 visual finding(s)`; screenshots in `screens/` | |
+| 4 | `node ws-voting.mjs 24 4` | yes | `59 checks passed`, `0 new blocker/high` (4 known) | |
 | 5 | `node guard.mjs --api && node voting.mjs 24` | yes | `0 finding(s)` | Reseed |
-| 6 | `node api-contract.mjs` | yes, deletes | `283 assertions`, `FAILED 0`, `uncovered 0` (12 known, 9 external) | Reseed |
+| 6 | `node api-contract.mjs` | yes, deletes | `286 assertions`, `FAILED 0`, `uncovered 0` (12 known, 9 external) | Reseed |
 | 7 | `node flows.mjs` | yes | `7 ok, 3 known defect(s), 0 new failure(s)` | Reseed |
 | 8 | `node guard.mjs --api && node crawl.mjs` | yes | `report-crawl.json` | Reseed |
-| 9 | `node guard.mjs --api && node destructive.mjs` | deletes | 5 of 5 | Reseed |
-| 10 | `node guard.mjs --api && node verify-changes.mjs` | yes | not re-run in November; should pass as in August | Reseed |
+| 9 | `node guard.mjs --api && node destructive.mjs` | deletes | `6/6 checks passed` | Reseed |
+| 10 | `node guard.mjs --api && node verify-changes.mjs` | yes | `12 passed, 0 failed` | Reseed |
 
 The new scripts (2, 4, 6, 7) call the guard themselves. The existing ones (5, 8, 9, 10) do not, which is why `node guard.mjs --api &&` is in front of each.
 
@@ -97,7 +97,7 @@ cd python_server && pytest -q -m "not integration"
 TEST_DATABASE_URL=postgresql://$(whoami)@localhost:5432/postgres pytest -q -m integration
 ```
 
-Expected: `91 passed`, then `145 passed`. The integration suite creates and drops its own databases (`rr_it_fresh`, `rr_it_legacy`, `rr_it_demo`). Only ever point `TEST_DATABASE_URL` at local Postgres.
+Expected: `84 passed`, then `153 passed`. The integration suite creates and drops its own databases (`rr_it_fresh`, `rr_it_legacy`, `rr_it_demo`). Only ever point `TEST_DATABASE_URL` at local Postgres.
 
 ```bash
 cd frontend && npm run lint && npm run typecheck && npm run test

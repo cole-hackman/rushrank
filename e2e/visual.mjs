@@ -90,7 +90,10 @@ const AUDIT = `(() => {
   const offscreen = [];
 
   for (const el of document.querySelectorAll('button, a[href], [role="button"], input, select')) {
-    const r = el.getBoundingClientRect();
+    // A checkbox or text input inside a <label> is activated by tapping
+    // anywhere on the label, so the label is the real tap target.
+    const target = el.tagName === "INPUT" && el.closest("label") ? el.closest("label") : el;
+    const r = target.getBoundingClientRect();
     const cs = getComputedStyle(el);
     if (r.width === 0 || r.height === 0 || cs.visibility === "hidden" || cs.display === "none") continue;
     if (r.width < 44 || r.height < 44) {
@@ -133,7 +136,10 @@ const AUDIT = `(() => {
   }
 
   for (const img of document.querySelectorAll('img')) {
-    if (!img.getAttribute('alt') && img.getBoundingClientRect().width > 24) {
+    // A missing alt attribute is the defect. alt="" is the correct way to mark
+    // a decorative image (the marketing header logo sits beside the word
+    // "RushRank"), and flagging it was a false positive in the August run.
+    if (!img.hasAttribute('alt') && img.getBoundingClientRect().width > 24) {
       noAlt.push(img.getAttribute('src')?.slice(0,60) || '(img)');
     }
   }
@@ -161,10 +167,14 @@ async function shoot(ctx, route, vp, { signedIn }) {
   await page.goto(`${APP}${route.path}`, { waitUntil: "domcontentloaded" }).catch(() => {});
   await settle(page, 1100);
 
+  // Measure before the screenshot. In Playwright's phone emulation a
+  // full-page screenshot drops the coarse-pointer media feature, so anything
+  // styled for touch screens (the 44px `touch:` targets) measured afterwards
+  // reads as its desktop size.
+  const a = await page.evaluate(AUDIT).catch(() => null);
+
   const file = join(SHOTS, `${route.name}-${vp.name}.png`);
   await page.screenshot({ path: file, fullPage: true }).catch(() => {});
-
-  const a = await page.evaluate(AUDIT).catch(() => null);
   if (a) {
     if (vp.isMobile && a.overflow > 4) {
       note("high", route.name, "Horizontal overflow on mobile",

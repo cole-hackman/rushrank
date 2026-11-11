@@ -421,6 +421,25 @@ await t("GET /rounds/{round_id}/status", "member", `/rounds/${R}/status`, { expe
 await t("GET /chapters/{chapter_id}/voting-patterns", "none", `/chapters/${C}/voting-patterns`, { expect: DENIED });
 await t("GET /chapters/{chapter_id}/voting-patterns", "member", `/chapters/${C}/voting-patterns`, { expect: 403 });
 await t("GET /chapters/{chapter_id}/voting-patterns", "admin", `/chapters/${C}/voting-patterns`, { expect: 200 });
+await t("GET /chapters/{chapter_id}/round-summary", "none", `/chapters/${C}/round-summary`, { expect: DENIED });
+await t("GET /chapters/{chapter_id}/round-summary", "member", `/chapters/${NOBODY}/round-summary`, { expect: [403, 404], note: "another chapter" });
+{
+  // One request in place of the analytics page's per-round fan-out. Its
+  // figures must match the per-round endpoint it replaces.
+  const summary = await t("GET /chapters/{chapter_id}/round-summary", "member", `/chapters/${C}/round-summary`, { expect: 200 });
+  const round = summary.json?.rounds?.find((r) => r.id === R);
+  const detail = (await raw(member, "GET", `/api/v1/rounds/${R}/results`)).json || [];
+  const mismatched = detail.filter((d) => {
+    const s = round?.results?.find((x) => x.pnm_id === d.id);
+    return !s || s.vote_count !== d.vote_count || Math.abs(s.yes_percentage - Number(d.yes_percentage)) > 0.01;
+  });
+  const votesInDb = Number(sql(`select count(*) from votes v join voting_rounds r on r.id=v.round_id where r.chapter_id='${C}'`)[0][0]);
+  if (!round || mismatched.length || summary.json?.total_votes !== votesInDb) {
+    results.push({ op: "GET /chapters/{chapter_id}/round-summary", as: "member", outcome: "FAIL",
+      detail: `round found=${!!round}, ${mismatched.length} PNM(s) disagree with /rounds/{id}/results, total_votes=${summary.json?.total_votes} vs ${votesInDb} in the database` });
+    console.log("  FAIL member round-summary disagrees with per-round results or the votes table");
+  }
+}
 
 const cut = { mode: "top_n", value: 5, dry_run: true };
 await t("POST /rounds/{round_id}/cutoff", "none", `/rounds/${R}/cutoff`, { body: cut, expect: DENIED });

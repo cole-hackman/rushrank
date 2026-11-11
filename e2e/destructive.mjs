@@ -15,7 +15,7 @@ import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fixtures, signIn, watch, settle, sleep, APP, ROOT } from "./lib/harness.mjs";
+import { fixtures, signIn, watch, settle, sleep, acceptConfirm, APP, ROOT } from "./lib/harness.mjs";
 
 const sql = (q) =>
   execFileSync("psql", [process.env.E2E_DATABASE_URL, "-tAF", "|", "-c", q], {
@@ -84,6 +84,7 @@ if (await mergeBtn.isVisible().catch(() => false)) {
   const votesBefore = Number(one(`select count(*) from votes`));
 
   await mergeBtn.click();
+  await acceptConfirm(page);
   await sleep(700);
   // Confirm dialog, if the UI asks.
   for (const label of [/^Merge$/i, /^Confirm/i, /^Yes/i]) {
@@ -130,6 +131,7 @@ if (await rowCheckbox.isVisible().catch(() => false)) {
   const arch = page.getByRole("button", { name: /^Archive \(/i }).first();
   if (await arch.isVisible().catch(() => false)) {
     await arch.click();
+    await acceptConfirm(page);
     await sleep(1800);
     const archivedAfter = Number(one(`select count(*) from pnms where chapter_id='${fx.chapter.id}' and archived=true`));
     check("archive marks the PNM archived", archivedAfter === archivedBefore + 1, `${archivedBefore} -> ${archivedAfter}`);
@@ -155,6 +157,7 @@ await sleep(600);
 const del = page.getByRole("button", { name: /delete/i }).first();
 if (await del.isVisible().catch(() => false)) {
   await del.click();
+  await acceptConfirm(page);
   await sleep(700);
   for (const label of [/^Delete$/i, /^Confirm/i, /^Yes/i]) {
     const c = page.getByRole("button", { name: label }).last();
@@ -183,6 +186,7 @@ if (await start.isVisible().catch(() => false)) {
   const endBtn = page.getByRole("button", { name: /End Session/i }).first();
   if (await endBtn.isVisible().catch(() => false)) {
     await endBtn.click();
+    await acceptConfirm(page);
     await sleep(800);
     for (const label of [/^End Session$/i, /^Confirm/i, /^Yes/i]) {
       const c = page.getByRole("button", { name: label }).last();

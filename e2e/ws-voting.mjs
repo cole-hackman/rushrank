@@ -28,7 +28,7 @@
 import { chromium } from "playwright";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fixtures, signIn, watch, settle, sleep, APP, ROOT } from "./lib/harness.mjs";
+import { fixtures, signIn, watch, settle, sleep, acceptConfirm, APP, ROOT } from "./lib/harness.mjs";
 import { guard, sql, API } from "./guard.mjs";
 
 const VOTERS = Number(process.argv[2] || 12);
@@ -119,7 +119,6 @@ await signIn(chairCtx, chair, { chapterId: fx.chapter.id });
 const chairPage = await chairCtx.newPage();
 watch(chairPage, errors, "chair");
 tapSocket(chairPage, chairSink);
-chairPage.on("dialog", (d) => d.accept()); // End Session uses window.confirm
 await chairPage.goto(`${APP}/voting`, { waitUntil: "domcontentloaded" });
 await settle(chairPage);
 await chairPage.getByRole("button", { name: /^Start Session$/i }).click();
@@ -338,6 +337,27 @@ for (let i = 0; i < PNMS_TO_RUN; i++) {
   }
 }
 
+// ------------------------------------------------- walk-up joins the session
+// A PNM added while the session is running is appended to the end of its
+// running order (python_server/live_round.py), so the chair reaches them.
+{
+  const name = `E2E Walkup ${Date.now().toString(36)}`;
+  const stamp = Date.now().toString(36);
+  // A formal-rush PNM needs an email (services.py create_pnm).
+  const created = await call(voters[0], "POST", `/pnms?chapter_id=${fx.chapter.id}`, {
+    name, major: "Testing", email: `walkup-${stamp}@example.com`,
+  });
+  const newId = created.body?.id;
+  const last = sql(`select selected_pnm_ids[array_length(selected_pnm_ids, 1)] from voting_rounds where id='${roundId}'`)[0]?.[0];
+  const inRound = Number(sql(`select count(*) from round_pnms where round_id='${roundId}' and pnm_id='${newId}'`)[0]?.[0] || 0);
+  if (created.status === 200 && newId && last === newId && inRound === 1) {
+    pass("a PNM added mid-session is appended to the end of the running order");
+  } else {
+    note("high", "A PNM added mid-session did not join the session",
+      `create=${created.status}, last in order=${last}, in round_pnms=${inRound}`);
+  }
+}
+
 // ----------------------------------------------------------------- lock_change
 console.log("\n--- lock ---");
 {
@@ -463,6 +483,8 @@ console.log("\n--- end session ---");
   const votesBefore = Number(sql(`select count(*) from votes where round_id='${roundId}'`)[0][0]);
   const mark = Date.now();
   await chairPage.getByRole("button", { name: /^End Session$/i }).click();
+  if (await acceptConfirm(chairPage)) pass("End Session asks for confirmation in an in-app dialog");
+  else note("high", "End Session did not show its confirmation dialog", "no role=alertdialog appeared");
 
   const all = [...clients.map((c) => c.sink), chairSink];
   const got = await until(() => all.every((s) => s.frames.some((f) => f.type === "session_ended" && f.at >= mark)), 6000);
