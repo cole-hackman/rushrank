@@ -28,6 +28,18 @@ services:
       # always allowed as a CORS origin.
       - key: PUBLIC_SITE_URL
         value: https://rushrank.vercel.app
+      # Optional. With these unset, messages to PNMs open in the sender's own
+      # mail app instead of being sent by the server.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
       # Optional. Error reports go to Sentry when set; nothing is sent otherwise.
       - key: SENTRY_DSN
         sync: false
