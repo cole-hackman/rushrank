@@ -371,7 +371,7 @@ function Card({
               target="_blank"
               rel="noreferrer"
               onPointerDown={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 truncate text-caption font-caption text-subtext-color hover:text-brand-600"
+              className="flex items-center gap-1 truncate text-caption font-caption text-subtext-color hover:text-brand-600 touch:min-h-[44px]"
             >
               <FeatherInstagram className="h-3 w-3 shrink-0" />@{prospect.instagram_handle}
             </a>
@@ -396,7 +396,7 @@ function Card({
           {prospect.owner_user_id ? (
             <button
               onClick={() => onClaim?.(prospect, false)}
-              className="truncate text-caption font-caption text-subtext-color hover:text-default-font"
+              className="truncate text-caption font-caption text-subtext-color hover:text-default-font touch:min-h-[44px]"
               title="Hand back to the pool"
             >
               {prospect.owner_name ?? "Claimed"}
@@ -404,7 +404,7 @@ function Card({
           ) : (
             <button
               onClick={() => onClaim?.(prospect, true)}
-              className="text-caption-bold font-caption-bold text-brand-600 hover:text-brand-700"
+              className="text-caption-bold font-caption-bold text-brand-600 hover:text-brand-700 touch:min-h-[44px]"
             >
               I&apos;ll take this
             </button>
@@ -413,7 +413,7 @@ function Card({
           {onConvert && (
             <button
               onClick={() => onConvert(prospect)}
-              className="flex shrink-0 items-center gap-1 text-caption-bold font-caption-bold text-success-700 hover:text-success-800"
+              className="flex shrink-0 items-center gap-1 text-caption-bold font-caption-bold text-success-700 hover:text-success-800 touch:min-h-[44px]"
               title="Move into formal rush"
             >
               To rush <FeatherArrowRight className="h-3 w-3" />
@@ -456,7 +456,7 @@ function SharePanel({ chapterId }: { chapterId: string }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <select
-          className="h-10 rounded-lg border border-solid border-neutral-border bg-white px-3 text-body font-body text-default-font"
+          className="h-10 touch:h-11 rounded-lg border border-solid border-neutral-border bg-white px-3 text-body font-body text-default-font"
           value={source}
           onChange={(e) => setSource(e.target.value)}
         >
@@ -523,7 +523,7 @@ function Chip({
     <button
       onClick={onClick}
       className={cn(
-        "rounded-full border border-solid px-4 py-1.5 text-body font-body transition",
+        "rounded-full border border-solid px-4 py-1.5 text-body font-body transition touch:min-h-[44px]",
         active
           ? "border-brand-600 bg-brand-50 text-brand-700"
           : "border-neutral-border bg-white text-subtext-color hover:text-default-font",

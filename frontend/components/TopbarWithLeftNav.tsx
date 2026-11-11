@@ -26,7 +26,7 @@ export function TopbarWithLeftNav({ leftSlot, rightSlot, mobileNavItems, childre
           {mobileNavItems && mobileNavItems.length > 0 && (
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              className="md:hidden flex items-center justify-center h-11 w-11 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? (

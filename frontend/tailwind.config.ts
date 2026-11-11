@@ -1,5 +1,6 @@
 import { fontFamily } from "tailwindcss/defaultTheme";
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config = {
   darkMode: ["class"],
@@ -245,7 +246,14 @@ const config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // `touch:` applies only on coarse pointers (phones, tablets). Used to give
+    // controls a 44px tap target there without changing the laptop layout.
+    plugin(({ addVariant }) => {
+      addVariant("touch", "@media (pointer: coarse)");
+    }),
+  ],
 } satisfies Config;
 
 export default config;

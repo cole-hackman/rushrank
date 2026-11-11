@@ -47,6 +47,7 @@ import {
 } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { Button } from "@/ui/components/Button";
 import { Avatar } from "@/ui/components/Avatar";
 import { Badge } from "@/ui/components/Badge";
@@ -106,7 +107,7 @@ function OutcomeControl({
           }
         }}
         className={cn(
-          "rounded-full border border-border bg-card px-2 py-1 text-caption",
+          "rounded-full border border-border bg-card px-2 py-1 text-caption touch:min-h-[44px]",
           active.className,
         )}
       >
@@ -228,6 +229,7 @@ function BucketColumn({
 
 function BidListBoard() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [data, setData] = useState<BidListWithEntries | null>(null);
   const [loading, setLoading] = useState(true);
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -499,7 +501,11 @@ function BidListBoard() {
               variant="brand-primary"
               disabled={!canEdit || busy}
               onClick={async () => {
-                if (!confirm("Finalize this bid list? It becomes read-only.")) return;
+                if (!(await confirm({
+                  title: "Finalize this bid list?",
+                  description: "It becomes read-only. You can still record offered, accepted and declined.",
+                  confirmLabel: "Finalize",
+                }))) return;
                 setBusy(true);
                 try {
                   await finalizeBidList();

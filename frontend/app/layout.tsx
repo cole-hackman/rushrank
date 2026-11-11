@@ -2,6 +2,8 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { Work_Sans, Instrument_Serif } from "next/font/google";
 import ToastProvider from "@/components/ToastProvider";
+import { ErrorMonitoring } from "@/components/ErrorMonitoring";
+import ConfirmProvider from "@/components/ConfirmProvider";
 import { QueryProvider } from "@/providers/QueryProvider";
 
 // Fonts used to be injected by a client-side useEffect that appended <link>
@@ -65,8 +67,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 			</head>
 			<body>
+				<ErrorMonitoring />
 				<QueryProvider>
-					<ToastProvider>{children}</ToastProvider>
+					<ToastProvider>
+						<ConfirmProvider>{children}</ConfirmProvider>
+					</ToastProvider>
 				</QueryProvider>
 			</body>
 		</html>

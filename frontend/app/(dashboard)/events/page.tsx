@@ -14,6 +14,7 @@ import { Dialog } from "@/ui/components/Dialog";
 import { api, getChapterId, API_BASE } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useActiveEvent, clearEventsCache } from "@/hooks/useActiveEvent";
 import { SkeletonTable } from "@/components/ui/SkeletonTable";
 import { FeatherAward } from "@subframe/core";
@@ -57,6 +58,7 @@ type EventWithAttendance = Event & {
 function RushRankEventPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventWithAttendance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,16 +95,13 @@ function RushRankEventPage() {
       
       // Get chapter ID (uses cache, should be instant)
       const cid = await getChapterId();
-      console.log("[EventsPage] Chapter ID:", cid);
       setChapterId(cid || null);
       
       if (cid) {
         // Fetch events - should be fast now with attendee_count included (no N+1 queries)
         // Add timestamp to bypass any browser caching
         const timestamp = Date.now();
-        console.log("[EventsPage] Fetching events for chapter_id:", cid);
         const data = await api<Event[]>(`/events?chapter_id=${cid}&_t=${timestamp}`);
-        console.log("[EventsPage] Received events:", data?.length || 0, data);
         
         // Events now come with attendee_count from backend, map it to attendeeCount
         const eventsWithAttendance = data.map((event: any) => ({
@@ -306,7 +305,12 @@ function RushRankEventPage() {
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    if (!confirm("Are you sure you want to delete this event?")) return;
+    if (!(await confirm({
+      title: "Delete this event?",
+      description: "It is removed from the events list.",
+      confirmLabel: "Delete event",
+      destructive: true,
+    }))) return;
     try {
       await api(`/events/${eventId}`, { method: "DELETE" });
       toast({ title: "Success", description: "Event deleted successfully" });

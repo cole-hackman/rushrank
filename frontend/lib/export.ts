@@ -44,8 +44,91 @@ export async function exportAllPnms(chapterId: string): Promise<void> {
   await downloadCSV(url, `pnms_${chapterId}_${new Date().toISOString().split("T")[0]}.csv`);
 }
 
+/** A PNM as the roster and the /pnms endpoint describe it. */
+export type ExportablePnm = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  major?: string | null;
+  hometown?: string | null;
+  year?: string | null;
+  photo_url?: string | null;
+  tags?: string[];
+  attendance_count?: number;
+  yes_percentage?: number;
+  favorite_count?: number;
+  gpa?: number | null;
+  met_count?: number;
+  archived?: boolean;
+  created_at?: string | null;
+};
+
+const PNM_CSV_HEADERS = [
+  "id", "name", "email", "phone", "major", "hometown", "year", "gpa", "tags",
+  "attendance_count", "met_count", "yes_percentage", "favorite_count", "photo_url", "created_at",
+];
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+/** The CSV text for a list of PNMs. Pure, so it can be tested. */
+export function pnmsToCsv(pnms: ExportablePnm[]): string {
+  const rows = pnms.map((p) => [
+    p.id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
+    p.gpa ?? "", (p.tags || []).join(", "),
+    p.attendance_count ?? 0, p.met_count ?? 0, p.yes_percentage ?? 0, p.favorite_count ?? 0,
+    p.photo_url, p.created_at,
+  ]);
+  return [PNM_CSV_HEADERS.join(","), ...rows.map((r) => r.map(csvCell).join(","))].join("\n");
+}
+
+/** Save a list of PNMs the page already has as a CSV file. */
+export function downloadPnmsCsv(pnms: ExportablePnm[], filename?: string): void {
+  const blob = new Blob([pnmsToCsv(pnms)], { type: "text/csv;charset=utf-8;" });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = filename || `pnms_${new Date().toISOString().split("T")[0]}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
 /**
- * Export filtered PNMs (client-side CSV generation from filtered data)
+ * The same filter the roster applies: text across name, major, hometown,
+ * email and phone, and any of the chosen tags. Archived PNMs are left out.
+ * Exported so the roster and this file cannot drift apart.
+ */
+export function filterPnms<T extends ExportablePnm>(
+  pnms: T[],
+  filters?: { search?: string; tags?: string[]; ids?: string[] },
+): T[] {
+  let out = pnms.filter((p) => !p.archived);
+  if (filters?.ids && filters.ids.length > 0) {
+    const wanted = new Set(filters.ids);
+    out = out.filter((p) => wanted.has(p.id));
+  }
+  const term = (filters?.search || "").trim().toLowerCase();
+  if (term) {
+    out = out.filter((p) =>
+      [p.name, p.major, p.hometown, p.email, p.phone].some((v) => (v || "").toLowerCase().includes(term)),
+    );
+  }
+  if (filters?.tags && filters.tags.length > 0) {
+    out = out.filter((p) => filters.tags!.some((t) => (p.tags || []).includes(t)));
+  }
+  return out;
+}
+
+/**
+ * Export filtered PNMs.
+ *
+ * The backend's GET /pnms ignores search and tag parameters, so this used to
+ * send them, get the whole roster back, and export everyone under a
+ * "filtered" label. It now filters here, the same way the roster does.
  */
 export async function exportFilteredPnms(
   chapterId: string,
@@ -54,71 +137,18 @@ export async function exportFilteredPnms(
     tags?: string[];
     ids?: string[];
   }
-): Promise<void> {
+): Promise<number> {
   const token = await getAccessToken();
-  
-  // Fetch filtered PNMs
-  const params = new URLSearchParams();
-  params.set("chapter_id", chapterId);
-  if (filters?.search) {
-    params.set("search", filters.search);
-  }
-  if (filters?.tags && filters.tags.length > 0) {
-    params.set("tags", filters.tags.join(","));
-  }
-  
-  const response = await fetch(`${API_BASE}/pnms?${params.toString()}`, {
+  const response = await fetch(`${API_BASE}/pnms?chapter_id=${encodeURIComponent(chapterId)}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  
   if (!response.ok) {
     throw new Error(`Failed to fetch PNMs: ${response.statusText}`);
   }
-  
-  const pnms = await response.json();
-  
-  // Filter by IDs if provided
-  let filteredPnms = pnms;
-  if (filters?.ids && filters.ids.length > 0) {
-    filteredPnms = pnms.filter((p: any) => filters.ids!.includes(p.id));
-  }
-  
-  // Generate CSV client-side
-  const headers = [
-    "id", "name", "email", "phone", "major", "hometown", "year", "photo_url", 
-    "tags", "attendance_count", "yes_percentage", "favorite_count", "created_at"
-  ];
-  
-  const rows = filteredPnms.map((p: any) => [
-    p.id || "",
-    p.name || "",
-    p.email || "",
-    p.phone || "",
-    p.major || "",
-    p.hometown || "",
-    p.year || "",
-    p.photo_url || "",
-    (p.tags || []).join(","),
-    p.attendance_count || 0,
-    p.yes_percentage || 0,
-    p.favorite_count || 0,
-    p.created_at || "",
-  ]);
-  
-  const csvContent = [
-    headers.join(","),
-    ...rows.map((row: any[]) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
-  ].join("\n");
-  
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const downloadUrl = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = `pnms_filtered_${new Date().toISOString().split("T")[0]}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(downloadUrl);
+  const pnms: ExportablePnm[] = await response.json();
+  const chosen = filterPnms(pnms, filters);
+  downloadPnmsCsv(chosen, `pnms_filtered_${new Date().toISOString().split("T")[0]}.csv`);
+  return chosen.length;
 }
 
 /**

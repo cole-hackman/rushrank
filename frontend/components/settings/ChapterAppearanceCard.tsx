@@ -26,7 +26,7 @@ export function ChapterAppearanceCard() {
       </p>
 
       <div className="mt-4 space-y-3">
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 touch:min-h-[44px]">
           <input
             type="radio"
             name="chapter-accent-mode"
@@ -35,7 +35,7 @@ export function ChapterAppearanceCard() {
           />
           <span>Generic (cream &amp; black)</span>
         </label>
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 touch:min-h-[44px]">
           <input
             type="radio"
             name="chapter-accent-mode"
@@ -55,7 +55,7 @@ export function ChapterAppearanceCard() {
           <input
             value={hex}
             onChange={(e) => setHex(e.target.value)}
-            className="rounded border border-border bg-background px-2 py-1 font-mono text-sm"
+            className="rounded border border-border bg-background px-2 py-1 font-mono text-sm touch:min-h-[44px]"
             placeholder="#0033A0"
           />
           {!hexValid && <span className="text-sm text-danger">Invalid hex</span>}
@@ -64,7 +64,7 @@ export function ChapterAppearanceCard() {
 
       <div className="mt-6 flex items-center gap-3">
         <button
-          className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
+          className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50 touch:min-h-[44px]"
           disabled={(enabled && !hexValid) || update.isPending}
           onClick={() =>
             update.mutate({

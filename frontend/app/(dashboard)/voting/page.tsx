@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useSessionWebSocket } from "@/hooks/useSessionWebSocket";
 import { Tabs } from "@/ui/components/Tabs";
 import { Button } from "@/ui/components/Button";
@@ -63,6 +64,7 @@ const swipeThreshold = 80;
 
 export default function VotingPage() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const router = useRouter();
   
   // Live Session is the default: it is the flow the whole chapter runs together
@@ -385,9 +387,12 @@ export default function VotingPage() {
     if (!session) return;
     // Ending closes the room for everyone, not just this device, so it asks
     // first. Votes already cast are kept -- the round is closed, not discarded.
-    const confirmed = window.confirm(
-      "End the session for everyone? Votes already cast are kept, and you'll be taken to the results."
-    );
+    const confirmed = await confirm({
+      title: "End the session for everyone?",
+      description: "Votes already cast are kept, and everyone is taken to the results.",
+      confirmLabel: "End session",
+      destructive: true,
+    });
     if (!confirmed) return;
 
     const roundId = session.round_id;
@@ -592,7 +597,7 @@ export default function VotingPage() {
                   <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
                     <div className="mb-4 text-xl font-semibold text-beta-navy">Start Session</div>
                     <div className="space-y-4">
-                      <label className="flex items-center gap-3 text-sm text-beta-gray">
+                      <label className="flex items-center gap-3 text-sm text-beta-gray touch:min-h-[44px]">
                         <input
                           type="checkbox"
                           checked={startAnonymous}
@@ -608,7 +613,7 @@ export default function VotingPage() {
                           min={30}
                           value={startTimer}
                           onChange={(e) => setStartTimer(Number(e.target.value))}
-                          className="h-10 w-28 rounded-lg border border-beta-gray/60 px-3 text-sm font-medium text-beta-navy focus:ring-2 focus:ring-beta-navy"
+                          className="h-10 touch:h-11 w-28 rounded-lg border border-beta-gray/60 px-3 text-sm font-medium text-beta-navy focus:ring-2 focus:ring-beta-navy"
                         />
                         <span>seconds per PNM</span>
                       </div>
@@ -636,15 +641,18 @@ export default function VotingPage() {
               ) : (
 
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between rounded-xl border border-beta-gray/30 bg-white p-5 shadow-sm">
-                    <div className="space-y-1">
-                      <div className="text-xl font-semibold text-beta-navy">Live Voting Session</div>
-                      <div className="flex items-center gap-2 text-sm text-beta-gray">
+                  {/* Wraps on a phone. The room reads the join code off this
+                      card, and at 390px the title used to break over two
+                      lines and push the code out of line with its label. */}
+                  <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-beta-gray/30 bg-white p-5 shadow-sm">
+                    <div className="min-w-0 space-y-1">
+                      <div className="whitespace-nowrap text-xl font-semibold text-beta-navy">Live Voting Session</div>
+                      <div className="flex items-center gap-2 whitespace-nowrap text-sm text-beta-gray">
                         <span>Join Code:</span>
                         <span className="font-mono font-semibold tracking-widest text-beta-navy">{session.join_code}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                     {timerRemaining !== null && (
                       <Badge
                         variant={timerRemaining <= 15 ? "warning" : "neutral"}

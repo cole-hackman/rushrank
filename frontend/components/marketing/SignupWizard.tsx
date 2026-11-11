@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useFraternityColors } from "@/lib/queries";
@@ -28,6 +28,12 @@ export function SignupWizard() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  // What happens after the magic link brings the user back. Before this, the
+  // return was invisible: provisioning ran with nothing on screen, an error was
+  // stored but only rendered on step 2, and a link opened in another browser
+  // simply did nothing.
+  const [returnState, setReturnState] = useState<"idle" | "provisioning" | "error" | "missing">("idle");
+  const provisioningRef = useRef(false);
 
   // Check if user is already a member of a chapter, redirect to dashboard
   useEffect(() => {
@@ -52,37 +58,50 @@ export function SignupWizard() {
     }
   }, [fraternity, school, chapterName]);
 
+  const provision = useCallback(async () => {
+    if (provisioningRef.current) return;
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) {
+      setReturnState("missing");
+      return;
+    }
+    provisioningRef.current = true;
+    setError(null);
+    setReturnState("provisioning");
+    try {
+      const pending: PendingSignup = JSON.parse(raw);
+      await provisionChapter(pending);
+      localStorage.removeItem(PENDING_KEY);
+      clearCachedChapterId();
+      router.replace("/dashboard?welcome=1");
+    } catch (e: any) {
+      provisioningRef.current = false;
+      setError(e?.message ?? "We could not set up your chapter.");
+      setReturnState("error");
+    }
+  }, [router]);
+
   useEffect(() => {
     const verified = search?.get("verified");
     if (!verified) return;
     if (!supabase) {
-      setError("Supabase not configured");
+      setError("Sign-in is not configured on this site.");
+      setReturnState("error");
       return;
     }
-    const raw = localStorage.getItem(PENDING_KEY);
-    if (!raw) return;
-
-    let done = false;
-    const provision = async () => {
-      if (done) return;
-      done = true;
-      try {
-        const pending: PendingSignup = JSON.parse(raw);
-        await provisionChapter(pending);
-        localStorage.removeItem(PENDING_KEY);
-        clearCachedChapterId();
-        router.replace("/dashboard?welcome=1");
-      } catch (e: any) {
-        done = false;
-        setError(e?.message ?? "Provisioning failed");
-      }
-    };
+    if (!localStorage.getItem(PENDING_KEY)) {
+      // The signup details live in the browser that started the signup. A
+      // link opened anywhere else signs the user in but cannot create the
+      // chapter. Say so instead of showing an empty step 1. (If this user
+      // already has a chapter, the effect above sends them to the dashboard.)
+      setReturnState("missing");
+      return;
+    }
+    setReturnState("provisioning");
 
     // Driven by the auth-state callback rather than a bare getSession(): on
     // return from a magic link, getSession() can resolve before supabase-js has
-    // finished parsing the token out of the URL hash. The old code returned
-    // silently in that case, leaving the user on this screen with no chapter
-    // and no error -- one of the two reasons self-serve signup never completed.
+    // finished parsing the token out of the URL hash.
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) void provision();
     });
@@ -93,7 +112,16 @@ export function SignupWizard() {
     });
 
     return () => data.subscription.unsubscribe();
-  }, [search, router]);
+  }, [search, provision]);
+
+  function startOver() {
+    localStorage.removeItem(PENDING_KEY);
+    provisioningRef.current = false;
+    setError(null);
+    setReturnState("idle");
+    setStep(1);
+    router.replace("/get-started");
+  }
 
   async function sendMagicLink() {
     if (!supabase) {
@@ -125,6 +153,61 @@ export function SignupWizard() {
     }
   }
 
+  if (returnState === "provisioning") {
+    return (
+      <section className="mx-auto max-w-2xl px-6 py-24 text-center" aria-live="polite">
+        <div className="mx-auto mb-6 h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
+        <h1 className="font-serif text-3xl text-fg">Setting up your chapter</h1>
+        <p className="mt-3 text-muted-foreground">
+          This usually takes a few seconds. You will land on your dashboard when it is ready.
+        </p>
+      </section>
+    );
+  }
+
+  if (returnState === "error") {
+    return (
+      <section className="mx-auto max-w-2xl px-6 py-24" role="alert">
+        <h1 className="font-serif text-3xl text-fg">We could not finish setting up your chapter</h1>
+        <p className="mt-4 rounded-lg border border-danger px-4 py-3 text-sm text-fg">
+          {error}
+        </p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Your email is confirmed, so trying again will not send another link.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            onClick={() => void provision()}
+            className="rounded-full bg-accent px-6 py-2 text-accent-fg"
+          >
+            Try again
+          </button>
+          <button onClick={startOver} className="rounded-full border border-border px-6 py-2 text-fg">
+            Change chapter details
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (returnState === "missing") {
+    return (
+      <section className="mx-auto max-w-2xl px-6 py-24">
+        <h1 className="font-serif text-3xl text-fg">Open the link in the browser you signed up in</h1>
+        <p className="mt-4 text-muted-foreground">
+          You are signed in, but your chapter details were saved in the browser where you started
+          signing up, and this looks like a different one. Open the email link there to finish, or
+          enter your chapter details again here.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button onClick={startOver} className="rounded-full bg-accent px-6 py-2 text-accent-fg">
+            Enter details here
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="mx-auto max-w-2xl px-6 py-24">
       <div className="mb-8 flex items-center justify-center gap-3">
@@ -145,7 +228,7 @@ export function SignupWizard() {
               list="fraternities"
               value={fraternity}
               onChange={(e) => setFraternity(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 touch:min-h-[44px]"
               placeholder="Sigma Chi"
             />
             <datalist id="fraternities">
@@ -157,7 +240,7 @@ export function SignupWizard() {
             <input
               value={school}
               onChange={(e) => setSchool(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 touch:min-h-[44px]"
               placeholder="Boston College"
             />
           </label>
@@ -166,13 +249,13 @@ export function SignupWizard() {
             <input
               value={chapterName}
               onChange={(e) => setChapterName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 touch:min-h-[44px]"
             />
           </label>
           <button
             disabled={!fraternity || !school || !chapterName}
             onClick={() => setStep(2)}
-            className="rounded-full bg-accent px-6 py-2 text-accent-fg disabled:opacity-50"
+            className="rounded-full bg-accent px-6 py-2 text-accent-fg disabled:opacity-50 touch:min-h-[44px]"
           >
             Continue
           </button>
@@ -187,7 +270,7 @@ export function SignupWizard() {
             <input
               value={adminName}
               onChange={(e) => setAdminName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 touch:min-h-[44px]"
             />
           </label>
           <label className="block">
@@ -196,7 +279,7 @@ export function SignupWizard() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 touch:min-h-[44px]"
             />
           </label>
           {error && <p className="text-sm text-danger">{error}</p>}
@@ -205,7 +288,7 @@ export function SignupWizard() {
             <button
               disabled={!adminName || !email || sending}
               onClick={sendMagicLink}
-              className="rounded-full bg-accent px-6 py-2 text-accent-fg disabled:opacity-50"
+              className="rounded-full bg-accent px-6 py-2 text-accent-fg disabled:opacity-50 touch:min-h-[44px]"
             >
               {sending ? "Sending…" : "Send magic link"}
             </button>

@@ -32,10 +32,21 @@ import { IconWithBackground } from "@/ui/components/IconWithBackground";
 import { Progress } from "@/ui/components/Progress";
 import { Table } from "@/ui/components/Table";
 import { Tabs } from "@/ui/components/Tabs";
-import { DefaultPageLayout } from "@/ui/layouts/DefaultPageLayout";
 import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { exportAllPnms, exportRoundResults } from "@/lib/export";
+
+// GET /chapters/{id}/round-summary: every round's per-PNM results at once.
+type RoundSummary = {
+  rounds: Array<{
+    id: string;
+    name?: string | null;
+    status: string;
+    total_votes: number;
+    results: Array<{ pnm_id: string; yes_percentage: number; vote_count: number }>;
+  }>;
+  total_votes: number;
+};
 
 type Round = {
   id: string;
@@ -153,21 +164,11 @@ export default function AnalyticsPage() {
         api<any[]>(`/pnms?chapter_id=${cid}`).catch(() => []),
       ]);
 
-      // Calculate total votes (aggregate from all rounds)
-      let totalVotes = 0;
-      const roundResults = await Promise.all(
-        roundsData.map(async (round) => {
-          try {
-            // The endpoint returns a bare array. Reading `.results` off it threw,
-            // and the surrounding catch swallowed it -- so this silently counted 0.
-            const results = await api<any[]>(`/rounds/${round.id}/results`).catch(() => []);
-            return results.length;
-          } catch {
-            return 0;
-          }
-        })
-      );
-      totalVotes = roundResults.reduce((sum, count) => sum + count, 0);
+      // Real vote count, from one aggregate request. This used to request
+      // every round's full results and add up the number of result rows, which
+      // counted PNMs per round and labelled it "votes cast".
+      const summary = await api<RoundSummary>(`/chapters/${cid}/round-summary`).catch(() => null);
+      const totalVotes = summary?.total_votes ?? 0;
 
       // Calculate controversial PNMs (40-60% yes range)
       const controversialPnms = pnmsData.filter(
@@ -175,7 +176,9 @@ export default function AnalyticsPage() {
       ).length;
 
       // Calculate completed vs in-progress rounds
-      const completedRounds = roundsData.filter((r) => r.status === "completed" || r.status === "COMPLETED").length;
+      // The backend's finished state is ENDED; "completed" never matched, so
+      // this tile always read 0.
+      const completedRounds = roundsData.filter((r) => ["ENDED", "COMPLETED"].includes(String(r.status).toUpperCase())).length;
       const roundsInProgress = roundsData.filter((r) => r.status === "active" || r.status === "ACTIVE").length;
 
       // Real participation: votes cast over votes available, computed server
@@ -254,36 +257,31 @@ export default function AnalyticsPage() {
   const loadRoundComparison = async () => {
     if (!chapterId) return;
     try {
-      const pnms = await api<any[]>(`/pnms?chapter_id=${chapterId}`);
-      const roundsData = await api<Round[]>(`/rounds?chapter_id=${chapterId}`);
-
-      // Get results for each round and build round-by-round scores
-      const pnmsWithRounds = await Promise.all(
-        pnms.map(async (pnm) => {
-          const roundScores: Array<{ round_id: string; round_name?: string; score: number }> = [];
-          for (const round of roundsData.slice(0, 3)) {
-            try {
-              // The endpoint returns a bare array. Reading `.results` off it threw,
-            // and the surrounding catch swallowed it -- so this silently counted 0.
-            const results = await api<any[]>(`/rounds/${round.id}/results`).catch(() => []);
-              const pnmResult = results.find((r: any) => r.id === pnm.id);
-              if (pnmResult) {
-                roundScores.push({
-                  round_id: round.id,
-                  round_name: round.name || `Round ${roundsData.indexOf(round) + 1}`,
-                  score: pnmResult.yes_percentage || 0,
-                });
-              }
-            } catch {
-              // Skip this round
-            }
-          }
-          return {
-            ...pnm,
-            round_scores: roundScores,
-          };
-        })
+      // Two requests in total. This used to fetch every round's results once
+      // per PNM per round (about 150 requests for a 50-PNM chapter).
+      const [pnms, summary] = await Promise.all([
+        api<any[]>(`/pnms?chapter_id=${chapterId}`),
+        api<RoundSummary>(`/chapters/${chapterId}/round-summary`),
+      ]);
+      const firstRounds = summary.rounds.slice(0, 3);
+      const scoreIndex = firstRounds.map((round) =>
+        new Map(round.results.map((r) => [r.pnm_id, r.yes_percentage])),
       );
+
+      const pnmsWithRounds = pnms.map((pnm) => {
+        const roundScores: Array<{ round_id: string; round_name?: string; score: number }> = [];
+        firstRounds.forEach((round, idx) => {
+          const score = scoreIndex[idx].get(pnm.id);
+          if (score !== undefined) {
+            roundScores.push({
+              round_id: round.id,
+              round_name: round.name || `Round ${idx + 1}`,
+              score,
+            });
+          }
+        });
+        return { ...pnm, round_scores: roundScores };
+      });
 
       setPnmResults(pnmsWithRounds);
     } catch (e: any) {
@@ -473,8 +471,10 @@ export default function AnalyticsPage() {
     return pnmResults;
   }, [pnmResults, selectedRoundRange]);
 
+  // This page used to wrap itself in Subframe's generated DefaultPageLayout,
+  // which renders its own placeholder top bar (a Subframe logo, "Home / Inbox
+  // / Reports" and a stock-photo avatar) underneath the app's real one.
   return (
-    <DefaultPageLayout>
       <div className="container max-w-none flex h-full w-full flex-col items-start gap-6 bg-default-background py-6">
         <div className="flex w-full items-center justify-between">
           <div className="flex flex-col items-start gap-1">
@@ -1079,7 +1079,6 @@ export default function AnalyticsPage() {
           </div>
         )}
       </div>
-    </DefaultPageLayout>
   );
 }
 

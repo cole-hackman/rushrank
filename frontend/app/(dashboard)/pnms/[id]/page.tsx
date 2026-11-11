@@ -380,7 +380,7 @@ export default function PNMProfilePage() {
                   />
                 </TextArea>
                 <div className="flex items-center justify-between text-sm text-beta-gray">
-                  <label className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 touch:min-h-[44px]">
                     <input
                       type="checkbox"
                       checked={anonymous}

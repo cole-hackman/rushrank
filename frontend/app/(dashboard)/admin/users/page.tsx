@@ -226,7 +226,7 @@ export default function UsersPage() {
                 <button
                   onClick={() => setInviteMode("single")}
                   className={cn(
-                    "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors",
+                    "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors touch:min-h-[44px]",
                     inviteMode === "single"
                       ? "border-[#162238ff] bg-[#162238ff] text-white"
                       : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
@@ -237,7 +237,7 @@ export default function UsersPage() {
                 <button
                   onClick={() => setInviteMode("bulk")}
                   className={cn(
-                    "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors",
+                    "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors touch:min-h-[44px]",
                     inviteMode === "bulk"
                       ? "border-[#162238ff] bg-[#162238ff] text-white"
                       : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
@@ -354,7 +354,7 @@ export default function UsersPage() {
                   <button
                     onClick={() => setRoleFilter(null)}
                     className={cn(
-                      "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors",
+                      "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors touch:min-h-[44px]",
                       !roleFilter
                         ? "border-[#162238ff] bg-[#162238ff] text-white"
                         : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
@@ -367,7 +367,7 @@ export default function UsersPage() {
                       key={role}
                       onClick={() => setRoleFilter(roleFilter === role ? null : role)}
                       className={cn(
-                        "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors",
+                        "rounded-md border border-solid px-3 py-1.5 text-caption-bold font-caption-bold transition-colors touch:min-h-[44px]",
                         roleFilter === role
                           ? "border-[#162238ff] bg-[#162238ff] text-white"
                           : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
