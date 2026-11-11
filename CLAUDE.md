@@ -37,7 +37,7 @@ RushRank — fraternity rush management app. Next.js 14 frontend (`frontend/`) +
 - The **root `package.json`** is stale leftover from a previous Express/Drizzle stack (references `server/index.ts` which no longer exists). Do not use root `npm run dev`/`build`; the live stack is `frontend/` + `python_server/`.
 
 ### Backend layering (`python_server/`)
-- `main.py` — FastAPI app, CORS, lifespan-managed asyncpg pool, path normalization middleware, global exception handler that re-applies CORS headers on 500s, WebSocket endpoint at `/ws/session/{session_id}`.
+- `main.py` — FastAPI app, CORS, lifespan-managed asyncpg pool, path normalization middleware, global exception handler that re-applies CORS headers on 500s, WebSocket endpoint at `/ws/session/{session_id}` (the client's first message must be `{"type":"auth","token":...}`).
 - `routes.py` — all HTTP endpoints; thin handlers that delegate to service classes.
 - `services.py` — `UserService`, `ChapterService`, `PNMService`, `VotingService`, `EventService`, `ExportService`, `NoteService`, `TagService`, `SessionService`, `UploadService`, `QuestionnaireService`, `InvitationService`. All DB access flows through these.
 - `auth.py` — Supabase JWT verification via JWKS; `get_current_user` / `get_optional_user` dependencies.
@@ -55,7 +55,7 @@ RushRank — fraternity rush management app. Next.js 14 frontend (`frontend/`) +
 
 ### Data model
 - Multi-tenant by `chapter_id`. Core tables: `users`, `chapters`, `memberships` (role: admin/exec/member), `pnms`, `voting_rounds`, `votes`, `notes`, `events`, `attendance`, plus session/questionnaire/tag/invitation tables added via migrations.
-- RLS policies enforce chapter isolation in Supabase; backend additionally uses service role key for cross-row operations.
+- Chapter isolation is enforced by the backend, which is the only thing that reads or writes tables. The frontend never queries a table through the Supabase client. `0019_rls_deny_all.sql` enables row-level security on every table and revokes the public roles' grants so the anon key can read nothing. Confirm it has been applied to production before relying on it.
 
 ### Live voting flow
 Voting sessions are the performance-critical path: chair advances PNMs via the backend, which writes to `votes` and broadcasts over the websocket. Mobile swipe UI in `app/(dashboard)/voting/`. When changing voting logic, check both `VotingService`/`SessionService` and the websocket broadcast contract.
