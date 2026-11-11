@@ -62,7 +62,7 @@ export function UserRoleEditor({
         onClick={() => !disabled && !updating && setOpen(!open)}
         disabled={disabled || updating}
         className={cn(
-          "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+          "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors touch:min-h-[44px]",
           ROLE_COLORS[currentRole] || ROLE_COLORS.member,
           (disabled || updating) && "opacity-50 cursor-not-allowed",
           !disabled && !updating && "hover:opacity-80"

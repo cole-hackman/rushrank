@@ -31,6 +31,7 @@ from .services import (
 )
 from .bid_list import BidListService
 from . import audit
+from .live_round import add_to_live_session
 from . import merge as merge_service
 from .csv_import import parse_and_import
 from .rate_limit import limiter, VOTE_RATE_LIMIT, AUTH_RATE_LIMIT, WRITE_RATE_LIMIT
@@ -669,14 +670,27 @@ async def get_public_chapter(chapter_id: str, request: Request):
     if isinstance(theme, str):
         import json as _json
         theme = _json.loads(theme)
-    return {"id": str(row["id"]), "name": row["name"], "theme": theme}
+    # The chapter's intake questions, so the public form can ask them. Only
+    # the question text, type and whether it is required leave the server.
+    questionnaire = await questionnaire_service.get_active_questions(str(row["id"]))
+    return {"id": str(row["id"]), "name": row["name"], "theme": theme, "questionnaire": questionnaire}
+
+
+class PublicIntake(PNMCreate):
+    """The public intake body: a PNM, plus answers to the chapter's questions.
+
+    Answers ride along with the PNM rather than going to POST
+    /pnms/{id}/answers, which needs a signed-in member. Keys are
+    "questionnaire-<question id>", as the intake form names its fields.
+    """
+    answers: Optional[Dict[str, str]] = None
 
 
 @router.post("/public/chapters/{chapter_id}/intake")
 @limiter.limit(WRITE_RATE_LIMIT)
 async def public_intake(
     chapter_id: str,
-    pnm_data: PNMCreate,
+    pnm_data: PublicIntake,
     request: Request,
     source: Optional[str] = Query(
         None,
@@ -713,7 +727,16 @@ async def public_intake(
     # A public form can never assign an owner.
     pnm_data.owner_user_id = None
 
-    return await pnm_service.create_pnm(pnm_data, chapter_id)
+    answers = pnm_data.answers
+    created = await pnm_service.create_pnm(PNMCreate(**pnm_data.model_dump(exclude={"answers"})), chapter_id)
+    if answers:
+        try:
+            await questionnaire_service.save_public_answers(chapter_id, created.id, answers)
+        except Exception:
+            # The PNM is what matters at the rush table; a failed answer save
+            # must not turn a successful sign-up into an error screen.
+            logger.exception("Could not save intake answers for PNM %s", created.id)
+    return created
 
 
 @router.post("/public/demo-session")
@@ -1126,6 +1149,9 @@ async def update_pnm_pipeline(
     # rush, or marking a bid accepted. Status and owner churn is not, and
     # logging every drag would bury the decisions.
     if result["before"]["stage"] != result["after"]["stage"]:
+        # A prospect converted to formal rush during a live session joins it.
+        if result["before"]["stage"] == "prospect":
+            await add_to_live_session(result["chapter_id"], [pnm_id])
         await audit.record(
             result["chapter_id"], current_user["user_id"], "pnm.stage_change",
             entity_type="pnm", entity_id=pnm_id,
@@ -1429,6 +1455,9 @@ async def bulk_archive_pnms(
     try:
         await db.execute_command(query, request.archived, request.pnm_ids)
         action = "archived" if request.archived else "unarchived"
+        if not request.archived:
+            for cid in chapter_ids:
+                await add_to_live_session(cid, request.pnm_ids)
         await audit.record(
             next(iter(chapter_ids), None), current_user["user_id"], "pnm.bulk_archive",
             entity_type="pnm",
@@ -1618,6 +1647,19 @@ async def get_voting_patterns(
     """
     await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
     return await voting_service.get_voting_patterns(chapter_id)
+
+
+@router.get("/chapters/{chapter_id}/round-summary")
+async def get_round_summary(
+    chapter_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Every round's per-PNM results in one response, for the analytics page.
+
+    Same visibility as GET /rounds/{id}/results: any member of the chapter.
+    """
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    return await voting_service.get_round_summary(chapter_id)
 
 
 @router.get("/rounds", response_model=List[VotingRound])
@@ -2184,6 +2226,13 @@ async def save_pnm_answers(
     if not pnm:
         raise HTTPException(status_code=404, detail="PNM not found")
     await chapter_service.verify_membership(current_user["user_id"], pnm.chapter_id)
+    if payload.questionnaire_id:
+        db = get_db()
+        owner = await db.execute_one(
+            "SELECT chapter_id FROM questionnaires WHERE id = $1", payload.questionnaire_id
+        )
+        if not owner or str(owner["chapter_id"]) != str(pnm.chapter_id):
+            raise HTTPException(status_code=400, detail="That questionnaire belongs to another chapter")
     return await questionnaire_service.save_pnm_answers(pnm_id, payload)
 
 # PNM-specific endpoints
@@ -2287,6 +2336,23 @@ async def get_round_status(
     }
 
 # Open Voting endpoints
+# The round behind the Open Voting tab: the newest active GENERAL round that no
+# live session was ever attached to. Without the session check this picked up
+# a live session's round, so a brother on the Open Voting tab could vote on any
+# PNM in a session the chair was running, out of turn. Rounds created by "Make
+# cuts" have no session and do qualify: voting on the survivors at your own
+# pace is exactly what this tab is for.
+OPEN_ROUND_SQL = """
+    SELECT vr.id, vr.chapter_id, vr.type, vr.status, vr.room_code, vr.selected_pnm_ids,
+           vr.started_at, vr.ended_at, vr.created_at
+    FROM voting_rounds vr
+    WHERE vr.chapter_id = $1 AND vr.type = 'GENERAL' AND vr.status = 'ACTIVE'
+      AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.round_id = vr.id)
+    ORDER BY vr.created_at DESC
+    LIMIT 1
+"""
+
+
 @router.post("/rounds/open")
 async def ensure_open_round(
     chapter_id: str = Query(..., description="Chapter ID"),
@@ -2315,13 +2381,7 @@ async def ensure_open_round(
         
         # Check if open round exists
         try:
-            existing = await db.execute_one("""
-                SELECT id, chapter_id, type, status, room_code, selected_pnm_ids, started_at, ended_at, created_at
-                FROM voting_rounds
-                WHERE chapter_id = $1 AND type = 'GENERAL' AND status = 'ACTIVE'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """, chapter_id)
+            existing = await db.execute_one(OPEN_ROUND_SQL, chapter_id)
         except asyncpg.exceptions.PostgresError as e:
             logger.error(f"Database error checking for existing round: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
@@ -2402,30 +2462,35 @@ async def ensure_open_round(
 
 @router.get("/rounds/open/current")
 async def get_next_unvoted_pnm(
+    chapter_id: Optional[str] = Query(None, description="Chapter ID; defaults to the user's first chapter"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get next PNM user hasn't voted on in open round"""
+    """The next PNM this member has not voted on in the chapter's open round.
+
+    Read-only, so any member can call it. Opening a round is POST /rounds/open
+    and stays admin-only; the Open Voting tab used to call that on load, which
+    is why it failed for every member.
+    """
     db = get_db()
-    
-    # Get user's chapter (assume first membership)
-    membership = await db.execute_one("""
-        SELECT chapter_id FROM memberships WHERE user_id = $1 LIMIT 1
-    """, current_user["user_id"])
-    
-    if not membership:
-        raise HTTPException(status_code=404, detail="User not in any chapter")
-    
-    chapter_id = str(membership["chapter_id"])
-    
-    # Get open round
-    round_row = await db.execute_one("""
-        SELECT id, selected_pnm_ids FROM voting_rounds
-        WHERE chapter_id = $1 AND type = 'GENERAL' AND status = 'ACTIVE'
-        ORDER BY created_at DESC LIMIT 1
-    """, chapter_id)
-    
+
+    if chapter_id:
+        await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    else:
+        membership = await db.execute_one("""
+            SELECT chapter_id FROM memberships WHERE user_id = $1 LIMIT 1
+        """, current_user["user_id"])
+        if not membership:
+            raise HTTPException(status_code=404, detail="User not in any chapter")
+        chapter_id = str(membership["chapter_id"])
+
+    round_row = await db.execute_one(OPEN_ROUND_SQL, chapter_id)
+
     if not round_row:
-        return {"round_id": None, "pnm": None, "no_round": True}
+        is_admin = await db.execute_one(
+            "SELECT 1 FROM memberships WHERE user_id = $1 AND chapter_id = $2 AND role = 'admin'",
+            current_user["user_id"], chapter_id,
+        )
+        return {"round_id": None, "pnm": None, "no_round": True, "can_open": bool(is_admin)}
     
     round_id = str(round_row["id"])
     selected_pnm_ids = round_row.get("selected_pnm_ids") or []

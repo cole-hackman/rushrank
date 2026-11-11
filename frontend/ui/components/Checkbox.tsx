@@ -38,7 +38,7 @@ const CheckboxRoot = React.forwardRef<HTMLButtonElement, CheckboxRootProps>(
       >
         <button
           className={SubframeUtils.twClassNames(
-            "group/3816e3b5 flex cursor-pointer items-center gap-2 border-none bg-transparent",
+            "group/3816e3b5 flex cursor-pointer items-center gap-2 border-none bg-transparent touch:min-h-[44px]",
             className
           )}
           ref={ref}

@@ -1,5 +1,17 @@
 import { getAccessToken, refreshAccessToken, SIGNED_OUT_EVENT } from "@/lib/auth";
 
+/**
+ * Fired when a read is being retried because the backend looks asleep.
+ * ToastProvider listens for it and tells the user what is happening, so a cold
+ * start reads as "waking up" rather than as a broken app.
+ */
+export const BACKEND_WAKING_EVENT = "rushrank:backend-waking";
+
+/** How long the one retry after a cold start may take. Render's free plan can
+ *  take most of a minute to boot. */
+const COLD_START_TIMEOUT_MS = 60000;
+const COLD_START_PAUSE_MS = 3000;
+
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 // Support both NEXT_PUBLIC_API_BASE_URL and NEXT_PUBLIC_API_URL for backwards compatibility
@@ -156,10 +168,28 @@ export async function api<T>(
     __retried?: boolean;
     /** internal: set when this call is the post-429 retry */
     __rateLimitRetried?: boolean;
+    /** internal: set when this call is the retry after a suspected cold start */
+    __coldRetried?: boolean;
   },
 ): Promise<T> {
   const url = `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
   const token = await getAccessToken();
+  const method = opts?.method || "GET";
+
+  // Only reads are retried. A write that timed out may still have landed, and
+  // repeating it could create a second PNM or event.
+  const canColdRetry = method === "GET" && !opts?.__coldRetried;
+  const retryAfterColdStart = <R,>(): Promise<R> | null => {
+    if (!canColdRetry) return null;
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(BACKEND_WAKING_EVENT));
+    }
+    // A short pause first: a booting instance that just answered 503 will
+    // answer 503 again if asked straight away.
+    return new Promise<void>((resolve) => setTimeout(resolve, COLD_START_PAUSE_MS)).then(() =>
+      api<R>(path, { ...opts, timeout: COLD_START_TIMEOUT_MS, __coldRetried: true } as typeof opts),
+    );
+  };
   const timeout = opts?.timeout || 20000; // 20 second default timeout (increased for Render free tier)
   
   // Debug: log the URL being called (always log API_BASE in production for debugging)
@@ -198,6 +228,17 @@ export async function api<T>(
     if (!res.ok) {
       const text = await res.text();
       let errorMessage = text || `Request failed: ${res.status}`;
+      // FastAPI errors arrive as {"detail": "..."}. Show the sentence, not the
+      // JSON. The status-specific branches below still replace it where they
+      // have something better to say.
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed.detail === "string" && parsed.detail) {
+          errorMessage = parsed.detail;
+        }
+      } catch {
+        /* not JSON; keep the raw text */
+      }
       
       // Handle specific HTTP status codes
       if (res.status === 401 && !opts?.__retried) {
@@ -232,6 +273,9 @@ export async function api<T>(
       } else if (res.status === 429) {
         errorMessage =
           "The server is busy right now and did not record that. Please try again in a moment.";
+      } else if ([502, 503, 504].includes(res.status) && canColdRetry) {
+        // Render answers 502/503 while an instance is still booting.
+        return (await retryAfterColdStart<T>()) as T;
       } else if (res.status === 404) {
         errorMessage = `Resource not found (404). The requested endpoint does not exist.`;
       } else if (res.status >= 500) {
@@ -247,6 +291,12 @@ export async function api<T>(
     return (await res.text()) as T;
   } catch (error: any) {
     clearTimeout(timeoutId);
+    // A timeout or a refused connection on a read is most often the backend
+    // waking from sleep. Retry once, with a longer timeout, before giving up.
+    if (error.name === 'AbortError' || error.message === 'Failed to fetch' || error.name === 'TypeError') {
+      const retry = retryAfterColdStart<T>();
+      if (retry) return retry;
+    }
     if (error.name === 'AbortError') {
       throw new Error(`Request timed out after ${timeout}ms. Is the backend server running at ${API_BASE}?`);
     }

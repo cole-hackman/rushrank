@@ -220,7 +220,7 @@ export default function ResultsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-[240px] flex-1">
             <select
-              className="h-10 w-full rounded-lg border border-solid border-neutral-border bg-white px-3 text-body font-body text-default-font focus:outline-none focus:ring-2 focus:ring-brand-600"
+              className="h-10 touch:h-11 w-full rounded-lg border border-solid border-neutral-border bg-white px-3 text-body font-body text-default-font focus:outline-none focus:ring-2 focus:ring-brand-600"
               value={selectedRound}
               onChange={(e) => fetchResults(e.target.value)}
             >
@@ -270,7 +270,6 @@ export default function ResultsPage() {
         {!loading && !error && (
           <Table
             header={
-              <thead>
                 <Table.HeaderRow>
                   <Table.HeaderCell onClick={() => toggleSort("rank")} className="cursor-pointer">
                     Rank <FeatherArrowUpDown className="ml-1 inline h-3 w-3" />
@@ -289,7 +288,6 @@ export default function ResultsPage() {
                   </Table.HeaderCell>
                   <Table.HeaderCell>Status</Table.HeaderCell>
                 </Table.HeaderRow>
-              </thead>
             }
           >
             {filteredResults.map((pnm, index) => {

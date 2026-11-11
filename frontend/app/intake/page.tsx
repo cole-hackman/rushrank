@@ -44,9 +44,17 @@ function IntakeForm() {
       const fromUrl = searchParams?.get("chapter");
       if (fromUrl) {
         try {
-          const chapter = await api<{ id: string; name: string }>(`/public/chapters/${fromUrl}`);
+          // The public chapter info carries the chapter's intake questions,
+          // because a signed-out visitor cannot read /questionnaires. Before,
+          // the public form returned here and never asked them.
+          const chapter = await api<{
+            id: string;
+            name: string;
+            questionnaire?: { id: string; questions: Array<{ id: string; question: string; type: string; required: boolean }> } | null;
+          }>(`/public/chapters/${fromUrl}`);
           setChapterId(chapter.id);
           setChapterName(chapter.name);
+          setQuestionnaireQuestions(chapter.questionnaire?.questions || []);
           return;
         } catch (e: any) {
           toast({ title: "Chapter not found", description: "Check the link and try again." });
@@ -213,14 +221,19 @@ function IntakeForm() {
           year: year.trim(), // Now required
           photo_url: null,
           tags: [],
-          fun_fact: celebrityCrush.trim() // Map to legacy field name
+          fun_fact: celebrityCrush.trim(), // Map to legacy field name
+          // On the public link the answers go with the sign-up: saving them
+          // separately needs a signed-in member.
+          ...(isPublicLink && Object.keys(questionnaireAnswers).length > 0
+            ? { answers: questionnaireAnswers }
+            : {}),
         }
       },
       );
       const pnmId = created.id as string;
 
-      // Save questionnaire answers if any
-      if (questionnaireQuestions.length > 0 && Object.keys(questionnaireAnswers).length > 0) {
+      // Signed in: save questionnaire answers separately.
+      if (!isPublicLink && questionnaireQuestions.length > 0 && Object.keys(questionnaireAnswers).length > 0) {
         try {
           const questionnaires = await api<Array<{ id: string; active: boolean }>>(`/questionnaires?chapter_id=${chapterId}`);
           const activeQuestionnaire = questionnaires.find((q) => q.active);
@@ -275,9 +288,13 @@ function IntakeForm() {
 
       toast({ title: "PNM created successfully!" });
       setSuccess(true);
-      setTimeout(() => {
-        router.replace("/pnms");
-      }, 2000);
+      // Only a brother goes on to the roster. A PNM on the public link has no
+      // account; sending them to /pnms bounced them to the sign-in page.
+      if (!isPublicLink) {
+        setTimeout(() => {
+          router.replace("/pnms");
+        }, 2000);
+      }
     } catch (e: any) {
       console.error("PNM creation error:", e);
       const errorMessage = e?.message || e?.toString() || "Unknown error occurred";
@@ -301,16 +318,20 @@ function IntakeForm() {
               <CheckCircle2 className="w-12 h-12 text-green-600 dark:text-green-400" />
             </div>
             <h2 className="font-bold text-2xl text-beta-navy dark:text-neutral-200 mb-2">
-              Success!
+              {isPublicLink ? "You're signed up" : "Success!"}
             </h2>
             <p className="text-beta-gray">
-              PNM has been added successfully.
+              {isPublicLink
+                ? `Thanks for your interest${chapterName ? ` in ${chapterName}` : ""}. You can hand the phone back now.`
+                : "PNM has been added successfully."}
             </p>
-            <p className="text-sm text-beta-gray mt-2">
-              Redirecting to PNMs page...
-            </p>
+            {!isPublicLink && (
+              <p className="text-sm text-beta-gray mt-2">
+                Redirecting to PNMs page...
+              </p>
+            )}
           </div>
-          <Progress value={100} className="h-2" />
+          {!isPublicLink && <Progress value={100} className="h-2" />}
         </div>
       </div>
     );
@@ -508,7 +529,7 @@ function IntakeForm() {
                   </LabelInputContainer>
 
                   <LabelInputContainer>
-                    <Label htmlFor="celebrityCrush">Celebrity Crush *</Label>
+                    <Label htmlFor="celebrityCrush">Celebrity Crush{isPublicLink ? "" : " *"}</Label>
                     <Input
                       id="celebrityCrush"
                       placeholder=""

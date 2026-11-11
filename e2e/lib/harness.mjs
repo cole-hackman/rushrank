@@ -151,6 +151,26 @@ export function publicRoutes(fx) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Accept the app's confirm dialog (components/ConfirmProvider.tsx).
+ *
+ * Destructive actions used window.confirm(), which Playwright handles through
+ * page.on("dialog"). They now open an in-app dialog with role="alertdialog",
+ * whose confirm button is always the last button in it. Returns false if no
+ * dialog appeared, so a caller can report that rather than hang.
+ */
+export async function acceptConfirm(page, { timeout = 5000 } = {}) {
+  const dialog = page.getByRole("alertdialog");
+  try {
+    await dialog.waitFor({ state: "visible", timeout });
+  } catch {
+    return false;
+  }
+  await dialog.getByRole("button").last().click();
+  await dialog.waitFor({ state: "hidden", timeout }).catch(() => {});
+  return true;
+}
+
 /** Wait for the app shell to settle without failing the run on a slow network. */
 export async function settle(page, ms = 1200) {
   try {

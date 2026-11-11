@@ -11,6 +11,7 @@ import re
 import json
 
 from .database import get_db
+from .live_round import add_to_live_session
 from .models import *
 from io import StringIO, BytesIO
 import csv
@@ -289,6 +290,20 @@ class ChapterService:
         )
         if existing:
             return {"chapter_id": str(existing["id"])}
+        # chapters.name is globally unique. Without this check a second chapter
+        # choosing a taken name hit the constraint and the signup wizard showed
+        # a raw "duplicate key value" 500 on return from the magic link.
+        taken = await db.execute_one(
+            "SELECT 1 FROM chapters WHERE lower(name) = lower($1)", chapter_name,
+        )
+        if taken:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f'A chapter called "{chapter_name}" already exists. '
+                    "Add your school or city to the chapter name and try again."
+                ),
+            )
         row = await db.execute_one(
             """INSERT INTO chapters (name, fraternity, school, theme)
                VALUES ($1, $2, $3, $4::jsonb)
@@ -1125,7 +1140,12 @@ class PNMService:
         
         # Fire and forget - don't await
         asyncio.create_task(background_tasks())
-        
+
+        # A walk-up added while the chapter is mid-session joins the end of the
+        # running order rather than waiting for the next session.
+        if stage != "prospect":
+            await add_to_live_session(chapter_id, [pnm_id])
+
         return pnm
     
     async def list_pipeline(self, chapter_id: str, owner_user_id: Optional[str] = None) -> dict:
@@ -1753,6 +1773,82 @@ class VotingService:
             created_at=row["voted_at"]
         )
     
+    async def get_round_summary(self, chapter_id: str) -> Dict[str, Any]:
+        """Every round's results for a chapter, in two queries.
+
+        The analytics page used to call GET /rounds/{id}/results once per round
+        for its headline numbers, and once per PNM per round (three rounds deep)
+        for the comparison tab: about 150 requests for a 50-PNM chapter, each
+        re-running the full results aggregate. This returns the same per-PNM
+        figures for every round at once.
+
+        Rounds come back in the same order as GET /rounds (newest first).
+        """
+        db = get_db()
+        rounds = await db.execute_query(
+            """
+            SELECT vr.id, vr.name, vr.type, vr.status, vr.started_at, vr.ended_at, vr.created_at,
+                   (SELECT COUNT(*) FROM round_pnms rp WHERE rp.round_id = vr.id) AS pnm_count,
+                   (SELECT COUNT(*) FROM votes v WHERE v.round_id = vr.id) AS total_votes,
+                   (SELECT COUNT(DISTINCT v.voter_user_id) FROM votes v
+                     WHERE v.round_id = vr.id) AS voter_count
+            FROM voting_rounds vr
+            WHERE vr.chapter_id = $1
+            ORDER BY vr.created_at DESC
+            """,
+            chapter_id,
+        )
+        per_pnm = await db.execute_query(
+            """
+            SELECT rp.round_id, rp.pnm_id,
+                   COUNT(v.id) AS vote_count,
+                   COUNT(*) FILTER (WHERE v.value = 'YES') AS yes_count,
+                   COUNT(*) FILTER (WHERE v.value = 'NO') AS no_count,
+                   COUNT(*) FILTER (WHERE v.value = 'UNKNOWN') AS dont_know_count,
+                   COUNT(*) FILTER (WHERE v.favorite) AS favorite_count,
+                   CASE WHEN COUNT(v.id) > 0 THEN
+                       ROUND(COUNT(*) FILTER (WHERE v.value = 'YES') * 100.0 / COUNT(v.id), 2)
+                   ELSE 0 END AS yes_percentage
+            FROM round_pnms rp
+            JOIN voting_rounds vr ON vr.id = rp.round_id
+            LEFT JOIN votes v ON v.round_id = rp.round_id AND v.pnm_id = rp.pnm_id
+            WHERE vr.chapter_id = $1
+            GROUP BY rp.round_id, rp.pnm_id
+            """,
+            chapter_id,
+        )
+        by_round: Dict[str, List[Dict[str, Any]]] = {}
+        for r in per_pnm:
+            by_round.setdefault(str(r["round_id"]), []).append({
+                "pnm_id": str(r["pnm_id"]),
+                "vote_count": int(r["vote_count"]),
+                "yes_count": int(r["yes_count"]),
+                "no_count": int(r["no_count"]),
+                "dont_know_count": int(r["dont_know_count"]),
+                "favorite_count": int(r["favorite_count"]),
+                "yes_percentage": float(r["yes_percentage"]),
+            })
+        out = []
+        for r in rounds:
+            rid = str(r["id"])
+            out.append({
+                "id": rid,
+                "name": r["name"],
+                "type": r["type"],
+                "status": r["status"],
+                "started_at": r["started_at"].isoformat() if r["started_at"] else None,
+                "ended_at": r["ended_at"].isoformat() if r["ended_at"] else None,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "pnm_count": int(r["pnm_count"]),
+                "total_votes": int(r["total_votes"]),
+                "voter_count": int(r["voter_count"]),
+                "results": by_round.get(rid, []),
+            })
+        return {
+            "rounds": out,
+            "total_votes": sum(r["total_votes"] for r in out),
+        }
+
     async def get_round_results(self, round_id: str) -> List[PNMWithVotes]:
         """Get voting results for a round"""
         db = get_db()
@@ -3332,9 +3428,49 @@ class InvitationService:
             # Don't fail the whole invitation if email fails
             return False
 
+def _json_obj(value: Any) -> Dict[str, Any]:
+    """A jsonb column as a dict.
+
+    The pool registers no JSON codec, so asyncpg hands jsonb back as text. Every
+    read in QuestionnaireService used to pass that text straight into a model
+    typed Dict, and every write passed a dict where asyncpg wanted text, which
+    is why saving a question or an answer always returned 500.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, (dict, list)):
+        return value if isinstance(value, dict) else {"items": value}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+# Answers are short free text typed at a rush table. Anything longer than this
+# is not an answer, and the public intake form is unauthenticated.
+MAX_ANSWER_LENGTH = 2000
+
+
 class QuestionnaireService:
-    """Questionnaires and PNM answers"""
-    
+    """Questionnaires and PNM answers.
+
+    A questionnaire's schema is {"questions": [{"id", "question", "type",
+    "required"}]}, as built on the Settings page. Answers are stored as
+    {"questionnaire-<question id>": "text"}, which is how both intake forms key
+    their fields.
+    """
+
+    def _row_to_questionnaire(self, row) -> Questionnaire:
+        return Questionnaire(
+            id=str(row["id"]),
+            chapter_id=str(row["chapter_id"]),
+            name=row["name"],
+            schema=_json_obj(row["schema"]),
+            active=bool(row["active"]),
+            created_at=row["created_at"],
+        )
+
     async def list_questionnaires(self, chapter_id: str) -> List[Questionnaire]:
         db = get_db()
         rows = await db.execute_query("""
@@ -3343,66 +3479,139 @@ class QuestionnaireService:
             WHERE chapter_id = $1 AND active = true
             ORDER BY created_at DESC
         """, chapter_id)
-        return [
-            Questionnaire(
-                id=str(r["id"]),
-                chapter_id=str(r["chapter_id"]),
-                name=r["name"],
-                schema=r["schema"] or {},
-                active=bool(r["active"]),
-                created_at=r["created_at"],
-            ) for r in rows
-        ]
-    
+        return [self._row_to_questionnaire(r) for r in rows]
+
+    async def get_active_questions(self, chapter_id: str) -> Optional[Dict[str, Any]]:
+        """The chapter's active questionnaire, reduced to what a PNM may see."""
+        db = get_db()
+        row = await db.execute_one("""
+            SELECT id, schema FROM questionnaires
+            WHERE chapter_id = $1 AND active = true
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, chapter_id)
+        if not row:
+            return None
+        questions = []
+        for q in _json_obj(row["schema"]).get("questions") or []:
+            if not isinstance(q, dict) or not q.get("id") or not q.get("question"):
+                continue
+            questions.append({
+                "id": str(q["id"]),
+                "question": str(q["question"]),
+                "type": q.get("type") or "text",
+                "required": bool(q.get("required")),
+            })
+        if not questions:
+            return None
+        return {"id": str(row["id"]), "questions": questions}
+
     async def create_questionnaire(self, chapter_id: str, q: QuestionnaireCreate) -> Questionnaire:
         db = get_db()
         row = await db.execute_one("""
             INSERT INTO questionnaires (chapter_id, name, schema, active)
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3::jsonb, $4)
             RETURNING id, chapter_id, name, schema, active, created_at
-        """, chapter_id, q.name, q.schema, q.active)
-        return Questionnaire(
-            id=str(row["id"]),
-            chapter_id=str(row["chapter_id"]),
-            name=row["name"],
-            schema=row["schema"] or {},
-            active=bool(row["active"]),
-            created_at=row["created_at"],
-        )
-    
+        """, chapter_id, q.name, json.dumps(q.schema), q.active)
+        return self._row_to_questionnaire(row)
+
     async def update_questionnaire(self, questionnaire_id: str, q: QuestionnaireCreate) -> Questionnaire:
         """Update questionnaire schema"""
         db = get_db()
         row = await db.execute_one("""
             UPDATE questionnaires
-            SET name = $2, schema = $3, active = $4
+            SET name = $2, schema = $3::jsonb, active = $4
             WHERE id = $1
             RETURNING id, chapter_id, name, schema, active, created_at
-        """, questionnaire_id, q.name, q.schema, q.active)
-        
+        """, questionnaire_id, q.name, json.dumps(q.schema), q.active)
+
         if not row:
             return None
-        
-        return Questionnaire(
-            id=str(row["id"]),
-            chapter_id=str(row["chapter_id"]),
-            name=row["name"],
-            schema=row["schema"] or {},
-            active=bool(row["active"]),
-            created_at=row["created_at"],
-        )
-    
+
+        return self._row_to_questionnaire(row)
+
     async def save_pnm_answers(self, pnm_id: str, payload: PNMAnswersCreate) -> PNMAnswers:
         db = get_db()
+        answers = {
+            str(k): str(v)[:MAX_ANSWER_LENGTH]
+            for k, v in (payload.answers or {}).items()
+            if v is not None and str(v).strip()
+        }
         row = await db.execute_one("""
             INSERT INTO pnm_answers (pnm_id, questionnaire_id, answers)
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2, $3::jsonb)
             RETURNING id, pnm_id, questionnaire_id, answers, created_at
-        """, pnm_id, payload.questionnaire_id, payload.answers)
+        """, pnm_id, payload.questionnaire_id, json.dumps(answers))
         return PNMAnswers(
             id=str(row["id"]),
             pnm_id=str(row["pnm_id"]),
             questionnaire_id=str(row["questionnaire_id"]) if row["questionnaire_id"] else None,
-            answers=row["answers"] or {},
+            answers=_json_obj(row["answers"]),
             created_at=row["created_at"],
         )
+
+    async def save_public_answers(self, chapter_id: str, pnm_id: str, raw: Dict[str, Any]) -> int:
+        """Answers sent with the public intake form.
+
+        Only answers to the chapter's active questionnaire are kept: the form is
+        unauthenticated, so unknown keys are dropped rather than stored.
+        Returns how many answers were saved.
+        """
+        active = await self.get_active_questions(chapter_id)
+        if not active or not raw:
+            return 0
+        allowed = {f"questionnaire-{q['id']}" for q in active["questions"]}
+        kept = {k: v for k, v in raw.items() if k in allowed}
+        if not kept:
+            return 0
+        saved = await self.save_pnm_answers(
+            pnm_id, PNMAnswersCreate(questionnaire_id=active["id"], answers=kept)
+        )
+        return len(saved.answers)
+
+    async def get_pnm_answers(self, pnm_id: str) -> List[Dict[str, Any]]:
+        """Every intake submission for a PNM, newest first, with the question
+        text beside each answer.
+
+        The route has always called this method; it did not exist, so the
+        endpoint returned 500 and no page could show what a PNM had answered.
+        A question deleted from Settings since is shown as "(question removed)"
+        rather than dropping the answer.
+        """
+        db = get_db()
+        rows = await db.execute_query("""
+            SELECT a.id, a.questionnaire_id, a.answers, a.created_at, q.schema
+            FROM pnm_answers a
+            LEFT JOIN questionnaires q ON q.id = a.questionnaire_id
+            WHERE a.pnm_id = $1
+            ORDER BY a.created_at DESC
+        """, pnm_id)
+        out = []
+        for r in rows:
+            questions = _json_obj(r["schema"]).get("questions") or []
+            by_key = {}
+            order = []
+            for q in questions:
+                if isinstance(q, dict) and q.get("id"):
+                    key = f"questionnaire-{q['id']}"
+                    by_key[key] = q.get("question") or ""
+                    order.append(key)
+            answers = _json_obj(r["answers"])
+            keys = [k for k in order if k in answers] + [k for k in answers if k not in by_key]
+            items = [
+                {
+                    "key": k,
+                    "question": by_key.get(k) or "(question removed)",
+                    "answer": str(answers[k]),
+                }
+                for k in keys
+                if str(answers[k]).strip()
+            ]
+            if items:
+                out.append({
+                    "id": str(r["id"]),
+                    "questionnaire_id": str(r["questionnaire_id"]) if r["questionnaire_id"] else None,
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "items": items,
+                })
+        return out

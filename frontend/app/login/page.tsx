@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { Button } from "@/ui/components/Button";
 import { TextField } from "@/ui/components/TextField";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import ToastProvider, { useToast } from "@/components/ToastProvider";
 
@@ -323,9 +324,17 @@ function LoginInner() {
             Dev mode: Supabase env not set
           </span>
         )}
-        <span className="text-caption font-caption text-subtext-color">
-          RushRank
-        </span>
+        <div className="flex flex-col items-center gap-2 text-caption font-caption text-subtext-color">
+          <span>
+            New to RushRank?{" "}
+            <Link href="/get-started" className="text-brand-600 underline underline-offset-2 touch:inline-flex touch:min-h-[44px] touch:items-center">
+              Set up your chapter
+            </Link>
+          </span>
+          <Link href="/" className="underline underline-offset-2 hover:text-default-font touch:inline-flex touch:min-h-[44px] touch:items-center">
+            Back to the RushRank home page
+          </Link>
+        </div>
       </div>
     </div>
   );

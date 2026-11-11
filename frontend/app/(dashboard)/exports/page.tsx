@@ -94,11 +94,11 @@ export default function ExportsPage() {
     }
     setLoading(true);
     try {
-      await exportFilteredPnms(chapterId, {
+      const count = await exportFilteredPnms(chapterId, {
         search: filterSearch,
         tags: filterTags,
       });
-      toast({ title: "Export started", description: "Filtered PNMs CSV download started" });
+      toast({ title: "Export started", description: `${count} PNM${count === 1 ? "" : "s"} matched the filters` });
     } catch (e: any) {
       toast({ title: "Export failed", description: e?.message || "Failed to export filtered PNMs" });
     } finally {
@@ -193,13 +193,13 @@ export default function ExportsPage() {
       <div className="flex items-center gap-4">
         <button
           onClick={() => router.back()}
-          className="rounded-lg p-2 text-beta-gray hover:bg-beta-navy/10 hover:text-beta-navy"
+          className="rounded-lg p-2 text-beta-gray hover:bg-beta-navy/10 hover:text-beta-navy touch:min-h-[44px] touch:min-w-[44px]"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-beta-navy">Export Center</h1>
-          <p className="text-sm text-beta-gray mt-1">Export data in CSV format</p>
+          <h1 className="text-heading-1 font-heading-1 text-default-font">Export Center</h1>
+          <p className="mt-1 text-body font-body text-subtext-color">Export data in CSV format</p>
         </div>
       </div>
 
@@ -237,7 +237,7 @@ export default function ExportsPage() {
                 <p className="text-sm text-beta-gray">
                   {filterTags.length > 0 || filterSearch
                     ? `Exporting with ${filterTags.length} tag filter(s)${filterSearch ? " and search" : ""}`
-                    : "No filters applied. Go to PNMs page to filter first."}
+                    : "Search or filter the roster, then use Export CSV there. It downloads exactly the PNMs on screen."}
                 </p>
               </div>
             </div>
@@ -245,12 +245,20 @@ export default function ExportsPage() {
           <Button
             variant="neutral-secondary"
             icon={<Download className="h-4 w-4" />}
-            onClick={handleExportFiltered}
-            disabled={loading || graphicsLoading || !chapterId || (filterTags.length === 0 && !filterSearch)}
+            onClick={
+              filterTags.length > 0 || filterSearch
+                ? handleExportFiltered
+                : () => router.push("/pnms")
+            }
+            disabled={loading || graphicsLoading || !chapterId}
             className="w-full"
             type="button"
           >
-            {loading ? "Exporting..." : "Export Filtered"}
+            {loading
+              ? "Exporting..."
+              : filterTags.length > 0 || filterSearch
+                ? "Export Filtered"
+                : "Go to the roster"}
           </Button>
         </div>
 

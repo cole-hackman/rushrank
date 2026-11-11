@@ -1,18 +1,41 @@
 name: Warm Backend
 
+# Render's free plan puts the backend to sleep after about 15 minutes without
+# traffic, and the first request after that waits for it to boot. This pings it
+# so a brother opening the app at a meeting does not pay for that.
+#
+# GitHub does not promise to run scheduled workflows on time; in February 2026
+# runs of this job arrived 22 to 195 minutes apart. So this reduces cold starts
+# but cannot eliminate them. An always-on Render instance is the reliable fix.
+#
+# The previous version ended its curl with `|| echo ...`, so a backend that was
+# down still produced a green run. This one fails, which is the point: a red run
+# here is the earliest warning that production is not answering.
+
 on:
   schedule:
-    # Run every 10 minutes to keep Render backend warm
     - cron: '*/10 * * * *'
-  # Also allow manual triggering
   workflow_dispatch:
 
 jobs:
   warm:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HEALTH_URL: https://rushrank-backend.onrender.com/health/db
     steps:
-      - name: Ping backend health endpoint
+      - name: Ping backend until it answers
         run: |
-          echo "Pinging backend health endpoint..."
-          curl -f -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://rushrank-backend.onrender.com/health || echo "Backend ping completed (may be spinning up)"
-          echo "Backend warming complete"
+          # A cold boot can take a minute or more, so allow several attempts
+          # with a generous per-request timeout before calling it down.
+          for attempt in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 90 "$HEALTH_URL" || true)
+            echo "attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Backend is up."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Backend did not return 200 from $HEALTH_URL after 4 attempts."
+          exit 1

@@ -134,7 +134,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             mobileNavItems={mobileNavItems}
             leftSlot={
               <>
-                <Link href="/dashboard">
+                <Link href="/dashboard" className="flex items-center justify-center touch:min-h-[44px] touch:min-w-[44px]">
                   <img
                     className="h-8 w-8 flex-none object-cover rounded-full"
                     src="/logo.png"
@@ -167,7 +167,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <SubframeCore.DropdownMenu.Root>
                       <SubframeCore.DropdownMenu.Trigger asChild>
                         <button
-                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${pathname?.startsWith("/admin") || pathname === "/settings" || pathname === "/analytics"
+                          className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors touch:min-h-[44px] ${pathname?.startsWith("/admin") || pathname === "/settings" || pathname === "/analytics"
                             ? "bg-primary/10 text-primary"
                             : "text-muted-foreground hover:bg-primary/5 hover:text-primary"
                             }`}
@@ -235,7 +235,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <>
                 <SubframeCore.DropdownMenu.Root>
                   <SubframeCore.DropdownMenu.Trigger asChild={true}>
-                    <button className="cursor-pointer">
+                    {/* The 32px avatar sits in a 44px button so it is easy to
+                        hit with a thumb. */}
+                    <button
+                      className="flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center rounded-full"
+                      aria-label="Account menu"
+                    >
                       <Avatar image={getUserImage() || undefined}>
                         {getUserInitials()}
                       </Avatar>

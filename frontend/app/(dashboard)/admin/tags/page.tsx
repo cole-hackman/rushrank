@@ -22,6 +22,7 @@ import { IconButton } from "@/ui/components/IconButton";
 import { TextField } from "@/ui/components/TextField";
 import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { TagForm } from "@/components/admin/TagForm";
 import { BulkTagModal } from "@/components/admin/BulkTagModal";
 import AdminProtected from "@/components/AdminProtected";
@@ -82,6 +83,7 @@ const getDescription = (label: string): string => {
 export default function TagManagementPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagStats, setTagStats] = useState<TagStats | null>(null);
@@ -168,7 +170,12 @@ export default function TagManagementPage() {
 
   const handleDeleteTag = async (tagId: string) => {
     if (!chapterId) return;
-    if (!confirm("Are you sure you want to delete this tag? This will remove it from all PNMs.")) {
+    if (!(await confirm({
+      title: "Delete this tag?",
+      description: "It will be removed from every PNM that has it.",
+      confirmLabel: "Delete tag",
+      destructive: true,
+    }))) {
       return;
     }
     try {

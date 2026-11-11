@@ -50,7 +50,7 @@ const ButtonRoot = React.forwardRef<HTMLButtonElement, ButtonRootProps>(
     return (
       <button
         className={SubframeUtils.twClassNames(
-          "group/3b777358 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md border-none bg-beta-navy px-3 hover:bg-beta-navy/90 active:bg-beta-navy disabled:cursor-default disabled:bg-neutral-200 hover:disabled:cursor-default hover:disabled:bg-neutral-200 active:disabled:cursor-default active:disabled:bg-neutral-200",
+          "group/3b777358 flex h-8 touch:min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-md border-none bg-beta-navy px-3 hover:bg-beta-navy/90 active:bg-beta-navy disabled:cursor-default disabled:bg-neutral-200 hover:disabled:cursor-default hover:disabled:bg-neutral-200 active:disabled:cursor-default active:disabled:bg-neutral-200",
           {
             "h-6 w-auto flex-row flex-nowrap gap-1 px-2 py-0": size === "small",
             "h-10 w-auto px-4 py-0": size === "large",

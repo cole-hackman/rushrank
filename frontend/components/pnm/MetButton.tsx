@@ -74,7 +74,7 @@ export function MetButton({
       aria-pressed={metByMe}
       title={metByMe ? "You've met him — tap to undo" : "Mark that you've talked to him"}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-solid font-body transition disabled:opacity-60",
+        "inline-flex items-center gap-1.5 rounded-full border border-solid font-body transition disabled:opacity-60 touch:min-h-[44px]",
         compact ? "px-2 py-0.5 text-caption" : "px-3 py-1.5 text-body",
         metByMe
           ? "border-success-600 bg-success-50 text-success-700"

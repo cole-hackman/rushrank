@@ -16,9 +16,12 @@ import { FeatherImage } from "@subframe/core";
 import { FeatherUpload } from "@subframe/core";
 import { FeatherUserPlus } from "@subframe/core";
 import { FeatherArchive } from "@subframe/core";
+import { FeatherColumns } from "@subframe/core";
+import { FeatherFileText } from "@subframe/core";
 import { api, API_BASE, getChapterId, exportPnmsPptx, triggerBlobDownload,
          ELIGIBILITY_LABEL, type Eligibility } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
 import { IconButton } from "@/ui/components/IconButton";
@@ -33,6 +36,7 @@ import { SkeletonTable } from "@/components/ui/SkeletonTable";
 import { MetButton } from "@/components/pnm/MetButton";
 import { useRouter } from "next/navigation";
 import { cn, downloadFileForMobile } from "@/lib/utils";
+import { downloadPnmsCsv } from "@/lib/export";
 
 type PNM = {
   id: string;
@@ -63,6 +67,7 @@ type PNM = {
 export default function PNMsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [pnms, setPnms] = useState<PNM[]>([]);
   const [search, setSearch] = useState("");
@@ -80,6 +85,9 @@ export default function PNMsPage() {
   const [selectedPnmIds, setSelectedPnmIds] = useState<string[]>([]);
   const [showBulkTagModal, setShowBulkTagModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // The PowerPoint export is allowed for admin and exec (routes.py
+  // export_pnms_pptx). Members used to see the button and get a 403.
+  const [canExportDeck, setCanExportDeck] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   // The list the academic chair needs before bids go out.
   const [belowMinOnly, setBelowMinOnly] = useState(false);
@@ -97,11 +105,13 @@ export default function PNMsPage() {
         // Check admin status
         try {
           const profile = await api<{ memberships: Array<{ role: string }> }>("/me");
-          const hasAdminRole = profile.memberships?.some((m) => m.role === "admin" || m.role === "ADMIN");
-          setIsAdmin(hasAdminRole || false);
+          const roles = (profile.memberships || []).map((m) => (m.role || "").toLowerCase());
+          setIsAdmin(roles.includes("admin"));
+          setCanExportDeck(roles.includes("admin") || roles.includes("exec"));
         } catch (e) {
           console.error("Failed to check admin status:", e);
           setIsAdmin(false);
+          setCanExportDeck(false);
         }
       } catch (e: any) {
         const errorMsg = e?.message || "Unable to fetch chapters";
@@ -188,8 +198,11 @@ export default function PNMsPage() {
   }, [pnms, search, selectedTags, showArchived, belowMinOnly, unmetOnly]);
 
   const stats = useMemo(() => {
-    const total = pnms.length;
-    return { total };
+    const active = pnms.filter((p) => !p.archived);
+    return {
+      total: active.length,
+      unmet: active.filter((p) => !(p.met_count ?? 0)).length,
+    };
   }, [pnms]);
 
   const toggleTag = (tag: string) => {
@@ -225,7 +238,12 @@ export default function PNMsPage() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete ${pnmName}? This action cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete ${pnmName}?`,
+      description: "Their notes, votes and attendance are deleted too. This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    }))) {
       return;
     }
 
@@ -253,7 +271,13 @@ export default function PNMsPage() {
 
     const count = selectedPnmIds.length;
     const action = archived ? "archive" : "unarchive";
-    if (!confirm(`Are you sure you want to ${action} ${count} PNM${count !== 1 ? "s" : ""}?`)) {
+    if (!(await confirm({
+      title: `${archived ? "Archive" : "Unarchive"} ${count} PNM${count !== 1 ? "s" : ""}?`,
+      description: archived
+        ? "Archived PNMs are hidden from the roster and left out of new voting sessions. You can unarchive them later."
+        : "They return to the roster and to new voting sessions.",
+      confirmLabel: archived ? "Archive" : "Unarchive",
+    }))) {
       return;
     }
 
@@ -290,7 +314,12 @@ export default function PNMsPage() {
     }
 
     const count = selectedPnmIds.length;
-    if (!confirm(`Are you sure you want to delete ${count} PNM${count !== 1 ? "s" : ""}? This action cannot be undone.`)) {
+    if (!(await confirm({
+      title: `Delete ${count} PNM${count !== 1 ? "s" : ""}?`,
+      description: "Their notes, votes and attendance are deleted too. This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    }))) {
       return;
     }
 
@@ -346,6 +375,27 @@ export default function PNMsPage() {
     }
   };
 
+  // Compare takes two to five PNMs side by side (compare/page.tsx). This is the
+  // only way into that page, and through it into the Export Comparison card.
+  const COMPARE_MIN = 2;
+  const COMPARE_MAX = 5;
+  const canCompare = selectedPnmIds.length >= COMPARE_MIN && selectedPnmIds.length <= COMPARE_MAX;
+  const handleCompare = () => {
+    if (!canCompare) return;
+    router.push(`/compare?ids=${selectedPnmIds.join(",")}`);
+  };
+
+  // Exports exactly what the roster is showing: the ticked rows if any are
+  // ticked, otherwise every row that survives the current search and filters.
+  const handleExportCsv = () => {
+    const rows = selectedPnmIds.length > 0
+      ? filteredPnms.filter((p) => selectedPnmIds.includes(p.id))
+      : filteredPnms;
+    if (rows.length === 0) return;
+    downloadPnmsCsv(rows);
+    toast({ title: "CSV downloaded", description: `${rows.length} PNM${rows.length === 1 ? "" : "s"}` });
+  };
+
   const handleExportPptx = async () => {
     setExporting(true);
     toast({ title: "Building your deck…", description: "About 10s for 30 PNMs" });
@@ -384,6 +434,15 @@ export default function PNMsPage() {
             <>
               <Button
                 variant="neutral-secondary"
+                icon={<FeatherColumns />}
+                onClick={handleCompare}
+                disabled={!canCompare}
+                title={canCompare ? "Compare side by side" : `Select ${COMPARE_MIN} to ${COMPARE_MAX} PNMs to compare`}
+              >
+                Compare ({selectedPnmIds.length})
+              </Button>
+              <Button
+                variant="neutral-secondary"
                 icon={<FeatherTag />}
                 onClick={() => setShowBulkTagModal(true)}
               >
@@ -417,12 +476,23 @@ export default function PNMsPage() {
           )}
           <Button
             variant="neutral-secondary"
-            icon={<FeatherDownload />}
-            onClick={handleExportPptx}
-            disabled={exporting || filteredPnms.length === 0}
+            icon={<FeatherFileText />}
+            onClick={handleExportCsv}
+            disabled={filteredPnms.length === 0}
+            title="Download the PNMs shown below as a spreadsheet"
           >
-            {exporting ? "Building…" : "Export → PowerPoint"}
+            {selectedPnmIds.length > 0 ? `Export CSV (${selectedPnmIds.length})` : "Export CSV"}
           </Button>
+          {canExportDeck && (
+            <Button
+              variant="neutral-secondary"
+              icon={<FeatherDownload />}
+              onClick={handleExportPptx}
+              disabled={exporting || filteredPnms.length === 0}
+            >
+              {exporting ? "Building…" : "Export → PowerPoint"}
+            </Button>
+          )}
           {isAdmin && (
             <Link href="/pnms/import">
               <Button variant="neutral-secondary" icon={<FeatherUpload />}>
@@ -436,11 +506,25 @@ export default function PNMsPage() {
         </div>
       </div>
 
-      <div className="w-full items-start gap-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+      {/* Three cards in three columns. This used to be one card in a
+          four-column grid, leaving three empty cells beside it. */}
+      <div className="w-full items-start gap-4 grid grid-cols-1 sm:grid-cols-3">
         <StatCard
           icon={<FeatherUsers />}
           label="Total PNMs"
           value={stats.total.toString()}
+          tone="neutral"
+        />
+        <StatCard
+          icon={<FeatherEye />}
+          label="Showing"
+          value={filteredPnms.length.toString()}
+          tone="neutral"
+        />
+        <StatCard
+          icon={<FeatherUserPlus />}
+          label="Nobody has met"
+          value={stats.unmet.toString()}
           tone="neutral"
         />
       </div>
@@ -477,7 +561,7 @@ export default function PNMsPage() {
                   key={tag}
                   onClick={() => toggleTag(tag)}
                   className={cn(
-                    "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors",
+                    "rounded-full border px-3 py-1 text-caption font-caption-bold transition-colors touch:min-h-[44px]",
                     selectedTags.includes(tag)
                       ? "border-brand-600 bg-brand-600 text-white"
                       : "border-neutral-border bg-white text-default-font hover:bg-neutral-50"
@@ -524,7 +608,9 @@ export default function PNMsPage() {
                   Add your first potential new member to get started
                 </p>
               </div>
-              <Link href="/rush">
+              {/* Same destination as the header's New PNM button. This one used
+                  to go to Rush Mode, which needs an event selected first. */}
+              <Link href="/intake">
                 <Button variant="brand-primary" icon={<FeatherUserPlus />}>
                   Add PNM
                 </Button>
@@ -537,13 +623,18 @@ export default function PNMsPage() {
                 className="min-w-[1200px] w-full"
                 header={
                   <Table.HeaderRow>
-                    <Table.HeaderCell className="w-[40px] min-w-[40px] text-center">
-                      <input
-                        type="checkbox"
-                        checked={filteredPnms.length > 0 && filteredPnms.every((p) => selectedPnmIds.includes(p.id))}
-                        onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
-                      />
+                    <Table.HeaderCell className="w-[44px] min-w-[44px] justify-center px-0 text-center">
+                      {/* The label is the tap target: 44px square around a
+                          16px box, so a thumb does not have to land on the box. */}
+                      <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all shown PNMs"
+                          checked={filteredPnms.length > 0 && filteredPnms.every((p) => selectedPnmIds.includes(p.id))}
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
+                        />
+                      </label>
                     </Table.HeaderCell>
                     <Table.HeaderCell className="w-[200px] min-w-[200px]">PNM</Table.HeaderCell>
                     <Table.HeaderCell className="w-[140px] min-w-[140px]">Major</Table.HeaderCell>
@@ -560,13 +651,16 @@ export default function PNMsPage() {
               >
                 {filteredPnms.map((pnm) => (
                   <Table.Row key={pnm.id} className="h-14">
-                    <Table.Cell className="w-[40px] min-w-[40px] text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedPnmIds.includes(pnm.id)}
-                        onChange={() => togglePnmSelection(pnm.id)}
-                        className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
-                      />
+                    <Table.Cell className="w-[44px] min-w-[44px] justify-center px-0 text-center">
+                      <label className="flex h-11 w-11 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${pnm.name}`}
+                          checked={selectedPnmIds.includes(pnm.id)}
+                          onChange={() => togglePnmSelection(pnm.id)}
+                          className="w-4 h-4 rounded border-beta-gray/50 text-beta-navy focus:ring-beta-navy focus:ring-offset-0 focus:ring-2"
+                        />
+                      </label>
                     </Table.Cell>
                     <Table.Cell className="w-[200px] min-w-[200px] !whitespace-normal">
                       <div className="flex items-center gap-3 min-w-0">

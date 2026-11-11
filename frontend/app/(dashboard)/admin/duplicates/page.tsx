@@ -34,6 +34,7 @@ import {
   type DuplicateMember,
 } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import AdminProtected from "@/components/AdminProtected";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +66,7 @@ export default function DuplicatesPage() {
 
 function Duplicates() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,11 +98,14 @@ function Duplicates() {
   const merge = async (group: DuplicateGroup, winner: DuplicateMember) => {
     const losers = group.members.filter((m) => m.id !== winner.id);
     const names = losers.map((l) => l.name).join(", ");
-    const confirmed = window.confirm(
-      `Keep ${winner.name} and fold in ${names}?\n\n` +
+    const confirmed = await confirm({
+      title: `Keep ${winner.name} and fold in ${names}?`,
+      description:
         `Notes, attendance, votes and tags move across. The other ` +
         `${losers.length === 1 ? "record is" : "records are"} deleted. This can't be undone.`,
-    );
+      confirmLabel: "Merge",
+      destructive: true,
+    });
     if (!confirmed || !chapterId) return;
 
     setBusy(winner.id);

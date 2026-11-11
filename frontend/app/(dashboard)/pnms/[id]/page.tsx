@@ -60,6 +60,13 @@ type Comment = {
 
 type TabKey = "comments" | "attendance";
 
+type IntakeSubmission = {
+  id: string;
+  questionnaire_id: string | null;
+  created_at: string | null;
+  items: Array<{ key: string; question: string; answer: string }>;
+};
+
 export default function PNMProfilePage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
@@ -79,18 +86,23 @@ export default function PNMProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // What the PNM wrote on the intake form, newest submission first, with the
+  // question beside each answer (GET /pnms/{id}/questionnaire).
+  const [intakeAnswers, setIntakeAnswers] = useState<IntakeSubmission[]>([]);
   const [coverage, setCoverage] = useState<(ContactSummary & { contacts: ContactEntry[] }) | null>(null);
 
   const loadProfile = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [pnmData, attendanceData, commentsData, coverageData] = await Promise.all([
+      const [pnmData, attendanceData, commentsData, coverageData, answersData] = await Promise.all([
         api<PNM>(`/pnms/${id}`),
         api<AttendanceEvent[]>(`/pnms/${id}/attendance`).catch(() => [] as AttendanceEvent[]),
         api<Comment[]>(`/pnms/${id}/notes`).catch(() => [] as Comment[]),
         getContacts(String(id)).catch(() => null),
+        api<IntakeSubmission[]>(`/pnms/${id}/questionnaire`).catch(() => [] as IntakeSubmission[]),
       ]);
+      setIntakeAnswers(answersData || []);
 
       setPnm(pnmData);
       setAttendance(attendanceData || []);
@@ -278,6 +290,27 @@ export default function PNMProfilePage() {
             </div>
           </div>
 
+          {intakeAnswers.length > 0 && (
+            <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
+              <span className="text-sm font-semibold text-beta-navy">Intake answers</span>
+              {intakeAnswers.map((submission, i) => (
+                <dl key={submission.id} className={i > 0 ? "mt-5 border-t border-beta-gray/20 pt-4" : "mt-4"}>
+                  {submission.items.map((item) => (
+                    <div key={item.key} className="mb-3 last:mb-0">
+                      <dt className="text-xs font-medium text-beta-gray">{item.question}</dt>
+                      <dd className="whitespace-pre-line text-sm text-beta-navy">{item.answer}</dd>
+                    </div>
+                  ))}
+                  {intakeAnswers.length > 1 && submission.created_at && (
+                    <p className="mt-2 text-xs text-beta-gray">
+                      Submitted {new Date(submission.created_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </dl>
+              ))}
+            </div>
+          )}
+
           {/* Who has actually met him. Names rather than a number, because
               "ask Devin" is what makes someone walk over and get a second
               opinion before the vote -- a count on its own prompts nothing. */}
@@ -380,7 +413,7 @@ export default function PNMProfilePage() {
                   />
                 </TextArea>
                 <div className="flex items-center justify-between text-sm text-beta-gray">
-                  <label className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 touch:min-h-[44px]">
                     <input
                       type="checkbox"
                       checked={anonymous}

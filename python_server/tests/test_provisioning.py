@@ -25,11 +25,11 @@ def _db(execute_one_seq=None, execute_command=None):
 @pytest.mark.asyncio
 async def test_provision_creates_chapter_and_admin_membership():
     svc = ChapterService()
-    # First call (autodetect_accent → hex), second (idempotency check → None),
-    # third (insert chapter → returns id row)
+    # autodetect_accent, idempotency check, name-taken check, insert
     seq = [
         {"hex_primary": "#0033A0"},   # autodetect
         None,                          # idempotency: not existing
+        None,                          # name not taken by another chapter
         {"id": "chap-xyz"},           # insert returning id
     ]
     with patch("python_server.services.get_db", return_value=_db(seq)):
@@ -64,6 +64,7 @@ async def test_provision_unknown_fraternity_theme_has_null_accent():
     seq = [
         None,                                # autodetect miss
         None,                                # idempotency miss
+        None,                                # name not taken
         {"id": "chap-new"},                  # insert
     ]
     with patch("python_server.services.get_db", return_value=_db(seq)):
@@ -74,6 +75,29 @@ async def test_provision_unknown_fraternity_theme_has_null_accent():
         )
     assert "chapter_id" in result
     assert result["chapter_id"] == "chap-new"
+
+
+@pytest.mark.asyncio
+async def test_provision_rejects_a_name_another_chapter_uses():
+    """chapters.name is unique. A clash used to surface as a raw 500."""
+    from fastapi import HTTPException
+
+    svc = ChapterService()
+    seq = [
+        None,              # autodetect miss
+        None,              # this user has no such chapter
+        {"?column?": 1},   # but another chapter already has the name
+    ]
+    db = _db(seq)
+    with patch("python_server.services.get_db", return_value=db):
+        with pytest.raises(HTTPException) as exc:
+            await svc.provision_chapter(
+                user_id="u-2", fraternity_name="Sigma Chi",
+                school="BC", chapter_name="Sigma Chi at BC",
+                admin_name="Second",
+            )
+    assert exc.value.status_code == 409
+    assert "already exists" in exc.value.detail
 
 
 def test_provision_route_calls_service():

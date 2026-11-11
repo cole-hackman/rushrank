@@ -1,7 +1,7 @@
 /** Verify the two product changes: End Session, and Voting in the bottom nav. */
 import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
-import { fixtures, signIn, watch, settle, sleep, APP } from "./lib/harness.mjs";
+import { fixtures, signIn, watch, settle, sleep, acceptConfirm, APP } from "./lib/harness.mjs";
 
 const sql = (q) =>
   execFileSync("psql", [process.env.E2E_DATABASE_URL, "-tAF", "|", "-c", q], {
@@ -82,6 +82,7 @@ check("a non-chair does not see End Session", !voterSeesEnd, voterSeesEnd ? "vot
 
 if (endVisible) {
   await cp.getByRole("button", { name: /^End Session$/i }).click();
+  check("End Session asks for confirmation", await acceptConfirm(cp), "in-app dialog");
   await sleep(2600);
   const openAfter = Number(sql(`select count(*) from sessions where ended_at is null`));
   check("session is closed in the database", openAfter === openBefore - 1, `open sessions ${openBefore} -> ${openAfter}`);

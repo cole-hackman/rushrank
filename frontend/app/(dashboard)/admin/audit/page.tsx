@@ -130,7 +130,7 @@ function AuditLog() {
             key={filter.label}
             onClick={() => setPrefix(filter.prefix)}
             className={cn(
-              "rounded-full border border-solid px-4 py-1.5 text-body font-body transition",
+              "rounded-full border border-solid px-4 py-1.5 text-body font-body transition touch:min-h-[44px]",
               prefix === filter.prefix
                 ? "border-brand-600 bg-brand-50 text-brand-700"
                 : "border-neutral-border bg-white text-subtext-color hover:text-default-font",

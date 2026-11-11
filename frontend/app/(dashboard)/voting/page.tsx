@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { useSessionWebSocket } from "@/hooks/useSessionWebSocket";
 import { Tabs } from "@/ui/components/Tabs";
 import { Button } from "@/ui/components/Button";
@@ -63,6 +64,7 @@ const swipeThreshold = 80;
 
 export default function VotingPage() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const router = useRouter();
   
   // Live Session is the default: it is the flow the whole chapter runs together
@@ -76,6 +78,10 @@ export default function VotingPage() {
   const [openPNM, setOpenPNM] = useState<PNM | null>(null);
   const [openLoading, setOpenLoading] = useState(true);
   const [openDone, setOpenDone] = useState(false);
+  // No open round exists. Members are told so; admins get a button to open one.
+  const [openNoRound, setOpenNoRound] = useState(false);
+  const [canOpenRound, setCanOpenRound] = useState(false);
+  const [openingRound, setOpeningRound] = useState(false);
 
   // Session voting
   const [session, setSession] = useState<Session | null>(null);
@@ -123,8 +129,11 @@ export default function VotingPage() {
         // Chapter loading failed or no chapter - stop loading
         setOpenLoading(false);
       } else if (chapterId) {
-        // Chapter loaded - start open round
-        ensureOpenRound();
+        // Chapter loaded - find the open round, if there is one. This only
+        // reads. It used to *create* a round on every visit, through an
+        // admin-only endpoint, so the tab failed for every member and an admin
+        // opened a round just by looking at it.
+        void fetchNextOpenPNM();
       }
     } else if (activeTab === "session") {
       // Load session (will skip loading state if session already exists)
@@ -133,30 +142,30 @@ export default function VotingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, chapterId]);
 
-  const ensureOpenRound = async () => {
-    if (!chapterId) {
-      setOpenLoading(false);
-      return;
-    }
-    setOpenLoading(true);
+  // Admin only (the API enforces it): put everyone in formal rush up for
+  // voting at each brother's own pace.
+  const openRound = async () => {
+    if (!chapterId) return;
+    setOpeningRound(true);
     try {
-      const result = await api(`/rounds/open?chapter_id=${chapterId}`, { method: "POST" });
-      console.log("Open round created/retrieved:", result);
+      await api(`/rounds/open?chapter_id=${chapterId}`, { method: "POST" });
+      toast({ title: "Round opened", description: "Brothers can vote from the Open Voting tab." });
       await fetchNextOpenPNM();
     } catch (e: any) {
-      console.error("Failed to ensure open round:", e);
-      toast({ title: "Failed to start open voting", description: e?.message || "Please try again" });
-      setOpenLoading(false);
-      setOpenPNM(null);
-      setOpenDone(false);
+      toast({ title: "Could not open a round", description: e?.message || "Please try again" });
+    } finally {
+      setOpeningRound(false);
     }
   };
 
   const fetchNextOpenPNM = async () => {
     setOpenLoading(true);
     try {
-      const res = await api<{ round_id: string | null; pnm: PNM | null; no_round?: boolean; no_pnms?: boolean; all_voted?: boolean } | null>(`/rounds/open/current`);
-      console.log("Fetched next open PNM:", res);
+      const res = await api<{ round_id: string | null; pnm: PNM | null; no_round?: boolean; can_open?: boolean; no_pnms?: boolean; all_voted?: boolean } | null>(
+        chapterId ? `/rounds/open/current?chapter_id=${chapterId}` : `/rounds/open/current`,
+      );
+      setOpenNoRound(!!res?.no_round);
+      if (res?.no_round) setCanOpenRound(!!res.can_open);
 
       if (!res) {
         // Legacy null response - treat as all voted
@@ -164,11 +173,10 @@ export default function VotingPage() {
         setOpenPNM(null);
         setOpenRoundId(null);
       } else if (res.no_round) {
-        // No round exists - should not happen after ensureOpenRound, but handle gracefully
+        // Nothing open. Not an error: the panel below explains it.
         setOpenDone(false);
         setOpenPNM(null);
         setOpenRoundId(null);
-        toast({ title: "No open round found", description: "Please try starting a new round" });
       } else if (res.no_pnms) {
         // Round exists but has no PNMs
         setOpenDone(false);
@@ -385,9 +393,12 @@ export default function VotingPage() {
     if (!session) return;
     // Ending closes the room for everyone, not just this device, so it asks
     // first. Votes already cast are kept -- the round is closed, not discarded.
-    const confirmed = window.confirm(
-      "End the session for everyone? Votes already cast are kept, and you'll be taken to the results."
-    );
+    const confirmed = await confirm({
+      title: "End the session for everyone?",
+      description: "Votes already cast are kept, and everyone is taken to the results.",
+      confirmLabel: "End session",
+      destructive: true,
+    });
     if (!confirmed) return;
 
     const roundId = session.round_id;
@@ -561,6 +572,27 @@ export default function VotingPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-beta-navy" />
                   <div className="text-sm font-medium text-beta-gray">Loading open round...</div>
                 </div>
+              ) : openNoRound ? (
+                <div className="flex h-96 flex-col items-center justify-center gap-4 rounded-xl border border-beta-gray/30 bg-white p-8 text-center">
+                  <Clock className="h-12 w-12 text-beta-gray" />
+                  <div className="text-xl font-semibold text-beta-navy">No open round right now</div>
+                  {canOpenRound ? (
+                    <>
+                      <div className="max-w-sm text-sm text-beta-gray">
+                        Opening a round puts everyone in formal rush up for voting. Brothers vote at
+                        their own pace from this tab, outside a live session.
+                      </div>
+                      <Button onClick={openRound} disabled={openingRound}>
+                        {openingRound ? "Opening…" : "Open a round"}
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="max-w-sm text-sm text-beta-gray">
+                      Your rush chair opens rounds for voting at your own pace. Check back here, or
+                      join a live session from the Live Session tab.
+                    </div>
+                  )}
+                </div>
               ) : openDone ? (
                 <div className="flex h-96 flex-col items-center justify-center gap-4 rounded-xl border border-beta-gray/30 bg-white p-8">
                   <ShieldCheck className="h-16 w-16 text-green-600" />
@@ -592,7 +624,7 @@ export default function VotingPage() {
                   <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
                     <div className="mb-4 text-xl font-semibold text-beta-navy">Start Session</div>
                     <div className="space-y-4">
-                      <label className="flex items-center gap-3 text-sm text-beta-gray">
+                      <label className="flex items-center gap-3 text-sm text-beta-gray touch:min-h-[44px]">
                         <input
                           type="checkbox"
                           checked={startAnonymous}
@@ -608,7 +640,7 @@ export default function VotingPage() {
                           min={30}
                           value={startTimer}
                           onChange={(e) => setStartTimer(Number(e.target.value))}
-                          className="h-10 w-28 rounded-lg border border-beta-gray/60 px-3 text-sm font-medium text-beta-navy focus:ring-2 focus:ring-beta-navy"
+                          className="h-10 touch:h-11 w-28 rounded-lg border border-beta-gray/60 px-3 text-sm font-medium text-beta-navy focus:ring-2 focus:ring-beta-navy"
                         />
                         <span>seconds per PNM</span>
                       </div>
@@ -636,15 +668,18 @@ export default function VotingPage() {
               ) : (
 
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between rounded-xl border border-beta-gray/30 bg-white p-5 shadow-sm">
-                    <div className="space-y-1">
-                      <div className="text-xl font-semibold text-beta-navy">Live Voting Session</div>
-                      <div className="flex items-center gap-2 text-sm text-beta-gray">
+                  {/* Wraps on a phone. The room reads the join code off this
+                      card, and at 390px the title used to break over two
+                      lines and push the code out of line with its label. */}
+                  <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-beta-gray/30 bg-white p-5 shadow-sm">
+                    <div className="min-w-0 space-y-1">
+                      <div className="whitespace-nowrap text-xl font-semibold text-beta-navy">Live Voting Session</div>
+                      <div className="flex items-center gap-2 whitespace-nowrap text-sm text-beta-gray">
                         <span>Join Code:</span>
                         <span className="font-mono font-semibold tracking-widest text-beta-navy">{session.join_code}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                     {timerRemaining !== null && (
                       <Badge
                         variant={timerRemaining <= 15 ? "warning" : "neutral"}
@@ -768,7 +803,7 @@ export default function VotingPage() {
               <div className="mt-4 space-y-3">
                 <StatLine
                   label="Status"
-                  value={openDone ? "Complete" : "Open"}
+                  value={openNoRound ? "No open round" : openDone ? "Complete" : "Open"}
                   icon={openDone ? <ShieldCheck className="h-4 w-4 text-green-600" /> : <Clock className="h-4 w-4 text-beta-navy" />}
                 />
               </div>

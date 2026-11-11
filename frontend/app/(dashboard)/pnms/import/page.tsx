@@ -251,7 +251,6 @@ export default function ImportPnmsPage() {
               <div className="w-full overflow-x-auto">
                 <Table
                   header={
-                    <thead>
                       <Table.HeaderRow>
                         <Table.HeaderCell>Row</Table.HeaderCell>
                         <Table.HeaderCell>Name</Table.HeaderCell>
@@ -260,7 +259,6 @@ export default function ImportPnmsPage() {
                         <Table.HeaderCell>Year</Table.HeaderCell>
                         <Table.HeaderCell>Tags</Table.HeaderCell>
                       </Table.HeaderRow>
-                    </thead>
                   }
                 >
                   {preview.preview.map((row) => (

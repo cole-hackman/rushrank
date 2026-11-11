@@ -213,7 +213,7 @@ export default function CheckInPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/events")}
-            className="rounded-lg p-2 text-beta-gray hover:bg-beta-navy/10 hover:text-beta-navy"
+            className="rounded-lg p-2 text-beta-gray hover:bg-beta-navy/10 hover:text-beta-navy touch:min-h-[44px] touch:min-w-[44px]"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
