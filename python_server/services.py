@@ -3428,9 +3428,49 @@ class InvitationService:
             # Don't fail the whole invitation if email fails
             return False
 
+def _json_obj(value: Any) -> Dict[str, Any]:
+    """A jsonb column as a dict.
+
+    The pool registers no JSON codec, so asyncpg hands jsonb back as text. Every
+    read in QuestionnaireService used to pass that text straight into a model
+    typed Dict, and every write passed a dict where asyncpg wanted text, which
+    is why saving a question or an answer always returned 500.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, (dict, list)):
+        return value if isinstance(value, dict) else {"items": value}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+# Answers are short free text typed at a rush table. Anything longer than this
+# is not an answer, and the public intake form is unauthenticated.
+MAX_ANSWER_LENGTH = 2000
+
+
 class QuestionnaireService:
-    """Questionnaires and PNM answers"""
-    
+    """Questionnaires and PNM answers.
+
+    A questionnaire's schema is {"questions": [{"id", "question", "type",
+    "required"}]}, as built on the Settings page. Answers are stored as
+    {"questionnaire-<question id>": "text"}, which is how both intake forms key
+    their fields.
+    """
+
+    def _row_to_questionnaire(self, row) -> Questionnaire:
+        return Questionnaire(
+            id=str(row["id"]),
+            chapter_id=str(row["chapter_id"]),
+            name=row["name"],
+            schema=_json_obj(row["schema"]),
+            active=bool(row["active"]),
+            created_at=row["created_at"],
+        )
+
     async def list_questionnaires(self, chapter_id: str) -> List[Questionnaire]:
         db = get_db()
         rows = await db.execute_query("""
@@ -3439,66 +3479,139 @@ class QuestionnaireService:
             WHERE chapter_id = $1 AND active = true
             ORDER BY created_at DESC
         """, chapter_id)
-        return [
-            Questionnaire(
-                id=str(r["id"]),
-                chapter_id=str(r["chapter_id"]),
-                name=r["name"],
-                schema=r["schema"] or {},
-                active=bool(r["active"]),
-                created_at=r["created_at"],
-            ) for r in rows
-        ]
-    
+        return [self._row_to_questionnaire(r) for r in rows]
+
+    async def get_active_questions(self, chapter_id: str) -> Optional[Dict[str, Any]]:
+        """The chapter's active questionnaire, reduced to what a PNM may see."""
+        db = get_db()
+        row = await db.execute_one("""
+            SELECT id, schema FROM questionnaires
+            WHERE chapter_id = $1 AND active = true
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, chapter_id)
+        if not row:
+            return None
+        questions = []
+        for q in _json_obj(row["schema"]).get("questions") or []:
+            if not isinstance(q, dict) or not q.get("id") or not q.get("question"):
+                continue
+            questions.append({
+                "id": str(q["id"]),
+                "question": str(q["question"]),
+                "type": q.get("type") or "text",
+                "required": bool(q.get("required")),
+            })
+        if not questions:
+            return None
+        return {"id": str(row["id"]), "questions": questions}
+
     async def create_questionnaire(self, chapter_id: str, q: QuestionnaireCreate) -> Questionnaire:
         db = get_db()
         row = await db.execute_one("""
             INSERT INTO questionnaires (chapter_id, name, schema, active)
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3::jsonb, $4)
             RETURNING id, chapter_id, name, schema, active, created_at
-        """, chapter_id, q.name, q.schema, q.active)
-        return Questionnaire(
-            id=str(row["id"]),
-            chapter_id=str(row["chapter_id"]),
-            name=row["name"],
-            schema=row["schema"] or {},
-            active=bool(row["active"]),
-            created_at=row["created_at"],
-        )
-    
+        """, chapter_id, q.name, json.dumps(q.schema), q.active)
+        return self._row_to_questionnaire(row)
+
     async def update_questionnaire(self, questionnaire_id: str, q: QuestionnaireCreate) -> Questionnaire:
         """Update questionnaire schema"""
         db = get_db()
         row = await db.execute_one("""
             UPDATE questionnaires
-            SET name = $2, schema = $3, active = $4
+            SET name = $2, schema = $3::jsonb, active = $4
             WHERE id = $1
             RETURNING id, chapter_id, name, schema, active, created_at
-        """, questionnaire_id, q.name, q.schema, q.active)
-        
+        """, questionnaire_id, q.name, json.dumps(q.schema), q.active)
+
         if not row:
             return None
-        
-        return Questionnaire(
-            id=str(row["id"]),
-            chapter_id=str(row["chapter_id"]),
-            name=row["name"],
-            schema=row["schema"] or {},
-            active=bool(row["active"]),
-            created_at=row["created_at"],
-        )
-    
+
+        return self._row_to_questionnaire(row)
+
     async def save_pnm_answers(self, pnm_id: str, payload: PNMAnswersCreate) -> PNMAnswers:
         db = get_db()
+        answers = {
+            str(k): str(v)[:MAX_ANSWER_LENGTH]
+            for k, v in (payload.answers or {}).items()
+            if v is not None and str(v).strip()
+        }
         row = await db.execute_one("""
             INSERT INTO pnm_answers (pnm_id, questionnaire_id, answers)
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2, $3::jsonb)
             RETURNING id, pnm_id, questionnaire_id, answers, created_at
-        """, pnm_id, payload.questionnaire_id, payload.answers)
+        """, pnm_id, payload.questionnaire_id, json.dumps(answers))
         return PNMAnswers(
             id=str(row["id"]),
             pnm_id=str(row["pnm_id"]),
             questionnaire_id=str(row["questionnaire_id"]) if row["questionnaire_id"] else None,
-            answers=row["answers"] or {},
+            answers=_json_obj(row["answers"]),
             created_at=row["created_at"],
         )
+
+    async def save_public_answers(self, chapter_id: str, pnm_id: str, raw: Dict[str, Any]) -> int:
+        """Answers sent with the public intake form.
+
+        Only answers to the chapter's active questionnaire are kept: the form is
+        unauthenticated, so unknown keys are dropped rather than stored.
+        Returns how many answers were saved.
+        """
+        active = await self.get_active_questions(chapter_id)
+        if not active or not raw:
+            return 0
+        allowed = {f"questionnaire-{q['id']}" for q in active["questions"]}
+        kept = {k: v for k, v in raw.items() if k in allowed}
+        if not kept:
+            return 0
+        saved = await self.save_pnm_answers(
+            pnm_id, PNMAnswersCreate(questionnaire_id=active["id"], answers=kept)
+        )
+        return len(saved.answers)
+
+    async def get_pnm_answers(self, pnm_id: str) -> List[Dict[str, Any]]:
+        """Every intake submission for a PNM, newest first, with the question
+        text beside each answer.
+
+        The route has always called this method; it did not exist, so the
+        endpoint returned 500 and no page could show what a PNM had answered.
+        A question deleted from Settings since is shown as "(question removed)"
+        rather than dropping the answer.
+        """
+        db = get_db()
+        rows = await db.execute_query("""
+            SELECT a.id, a.questionnaire_id, a.answers, a.created_at, q.schema
+            FROM pnm_answers a
+            LEFT JOIN questionnaires q ON q.id = a.questionnaire_id
+            WHERE a.pnm_id = $1
+            ORDER BY a.created_at DESC
+        """, pnm_id)
+        out = []
+        for r in rows:
+            questions = _json_obj(r["schema"]).get("questions") or []
+            by_key = {}
+            order = []
+            for q in questions:
+                if isinstance(q, dict) and q.get("id"):
+                    key = f"questionnaire-{q['id']}"
+                    by_key[key] = q.get("question") or ""
+                    order.append(key)
+            answers = _json_obj(r["answers"])
+            keys = [k for k in order if k in answers] + [k for k in answers if k not in by_key]
+            items = [
+                {
+                    "key": k,
+                    "question": by_key.get(k) or "(question removed)",
+                    "answer": str(answers[k]),
+                }
+                for k in keys
+                if str(answers[k]).strip()
+            ]
+            if items:
+                out.append({
+                    "id": str(r["id"]),
+                    "questionnaire_id": str(r["questionnaire_id"]) if r["questionnaire_id"] else None,
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "items": items,
+                })
+        return out

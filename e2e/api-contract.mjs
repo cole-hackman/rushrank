@@ -366,6 +366,15 @@ await t("POST /pnms/{pnm_id}/answers", "member", `/pnms/${P2}/answers`, {
   knownIf: (r) => r.status === 500, note: "answers are never saved: dict is not JSON-encoded; the frontend swallows the error",
 });
 await t("GET /pnms/{pnm_id}/questionnaire", "none", `/pnms/${P2}/questionnaire`, { expect: DENIED });
+{
+  // Answers come back with the question text beside them.
+  const r = await raw(member, "GET", `/api/v1/pnms/${P2}/questionnaire`);
+  const item = Array.isArray(r.json) ? r.json[0]?.items?.[0] : null;
+  if (r.status === 200 && !(item && item.question && item.answer === "this one")) {
+    results.push({ op: "GET /pnms/{pnm_id}/questionnaire", as: "member", outcome: "FAIL", detail: `unexpected body ${JSON.stringify(r.json).slice(0, 160)}` });
+    console.log("  FAIL member questionnaire answers missing or unlabelled");
+  }
+}
 await t("GET /pnms/{pnm_id}/questionnaire", "member", `/pnms/${P2}/questionnaire`, {
   expect: 200, knownIf: (r) => r.status === 500, note: "calls QuestionnaireService.get_pnm_answers, which does not exist",
 });
@@ -496,6 +505,17 @@ await t("POST /rounds/open", "member", `/rounds/open?chapter_id=${C}`, {
 await t("POST /rounds/open", "admin", `/rounds/open?chapter_id=${C}`, { expect: OK });
 await t("GET /rounds/open/current", "none", "/rounds/open/current", { expect: DENIED });
 await t("GET /rounds/open/current", "member", "/rounds/open/current", { expect: 200 });
+await t("GET /rounds/open/current", "member", `/rounds/open/current?chapter_id=${C}`, { expect: 200 });
+await t("GET /rounds/open/current", "member", `/rounds/open/current?chapter_id=${NOBODY}`, { expect: [403, 404], note: "another chapter" });
+{
+  // The open round must never be a live session's round.
+  const cur = await raw(member, "GET", `/api/v1/rounds/open/current?chapter_id=${C}`);
+  const rid = cur.json?.round_id;
+  if (rid && Number(sql(`select count(*) from sessions where round_id='${rid}'`)[0][0]) > 0) {
+    results.push({ op: "GET /rounds/open/current", as: "member", outcome: "FAIL", detail: `open round ${rid} has a live session attached` });
+    console.log("  FAIL member open round is a live session's round");
+  }
+}
 sql(`update voting_rounds set status='ENDED', ended_at=now() where status='ACTIVE' and chapter_id='${C}'`);
 
 // ------------------------------------------------------------------- sessions

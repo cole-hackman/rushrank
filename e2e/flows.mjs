@@ -13,13 +13,17 @@
  *   6. The admin previews round cuts without committing    (admin)
  *   7. The admin records a bid outcome                     (admin)
  *   8. The admin adds an intake question on Settings       (admin)
+ *   8b. The public intake link asks it; the PNM page shows  (signed out,
+ *       the answer                                           then member)
+ *   9. The admin opens a round; a member votes in Open      (admin, member)
+ *      Voting and moves on to the next PNM
  *
  * Each flow is independent: one failing does not stop the rest.
  *
  *   node flows.mjs
  *
- * WRITES: creates PNMs, an event, attendance, a note, a contact record and a
- * bid outcome. Reseed after (`python3 e2e/guard.py --seed`). Runs only
+ * WRITES: creates PNMs, an event, attendance, a note, a contact record, a
+ * bid outcome, an intake question and answers, an open round and a vote. Reseed after (`python3 e2e/guard.py --seed`). Runs only
  * against the local e2e database; guard.mjs enforces that.
  * Exit code: 0 = nothing new, 1 = at least one new failure, 2 = guard refused.
  *
@@ -33,7 +37,7 @@ import { chromium } from "playwright";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fixtures, signIn, watch, settle, sleep, APP, ROOT } from "./lib/harness.mjs";
-import { guard, sql } from "./guard.mjs";
+import { guard, sql, API } from "./guard.mjs";
 
 await guard();
 
@@ -298,6 +302,88 @@ await flow("8. admin adds an intake question", async (sink) => {
     return { ok: false, known: true, detail: `saving returns a 500 (${failed[0].text.replace(/^\[[^\]]*\]\s*/, "")}); the schema dict is not JSON-encoded` };
   }
   return { ok: false, detail: "question was not stored and no request failed" };
+});
+
+// 8b ---------------------------------------- intake answers reach the PNM page
+await flow("8b. public intake asks the questions and the PNM page shows the answers", async (sink) => {
+  // Make sure there is a question, whether or not flow 8 added one.
+  const question = `E2E why us ${stamp}?`;
+  const qid = `q_e2e_${stamp}`;
+  const existing = one(`select id::text from questionnaires where chapter_id='${C}' and active order by created_at desc limit 1`);
+  const schema = JSON.stringify({ questions: [{ id: qid, question, type: "text", required: false }] }).replace(/'/g, "''");
+  if (existing) sql(`update questionnaires set schema='${schema}'::jsonb where id='${existing}'`);
+  else sql(`insert into questionnaires (chapter_id, name, schema, active) values ('${C}', 'Intake', '${schema}'::jsonb, true)`);
+
+  const info = await (await fetch(`${API}/api/v1/public/chapters/${C}`)).json();
+  const asked = info.questionnaire?.questions?.some((q) => q.question === question);
+  if (!asked) return { ok: false, detail: "GET /public/chapters/{id} does not list the chapter's question" };
+
+  const name = `E2E Intake ${stamp}`;
+  const res = await fetch(`${API}/api/v1/public/chapters/${C}/intake`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email: `intake-${stamp}@example.com`, answers: { [`questionnaire-${qid}`]: "Because of the people" } }),
+  });
+  if (!res.ok) return { ok: false, detail: `public intake returned ${res.status}` };
+  const pnmId = (await res.json()).id;
+
+  const ctx = await ctxFor(member);
+  const page = await open(ctx, `/pnms/${pnmId}`, sink, "pnm-answers");
+  const shown = await until(() => page.getByText("Because of the people").isVisible().catch(() => false), 6000);
+  const label = await page.getByText(question).isVisible().catch(() => false);
+  await ctx.close();
+  if (!shown || !label) return { ok: false, detail: `answer shown=${!!shown}, question shown=${label}` };
+  return { ok: true, detail: "question offered publicly, answer stored, shown on the PNM page under its question" };
+});
+
+// 9 ------------------------------------------------------------- open voting
+await flow("9. admin opens a round; a member votes in Open Voting", async (sink) => {
+  // Clear any open round so the tab starts empty.
+  sql(`update voting_rounds set status='ENDED', ended_at=now() where chapter_id='${C}' and status='ACTIVE'`);
+
+  const mctx = await ctxFor(member, true);
+  const mpage = await open(mctx, "/voting", sink, "open-member");
+  await mpage.getByText("Open Voting", { exact: true }).first().click();
+  const empty = await until(() => mpage.getByText("No open round right now").isVisible().catch(() => false));
+  const memberCanOpen = await mpage.getByRole("button", { name: "Open a round" }).isVisible().catch(() => false);
+  if (!empty) { await mctx.close(); return { ok: false, detail: "member did not see the no-round message" }; }
+  if (memberCanOpen) { await mctx.close(); return { ok: false, detail: "a member was offered Open a round" }; }
+
+  const actx = await ctxFor(admin);
+  const apage = await open(actx, "/voting", sink, "open-admin");
+  await apage.getByText("Open Voting", { exact: true }).first().click();
+  const btn = apage.getByRole("button", { name: "Open a round" });
+  if (!(await until(() => btn.isVisible().catch(() => false)))) {
+    await mctx.close(); await actx.close();
+    return { ok: false, detail: "admin was not offered Open a round" };
+  }
+  await btn.click();
+  const roundId = await until(() => one(`select vr.id::text from voting_rounds vr where vr.chapter_id='${C}' and vr.status='ACTIVE'
+      and not exists (select 1 from sessions s where s.round_id=vr.id)`));
+  await actx.close();
+  if (!roundId) { await mctx.close(); return { ok: false, detail: "no open round was created" }; }
+
+  await mpage.reload({ waitUntil: "domcontentloaded" });
+  await settle(mpage, 1000);
+  await mpage.getByText("Open Voting", { exact: true }).first().click();
+  const first = await until(async () => {
+    const h = ((await mpage.locator("h2").first().textContent().catch(() => "")) || "").trim();
+    return h && !/No open round|All caught up/.test(h) ? h : null;
+  }, 8000);
+  if (!first) { await mctx.close(); return { ok: false, detail: "member saw no PNM card after the round opened" }; }
+  await mpage.getByRole("button", { name: "Yes", exact: true }).first().click();
+  const stored = await until(() => num(`select count(*) from votes v join pnms p on p.id=v.pnm_id
+      where v.round_id='${roundId}' and v.voter_user_id='${member.id}' and p.name='${first.replace(/'/g, "''")}'`) === 1);
+  const next = await until(async () => {
+    const h = ((await mpage.locator("h2").first().textContent().catch(() => "")) || "").trim();
+    return h && h !== first ? h : null;
+  }, 6000);
+  const forbidden = sink.filter((e) => e.kind === "http403" && /rounds\/open/.test(e.text) && /open-member/.test(e.text));
+  await mctx.close();
+  if (forbidden.length) return { ok: false, detail: "the member's tab still called an admin-only endpoint" };
+  if (!stored) return { ok: false, detail: `vote on "${first}" was not stored` };
+  if (!next) return { ok: false, detail: "the next PNM did not load after voting" };
+  return { ok: true, detail: `member voted Yes on "${first}" and moved on to "${next}"` };
 });
 
 await browser.close();

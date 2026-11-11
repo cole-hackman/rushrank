@@ -229,7 +229,8 @@ for (const role of ["member", "exec", "admin"]) {
     await m.close();
   }
 
-  // Open Voting as a member: the tab calls an admin-only endpoint first.
+  // Open Voting as a member. The tab used to call the admin-only
+  // POST /rounds/open on load and fail; it now only reads.
   if (role === "member") {
     const p = await ctx.newPage();
     const sink = watch(p, [], "member:open-voting");
@@ -242,9 +243,13 @@ for (const role of ["member", "exec", "admin"]) {
     await p.getByText("Open Voting", { exact: true }).first().click().catch(() => {});
     await settle(p, 2000);
     const refused = sink.some((e) => e.kind === "http403" && /rounds\/open/.test(e.text));
+    const body = (await p.locator("body").innerText().catch(() => "")) || "";
+    const usable = /No open round right now|All caught up/.test(body) ||
+      (await p.getByRole("button", { name: "Yes", exact: true }).first().isVisible().catch(() => false));
     if (refused) {
-      note("high", "Open Voting is unusable for members (known)",
-        "the tab calls POST /rounds/open, which is admin-only, and never loads a card after the 403.");
+      note("high", "Open Voting still calls an admin-only endpoint for members", "a 403 from /rounds/open on the Open Voting tab");
+    } else if (!usable) {
+      note("high", "Open Voting shows a member neither a card nor a no-round message", body.slice(0, 160).replace(/\s+/g, " "));
     }
     await p.close();
   }
