@@ -25,7 +25,6 @@ from .services import (
     ExportService,
     NoteService,
     TagService,
-    SessionService,
     UploadService,
     QuestionnaireService,
     InvitationService
@@ -52,7 +51,6 @@ event_service = EventService()
 export_service = ExportService()
 note_service = NoteService()
 tag_service = TagService()
-session_service = SessionService()
 upload_service = UploadService()
 questionnaire_service = QuestionnaireService()
 invitation_service = InvitationService()
@@ -65,145 +63,6 @@ async def get_current_user_profile(
 ):
     """Get current user profile with memberships"""
     return await user_service.get_user_profile(current_user["user_id"])
-
-@router.post("/admin/reset-password")
-@limiter.limit(AUTH_RATE_LIMIT)
-async def admin_reset_password(
-    request: Request,
-    payload: Dict[str, str],
-    current_user: dict = Depends(get_current_user)
-):
-    """Admin endpoint to reset a user's password (admin only)"""
-    email = payload.get("email")
-    new_password = payload.get("password")
-    
-    if not email or not new_password:
-        raise HTTPException(status_code=400, detail="email and password required")
-    
-    # Verify current user is an admin (check if they have any admin membership)
-    db = get_db()
-    admin_check = await db.execute_one("""
-        SELECT 1 FROM memberships WHERE user_id = $1 AND role = 'admin' LIMIT 1
-    """, current_user["user_id"])
-    
-    if not admin_check:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    # Get user from Supabase Auth
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    
-    if not supabase_url or not supabase_service_key:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
-    
-    import httpx
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Get user by email
-        get_user_response = await client.get(
-            f"{supabase_url}/auth/v1/admin/users",
-            params={"email": email},
-            headers={
-                "Authorization": f"Bearer {supabase_service_key}",
-                "apikey": supabase_service_key
-            }
-        )
-        
-        if get_user_response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Failed to find user")
-        
-        users_data = get_user_response.json()
-        if not users_data.get("users") or len(users_data["users"]) == 0:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_id = users_data["users"][0]["id"]
-        
-        # Update password
-        update_response = await client.put(
-            f"{supabase_url}/auth/v1/admin/users/{user_id}",
-            json={
-                "password": new_password,
-                "email_confirm": True
-            },
-            headers={
-                "Authorization": f"Bearer {supabase_service_key}",
-                "Content-Type": "application/json",
-                "apikey": supabase_service_key
-            }
-        )
-        
-        if update_response.status_code not in (200, 201):
-            error_text = update_response.text
-            raise HTTPException(status_code=500, detail=f"Failed to reset password: {error_text}")
-        
-        logger.info(f"Password reset for user {email} by admin {current_user['email']}")
-        
-        return APIResponse(
-            success=True,
-            message=f"Password reset successfully for {email}",
-            data={"email": email}
-        )
-
-@router.post("/admin/promote-to-admin")
-async def promote_to_admin(
-    payload: Dict[str, str],
-    current_user: dict = Depends(get_current_user)
-):
-    """Promote a user to admin (admin only)"""
-    email = payload.get("email")
-    
-    if not email:
-        raise HTTPException(status_code=400, detail="email required")
-    
-    email = email.strip().lower()
-    
-    # Verify the current user is an admin (self-promotion not allowed for security)
-    db = get_db()
-    
-    # Check if current user is already an admin
-    current_user_admin = await db.execute_one("""
-        SELECT 1 FROM memberships WHERE user_id = $1 AND role = 'admin' LIMIT 1
-    """, current_user["user_id"])
-    
-    # Only admins can promote users
-    if not current_user_admin:
-        raise HTTPException(status_code=403, detail="Admin access required to promote users")
-    
-    # Find user by email
-    user = await db.execute_one("""
-        SELECT id FROM users WHERE email = $1
-    """, email)
-    
-    if not user:
-        raise HTTPException(status_code=404, detail=f"User with email {email} not found")
-    
-    user_id = str(user["id"])
-    
-    # Get all chapters the user is a member of
-    chapters = await db.execute_query("""
-        SELECT DISTINCT chapter_id FROM memberships WHERE user_id = $1
-    """, user_id)
-    
-    if not chapters or len(chapters) == 0:
-        raise HTTPException(status_code=404, detail=f"User {email} is not a member of any chapter")
-    
-    # Update all memberships to admin
-    updated_count = 0
-    for chapter in chapters:
-        chapter_id = str(chapter["chapter_id"])
-        await db.execute_command("""
-            UPDATE memberships
-            SET role = 'admin'
-            WHERE user_id = $1 AND chapter_id = $2
-        """, user_id, chapter_id)
-        updated_count += 1
-    
-    logger.info(f"Promoted user {email} to admin in {updated_count} chapter(s) by {current_user.get('email')}")
-    
-    return APIResponse(
-        success=True,
-        message=f"User {email} promoted to admin in {updated_count} chapter(s)",
-        data={"email": email, "chapters_updated": updated_count}
-    )
 
 # Membership management endpoints
 @router.get("/memberships")
@@ -410,15 +269,6 @@ async def get_user_chapters(
     if len(chapters) == 0:
         logger.warning(f"User {email} (id={user_id}) has no chapter memberships")
     return chapters
-
-@router.post("/chapters", response_model=Chapter)
-async def create_chapter(
-    chapter_data: ChapterCreate,
-    current_user: dict = Depends(get_current_user)
-):
-    """Create new chapter (system admin only for now)"""
-    return await chapter_service.create_chapter(chapter_data, current_user["user_id"])
-
 
 class ProvisionRequest(BaseModel):
     fraternity_name: str
@@ -1724,34 +1574,6 @@ async def end_round(
 
     return APIResponse(success=True, message="Round ended successfully")
 
-@router.post("/rounds/{round_id}/advance")
-async def advance_round(
-    round_id: str,
-    payload: Dict[str, str],
-    current_user: dict = Depends(get_current_user)
-):
-    """Set the current PNM in session (admin only)"""
-    round_obj = await voting_service.get_round(round_id)
-    if not round_obj:
-        raise HTTPException(status_code=404, detail="Round not found")
-    await chapter_service.verify_admin_access(current_user["user_id"], round_obj.chapter_id)
-    current_pnm_id = payload.get("current_pnm_id")
-    return await session_service.set_current(round_id, current_pnm_id)
-
-@router.post("/rounds/{round_id}/lock")
-async def lock_round(
-    round_id: str,
-    payload: Dict[str, bool],
-    current_user: dict = Depends(get_current_user)
-):
-    """Lock/unlock the current session (admin only)"""
-    round_obj = await voting_service.get_round(round_id)
-    if not round_obj:
-        raise HTTPException(status_code=404, detail="Round not found")
-    await chapter_service.verify_admin_access(current_user["user_id"], round_obj.chapter_id)
-    locked = bool(payload.get("locked", True))
-    return await session_service.set_locked(round_id, locked)
-
 @router.post("/votes")
 @limiter.limit(VOTE_RATE_LIMIT)
 async def create_vote(
@@ -1863,23 +1685,6 @@ async def create_vote(
         "created_at": vote_row["voted_at"].isoformat() if vote_row["voted_at"] else None,
         "tallies": tallies,
     }
-
-@router.post("/rounds/{round_id}/votes", response_model=Vote)
-async def cast_vote(
-    round_id: str,
-    vote_data: VoteCreate,
-    current_user: dict = Depends(get_current_user)
-):
-    """Cast vote in a round"""
-    round_obj = await voting_service.get_round(round_id)
-    if not round_obj:
-        raise HTTPException(status_code=404, detail="Round not found")
-    
-    if round_obj.status != RoundStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Round is not active")
-    
-    await chapter_service.verify_membership(current_user["user_id"], round_obj.chapter_id)
-    return await voting_service.cast_vote(round_id, vote_data, current_user["user_id"])
 
 @router.get("/rounds/{round_id}/results", response_model=List[PNMWithVotes])
 async def get_round_results(

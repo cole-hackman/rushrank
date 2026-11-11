@@ -1742,38 +1742,6 @@ class VotingService:
             round_id, [str(pid) for pid in pnm_ids],
         )
 
-    async def cast_vote(self, round_id: str, vote_data: VoteCreate, voter_id: str) -> Vote:
-        """Cast or update vote in a round"""
-        db = get_db()
-        
-        # Use UPSERT to handle vote updates
-        query = """
-            INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (round_id, pnm_id, voter_user_id)
-            DO UPDATE SET value = $4, favorite = $5, voted_at = NOW()
-            RETURNING id, round_id, pnm_id, voter_user_id, value, favorite, voted_at
-        """
-
-        row = await db.execute_one(
-            query,
-            round_id,
-            vote_data.pnm_id,
-            voter_id,
-            vote_data.value.value,
-            vote_data.favorite
-        )
-
-        return Vote(
-            id=str(row["id"]),
-            round_id=str(row["round_id"]),
-            pnm_id=str(row["pnm_id"]),
-            voter_id=str(row["voter_user_id"]),
-            value=row["value"],
-            favorite=row["favorite"],
-            created_at=row["voted_at"]
-        )
-    
     async def get_round_summary(self, chapter_id: str) -> Dict[str, Any]:
         """Every round's results for a chapter, in two queries.
 
@@ -2827,45 +2795,6 @@ class TagService:
             "total_tags": total_tags,
             "most_used_tag": most_used_tag,
             "tagged_pnms_count": tagged_pnms
-        }
-
-class SessionService:
-    """Voting session state (advance/lock)"""
-    
-    async def set_current(self, round_id: str, current_pnm_id: Optional[str]) -> Dict[str, Any]:
-        db = get_db()
-        row = await db.execute_one("""
-            INSERT INTO sessions (round_id, current_pnm_id, locked, started_at)
-            VALUES ($1, $2, false, NOW())
-            ON CONFLICT (round_id)
-            DO UPDATE SET current_pnm_id = EXCLUDED.current_pnm_id
-            RETURNING id, round_id, current_pnm_id, locked, started_at, ended_at
-        """, round_id, current_pnm_id)
-        return {
-            "id": str(row["id"]),
-            "round_id": str(row["round_id"]),
-            "current_pnm_id": str(row["current_pnm_id"]) if row["current_pnm_id"] else None,
-            "locked": row["locked"],
-            "started_at": row["started_at"],
-            "ended_at": row["ended_at"],
-        }
-    
-    async def set_locked(self, round_id: str, locked: bool) -> Dict[str, Any]:
-        db = get_db()
-        row = await db.execute_one("""
-            INSERT INTO sessions (round_id, current_pnm_id, locked, started_at)
-            VALUES ($1, NULL, $2, NOW())
-            ON CONFLICT (round_id)
-            DO UPDATE SET locked = EXCLUDED.locked
-            RETURNING id, round_id, current_pnm_id, locked, started_at, ended_at
-        """, round_id, locked)
-        return {
-            "id": str(row["id"]),
-            "round_id": str(row["round_id"]),
-            "current_pnm_id": str(row["current_pnm_id"]) if row["current_pnm_id"] else None,
-            "locked": row["locked"],
-            "started_at": row["started_at"],
-            "ended_at": row["ended_at"],
         }
 
 class UploadService:
