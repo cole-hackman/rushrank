@@ -24,6 +24,10 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      # The domain people visit. Used for links in emails and QR codes, and
+      # always allowed as a CORS origin.
+      - key: PUBLIC_SITE_URL
+        value: https://rushrank.vercel.app
       # Optional. Error reports go to Sentry when set; nothing is sent otherwise.
       - key: SENTRY_DSN
         sync: false
