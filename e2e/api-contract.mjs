@@ -114,6 +114,26 @@ await t("GET /me", "none", "/me", { expect: DENIED });
 const me = await t("GET /me", "member", "/me", { expect: 200 });
 await t("GET /me", "admin", "/me", { expect: 200 });
 await t("GET /me", "admin", "/me", { expect: 200, prefix: "/api", note: "legacy /api mount" });
+await t("PATCH /me", "none", "/me", { body: { name: "Nobody" }, expect: DENIED });
+await t("PATCH /me", "member", "/me", { body: { name: "   " }, expect: [400, 422], note: "blank name" });
+{
+  const renamed = await t("PATCH /me", "member", "/me", { body: { name: `  ${member.name}  ` }, expect: 200 });
+  if (renamed.json?.name !== member.name) {
+    results.push({ op: "PATCH /me", as: "member", outcome: "FAIL", detail: `name came back as ${JSON.stringify(renamed.json?.name)}` });
+    console.log("  FAIL PATCH /me did not return the saved name");
+  }
+}
+await t("GET /chapters/{chapter_id}/min-gpa", "none", `/chapters/${C}/min-gpa`, { expect: DENIED });
+await t("GET /chapters/{chapter_id}/min-gpa", "member", `/chapters/${C}/min-gpa`, { expect: 200 });
+{
+  // The check-in page's search: every word must match the name or the email.
+  const hit = await raw(member, "GET", `/api/v1/pnms?chapter_id=${C}&search=${encodeURIComponent(fx.roster[0].name)}`);
+  const miss = await raw(member, "GET", `/api/v1/pnms?chapter_id=${C}&search=zzzz-nobody`);
+  const okHit = Array.isArray(hit.json) && hit.json.length >= 1 && hit.json.every((p) => p.name === fx.roster[0].name);
+  const okMiss = Array.isArray(miss.json) && miss.json.length === 0;
+  results.push({ op: "GET /pnms?search", as: "member", status: hit.status, outcome: okHit && okMiss ? "pass" : "FAIL", detail: `hit=${hit.json?.length} miss=${miss.json?.length}` });
+  if (!(okHit && okMiss)) console.log(`  FAIL GET /pnms?search did not narrow the list (hit=${hit.json?.length}, miss=${miss.json?.length})`);
+}
 
 await t("GET /chapters", "none", "/chapters", { expect: DENIED });
 await t("GET /chapters", "member", "/chapters", { expect: 200 });

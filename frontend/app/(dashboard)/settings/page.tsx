@@ -13,6 +13,7 @@ import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import AdminProtected from "@/components/AdminProtected";
 import { ChapterAppearanceCard } from "@/components/settings/ChapterAppearanceCard";
+import { MinGpaCard } from "@/components/settings/MinGpaCard";
 
 type Questionnaire = {
   id: string;
@@ -183,6 +184,7 @@ export default function SettingsPage() {
     <AdminProtected>
       <div className="flex w-full flex-col gap-6">
         <ChapterAppearanceCard />
+        <MinGpaCard chapterId={chapterId} />
         <div className="flex w-full flex-col items-start">
           <Breadcrumbs>
             <Breadcrumbs.Item>Home</Breadcrumbs.Item>

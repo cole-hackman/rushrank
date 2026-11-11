@@ -12,8 +12,9 @@ import {
   Users,
   Loader2,
 } from "lucide-react";
-import { api, API_BASE, getContacts, type ContactEntry, type ContactSummary } from "@/lib/api";
+import { api, API_BASE, getContacts, type ContactEntry, type ContactSummary, type Eligibility } from "@/lib/api";
 import { MetButton } from "@/components/pnm/MetButton";
+import { GpaCard } from "@/components/pnm/GpaCard";
 import { useToast } from "@/components/ToastProvider";
 import { Breadcrumbs } from "@/ui/components/Breadcrumbs";
 import { Button } from "@/ui/components/Button";
@@ -37,6 +38,11 @@ type PNM = {
   attendance_count?: number;
   total_events?: number;
   favorite_count?: number;
+  gpa?: number | null;
+  min_gpa?: number | null;
+  gpa_waived?: boolean;
+  gpa_waived_reason?: string | null;
+  eligibility?: Eligibility | null;
 };
 
 type AttendanceEvent = {
@@ -289,6 +295,16 @@ export default function PNMProfilePage() {
               <StatRow label="Favorites" value={(pnm.favorite_count || 0).toString()} />
             </div>
           </div>
+
+          <GpaCard
+            pnmId={pnm.id}
+            gpa={pnm.gpa}
+            minGpa={pnm.min_gpa}
+            waived={pnm.gpa_waived}
+            waivedReason={pnm.gpa_waived_reason}
+            eligibility={pnm.eligibility}
+            onChanged={loadProfile}
+          />
 
           {intakeAnswers.length > 0 && (
             <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">

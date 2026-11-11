@@ -66,6 +66,29 @@ async def get_current_user_profile(
     """Get current user profile with memberships"""
     return await user_service.get_user_profile(current_user["user_id"])
 
+
+class ProfileUpdate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+
+@router.patch("/me", response_model=UserProfile)
+async def update_current_user_profile(
+    payload: ProfileUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Set the name other members see beside this person's notes and contacts.
+
+    The profile page used to save the name to Supabase's user metadata only, so
+    `users.name` stayed empty and the app showed an email address or "A brother".
+    """
+    name = " ".join(payload.name.split())
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be blank")
+    await get_db().execute_command(
+        "UPDATE users SET name = $2 WHERE id = $1::uuid", current_user["user_id"], name
+    )
+    return await user_service.get_user_profile(current_user["user_id"])
+
 # Membership management endpoints
 @router.get("/memberships")
 async def list_memberships(
@@ -747,6 +770,19 @@ async def set_gpa_waiver(
     }
 
 
+@router.get("/chapters/{chapter_id}/min-gpa")
+async def get_chapter_min_gpa(
+    chapter_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """The chapter's GPA floor, or null when the check is off. Any member may read it."""
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    row = await get_db().execute_one(
+        "SELECT min_gpa FROM chapters WHERE id = $1::uuid", chapter_id
+    )
+    return {"min_gpa": float(row["min_gpa"]) if row and row["min_gpa"] is not None else None}
+
+
 @router.put("/chapters/{chapter_id}/min-gpa")
 async def set_chapter_min_gpa(
     chapter_id: str,
@@ -833,6 +869,10 @@ async def get_pnms(
         description="Filter by pipeline stage. Defaults to everyone in formal "
                     "rush (pnm/bid/pledged); pass 'all' to include prospects.",
     ),
+    search: Optional[str] = Query(
+        None, max_length=100,
+        description="Only PNMs whose name or email contains this text.",
+    ),
     current_user: dict = Depends(get_current_user)
 ):
     """Get PNMs for a chapter with stats"""
@@ -902,6 +942,14 @@ async def get_pnms(
         query += f" AND p.stage = ${len(params)}"
     else:
         query += " AND p.stage <> 'prospect'"
+
+    # The check-in page has always sent ?search=; it was ignored, so typing a
+    # name listed the whole roster and "the first result" was whoever sorted
+    # first. Every word must match, so "arlo men" finds Arlo Mendoza.
+    for word in (search if isinstance(search, str) else "").split()[:5]:
+        escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        params.append(f"%{escaped}%")
+        query += f" AND (p.name ILIKE ${len(params)} OR p.email ILIKE ${len(params)})"
 
     query += """
         GROUP BY p.id, p.chapter_id, p.name, p.email, p.phone, p.major, p.hometown, p.year,
@@ -1178,6 +1226,7 @@ async def get_pnm(
     query = """
         SELECT 
             p.*,
+            (SELECT c.min_gpa FROM chapters c WHERE c.id = p.chapter_id) AS min_gpa,
             COALESCE(ARRAY(
                 SELECT t.label FROM pnm_tags pt
                 JOIN tags t ON t.id = pt.tag_id
@@ -1209,6 +1258,9 @@ async def get_pnm(
     pnm_dict["id"] = str(pnm_dict["id"])
     pnm_dict["chapter_id"] = str(pnm_dict["chapter_id"])
     pnm_dict["tags"] = pnm_dict["tags"] or []
+    pnm_dict["eligibility"] = _eligibility(
+        pnm_dict.get("gpa"), pnm_dict.get("min_gpa"), pnm_dict.get("gpa_waived")
+    )
     
     return pnm_dict
 

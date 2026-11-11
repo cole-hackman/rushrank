@@ -621,6 +621,8 @@ export default function VotingPage() {
                 </div>
               ) : !session ? (
                 <div className="grid gap-6 md:grid-cols-2">
+                  {/* Starting a session is admin-only in the API; members only join. */}
+                  {canOpenRound && (
                   <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
                     <div className="mb-4 text-xl font-semibold text-beta-navy">Start Session</div>
                     <div className="space-y-4">
@@ -649,6 +651,7 @@ export default function VotingPage() {
                       </Button>
                     </div>
                   </div>
+                  )}
                   <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
                     <div className="mb-4 text-xl font-semibold text-beta-navy">Join Session</div>
                     <div className="space-y-4">

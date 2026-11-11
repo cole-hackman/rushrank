@@ -34,7 +34,7 @@ class UserService:
         db = get_db()
         
         # Get user info
-        user_query = "SELECT id, email, created_at FROM users WHERE id = $1"
+        user_query = "SELECT id, email, name, created_at FROM users WHERE id = $1"
         user = await db.execute_one(user_query, user_id)
         
         if not user:
@@ -63,6 +63,7 @@ class UserService:
         return UserProfile(
             user_id=str(user["id"]),
             email=user["email"],
+            name=user["name"],
             memberships=membership_data
         )
 
@@ -2633,7 +2634,7 @@ class NoteService:
         rows = await db.execute_query("""
             SELECT n.id, n.pnm_id, n.author_user_id, n.body, n.anonymous,
                    n.likes_count, n.created_at,
-                   CASE WHEN n.anonymous THEN NULL ELSE u.email END AS author_email
+                   CASE WHEN n.anonymous THEN NULL ELSE COALESCE(NULLIF(u.name, ''), u.email) END AS author_email
             FROM pnm_notes n
             LEFT JOIN users u ON u.id = n.author_user_id
             WHERE n.pnm_id = $1
