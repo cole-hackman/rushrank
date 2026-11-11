@@ -16,6 +16,10 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fixtures, signIn, watch, settle, sleep, acceptConfirm, APP, ROOT } from "./lib/harness.mjs";
+import { guard } from "./guard.mjs";
+
+// Refuses (exit 2) unless the database and the running backend are the local e2e ones.
+await guard();
 
 const sql = (q) =>
   execFileSync("psql", [process.env.E2E_DATABASE_URL, "-tAF", "|", "-c", q], {

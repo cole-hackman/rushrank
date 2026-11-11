@@ -118,12 +118,6 @@ await t("GET /me", "admin", "/me", { expect: 200, prefix: "/api", note: "legacy 
 await t("GET /chapters", "none", "/chapters", { expect: DENIED });
 await t("GET /chapters", "member", "/chapters", { expect: 200 });
 
-// Known hole: "admin of any chapter" may reset anyone's password. Locally the
-// Supabase call cannot succeed, so only the role gate is asserted.
-await t("POST /admin/reset-password", "none", "/admin/reset-password", { body: { email: target.email, password: "x" }, expect: DENIED });
-await t("POST /admin/reset-password", "member", "/admin/reset-password", { body: { email: target.email, password: "Xy12345678!" }, expect: 403 });
-await t("POST /admin/reset-password", "admin", "/admin/reset-password", { body: { email: target.email, password: "Xy12345678!" }, expect: OK, external: true, note: "calls Supabase Auth" });
-
 // ---------------------------------------------------------------- memberships
 await t("GET /memberships", "none", `/memberships?chapter_id=${C}`, { expect: DENIED });
 await t("GET /memberships", "member", `/memberships?chapter_id=${C}`, { expect: 403 });
@@ -148,11 +142,6 @@ if (MS) {
   results.push({ op: "PUT /memberships/{membership_id}", outcome: "FAIL", detail: "could not find the target membership id in GET /memberships" });
   console.log("  FAIL could not find the target membership id in GET /memberships");
 }
-
-await t("POST /admin/promote-to-admin", "none", "/admin/promote-to-admin", { body: { email: target.email }, expect: DENIED });
-await t("POST /admin/promote-to-admin", "member", "/admin/promote-to-admin", { body: { email: target.email }, expect: 403 });
-await t("POST /admin/promote-to-admin", "admin", "/admin/promote-to-admin", { body: { email: target.email }, expect: 200 });
-sql(`update memberships set role='member' where user_id='${target.id}' and chapter_id='${C}'`); // restore
 
 // ---------------------------------------------------------------------- theme
 await t("GET /chapters/me/theme", "none", "/chapters/me/theme", { expect: DENIED });
@@ -262,8 +251,8 @@ const NOTE = noteRes.json?.id || sql(`select id::text from pnm_notes where pnm_i
   const list = await raw(exec, "GET", `/api/v1/pnms/${P2}/notes`);
   const mine = (Array.isArray(list.json) ? list.json : list.json?.notes || []).find((n) => n.id === NOTE);
   if (mine && (mine.author_id === member.id || mine.author_user_id === member.id)) {
-    known.push({ op: "GET /pnms/{pnm_id}/notes", as: "exec", status: 200, note: "anonymous note still returns the author's id" });
-    console.log("  known exec   GET /pnms/{pnm_id}/notes -> anonymous note still returns the author's id");
+    results.push({ op: "GET /pnms/{pnm_id}/notes", as: "exec", status: 200, outcome: "FAIL", detail: "anonymous note returns the author's id" });
+    console.log("  FAIL exec   GET /pnms/{pnm_id}/notes -> anonymous note returns the author's id");
   }
 }
 await t("DELETE /notes/{note_id}", "none", `/notes/${NOTE}`, { expect: DENIED });
@@ -409,7 +398,7 @@ sql(`update voting_rounds set status='ENDED', ended_at=now() where status='ACTIV
 await t("GET /rounds", "none", `/rounds?chapter_id=${C}`, { expect: DENIED });
 await t("GET /rounds", "member", `/rounds?chapter_id=${C}`, { expect: 200 });
 await t("GET /rounds", "member", `/rounds?chapter_id=${NOBODY}`, {
-  expect: 403, knownIf: (r) => r.status === 500, note: "a non-member gets 500 instead of 403",
+  expect: 403, note: "not a member of that chapter",
 });
 await t("GET /rounds/active", "none", `/rounds/active?chapter_id=${C}`, { expect: DENIED });
 await t("GET /rounds/active", "member", `/rounds/active?chapter_id=${C}`, { expect: [200, 404] });
@@ -475,22 +464,7 @@ await t("POST /votes", "member", "/votes", { body: { round_id: R2, pnm_id: roste
 await t("POST /votes", "member", "/votes", { body: { round_id: R2 }, expect: 400, note: "pnm_id missing" });
 await t("POST /votes", "member", "/votes", { body: { round_id: R, pnm_id: roster[0].id, choice: "YES" }, expect: 400, note: "round is not active" });
 await t("POST /votes", "member", "/votes", {
-  body: { round_id: R2, pnm_id: roster[15].id, choice: "YES" }, expect: [400, 404],
-  knownIf: (r) => r.status === 200, note: "accepts a vote for a PNM that is not in the round",
-});
-await t("POST /rounds/{round_id}/votes", "none", `/rounds/${R2}/votes`, { body: { pnm_id: roster[1].id, value: "NO" }, expect: DENIED });
-await t("POST /rounds/{round_id}/votes", "member", `/rounds/${R2}/votes`, { body: { pnm_id: roster[1].id, value: "NO" }, expect: OK });
-
-// Suspected broken (no unique constraint on sessions.round_id, join_code NOT NULL).
-await t("POST /rounds/{round_id}/advance", "none", `/rounds/${R2}/advance`, { body: { current_pnm_id: roster[1].id }, expect: DENIED });
-await t("POST /rounds/{round_id}/advance", "member", `/rounds/${R2}/advance`, { body: { current_pnm_id: roster[1].id }, expect: 403 });
-await t("POST /rounds/{round_id}/advance", "admin", `/rounds/${R2}/advance`, {
-  body: { current_pnm_id: roster[1].id }, expect: 200, knownIf: (r) => r.status >= 500, note: "legacy round advance fails at the database",
-});
-await t("POST /rounds/{round_id}/lock", "none", `/rounds/${R2}/lock`, { body: { locked: true }, expect: DENIED });
-await t("POST /rounds/{round_id}/lock", "member", `/rounds/${R2}/lock`, { body: { locked: true }, expect: 403 });
-await t("POST /rounds/{round_id}/lock", "admin", `/rounds/${R2}/lock`, {
-  body: { locked: true }, expect: 200, knownIf: (r) => r.status >= 500, note: "legacy round lock fails at the database",
+  body: { round_id: R2, pnm_id: roster[15].id, choice: "YES" }, expect: 400, note: "PNM is not in the round",
 });
 
 await t("PUT /rounds/{round_id}/end", "none", `/rounds/${R2}/end`, { expect: DENIED });
@@ -612,12 +586,49 @@ await t("POST /chapters/me/bid-list/finalize", "none", "/chapters/me/bid-list/fi
 await t("POST /chapters/me/bid-list/finalize", "member", "/chapters/me/bid-list/finalize", { expect: 403 });
 await t("POST /chapters/me/bid-list/finalize", "admin", "/chapters/me/bid-list/finalize", { expect: 200 });
 await t("PATCH /chapters/me/bid-list/entries/{pnm_id}", "admin", `/chapters/me/bid-list/entries/${BE}`, {
-  body: { bucket: "cut", position: 0 }, expect: [400, 409, 423],
-  knownIf: (r) => r.status === 200, note: "a finalized bid list can still be edited through the API",
+  body: { bucket: "cut", position: 0 }, expect: 409, note: "a finalized bid list refuses edits",
 });
 await t("DELETE /chapters/me/bid-list/lock", "none", "/chapters/me/bid-list/lock", { expect: DENIED });
 await t("DELETE /chapters/me/bid-list/lock", "member", "/chapters/me/bid-list/lock", { expect: 403 });
 await t("DELETE /chapters/me/bid-list/lock", "admin", "/chapters/me/bid-list/lock", { expect: [200, 204] });
+
+// ------------------------------------------------- another chapter's rows
+// The second seeded chapter's admin is a full admin, of the wrong chapter. Every
+// id below belongs to the main chapter; none of it may be read or changed.
+{
+  const O = fx.other;
+  if (!O) {
+    results.push({ op: "cross-chapter", as: "other", outcome: "FAIL", detail: "fixtures.json has no second chapter; reseed" });
+    console.log("  FAIL fixtures.json has no second chapter; reseed with python3 e2e/guard.py --seed");
+  } else {
+    WHO.other = O.admin;
+    const OC = O.chapter.id;
+    const mainTag = sql(`select id::text from tags where chapter_id='${C}' order by label limit 1`)[0][0];
+    const tagBefore = sql(`select label from tags where id='${mainTag}'`)[0][0];
+    await t("PUT /tags/{tag_id}", "other", `/tags/${mainTag}?chapter_id=${OC}`, { body: { label: "hijacked", color: "#000000" }, expect: 404, note: "another chapter's tag" });
+    await t("DELETE /tags/{tag_id}", "other", `/tags/${mainTag}?chapter_id=${OC}`, { expect: 404, note: "another chapter's tag" });
+    await t("POST /pnms/{pnm_id}/tags/{tag_id}", "other", `/pnms/${O.pnm}/tags/${mainTag}`, { expect: 404, note: "another chapter's tag on own PNM" });
+    await t("POST /pnms/{pnm_id}/tags/{tag_id}", "admin", `/pnms/${P}/tags/${O.tag}`, { expect: 404, note: "another chapter's tag on own PNM" });
+    const tagAfter = sql(`select label from tags where id='${mainTag}'`)[0]?.[0];
+    if (tagAfter !== tagBefore) {
+      results.push({ op: "PUT /tags/{tag_id}", as: "other", outcome: "FAIL", detail: `tag label changed from "${tagBefore}" to "${tagAfter}"` });
+      console.log("  FAIL another chapter's admin changed or deleted a tag");
+    }
+    await t("POST /chapters/me/bid-list", "other", "/chapters/me/bid-list", { body: { source_round_id: R, name: "stolen" }, expect: 404, note: "seeding from another chapter's round" });
+    await t("POST /chapters/me/bid-list", "admin", "/chapters/me/bid-list", { body: { source_round_id: O.round, name: "stolen" }, expect: 404, note: "seeding from another chapter's round" });
+    await t("POST /exports/pnm-cards/bulk", "other", "/exports/pnm-cards/bulk", { body: { chapter_id: OC, pnm_ids: [P] }, expect: 404, note: "another chapter's PNM with own chapter_id" });
+    await t("POST /exports/pnm-cards/bulk", "other", "/exports/pnm-cards/bulk", { body: { pnm_ids: [P] }, expect: 403, note: "another chapter's PNM" });
+    await t("POST /events/{event_id}/attendance", "other", `/events/${O.event}/attendance`, { body: { event_id: EV, pnm_id: P }, expect: 404, note: "body names another chapter's event and PNM" });
+    const leaked = sql(`select count(*) from event_attendance ea join pnms p on p.id = ea.pnm_id join events e on e.id = ea.event_id where p.chapter_id <> e.chapter_id`)[0][0];
+    if (leaked !== "0") {
+      results.push({ op: "POST /events/{event_id}/attendance", as: "other", outcome: "FAIL", detail: `${leaked} attendance row(s) link a PNM to another chapter's event` });
+      console.log("  FAIL attendance was written across chapters");
+    }
+    await t("GET /rounds", "other", `/rounds?chapter_id=${C}`, { expect: 403, note: "another chapter's rounds" });
+    await t("GET /pnms/{pnm_id}", "other", `/pnms/${P}`, { expect: [403, 404], note: "another chapter's PNM" });
+    await t("GET /rounds/{round_id}/results", "other", `/rounds/${R}/results`, { expect: [403, 404], note: "another chapter's results" });
+  }
+}
 
 // --------------------------------------------------- archive, delete (last)
 const arch = { pnm_ids: [P2], archived: true };
@@ -630,22 +641,24 @@ await t("DELETE /pnms/{pnm_id}", "admin", `/pnms/${P2}`, { expect: [200, 204] })
 await t("GET /pnms/{pnm_id}", "member", `/pnms/${P2}`, { expect: 404, note: "deleted" });
 
 // ----------------------------------------- chapter creation (cleaned up after)
-// Both endpoints let any signed-in user create a chapter and become its admin.
-// They are given the guard's temporary-chapter prefix and removed straight away.
+// Provisioning lets a signed-in user create a chapter and become its admin; that
+// is self-serve signup. The chapter is given the guard's temporary-chapter prefix
+// and removed straight away. The unguarded POST /chapters is gone.
 {
   const before = new Set(sql("select id::text from chapters").map((r) => r[0]));
   const TEMP_A = `${TEMP_CHAPTER_PREFIX}${stamp} a`;
   const TEMP_B = `${TEMP_CHAPTER_PREFIX}${stamp} b`;
-  await t("POST /chapters", "none", "/chapters", { body: { name: TEMP_A }, expect: DENIED });
-  await t("POST /chapters", "member", "/chapters", { body: { name: TEMP_A }, expect: OK, note: "no role check: any user may create a chapter" });
+  const gone = await raw(member, "POST", "/api/v1/chapters", { body: { name: TEMP_A } });
+  results.push({ op: "POST /chapters (removed)", as: "member", status: gone.status, expect: [404, 405], outcome: [404, 405].includes(gone.status) ? "pass" : "FAIL", detail: gone.text.slice(0, 120) });
+  if (![404, 405].includes(gone.status)) console.log(`  FAIL POST /chapters should be gone, got ${gone.status}`);
   const prov = { fraternity_name: "Beta Theta Pi", school: "E2E School", chapter_name: TEMP_B, admin_name: "E2E Founder" };
   await t("POST /chapters/provision", "none", "/chapters/provision", { body: prov, expect: DENIED });
   await t("POST /chapters/provision", "member", "/chapters/provision", { body: prov, expect: OK });
   await t("POST /chapters/provision", "member", "/chapters/provision", { body: prov, expect: OK, note: "idempotent for the same user, name and school" });
   const created = sql("select id::text from chapters").map((r) => r[0]).filter((id) => !before.has(id));
-  if (created.length !== 2) {
-    results.push({ op: "POST /chapters/provision", as: "member", outcome: "FAIL", detail: `expected 2 new chapters (one per endpoint), found ${created.length}` });
-    console.log(`  FAIL chapter creation produced ${created.length} new chapters, expected 2`);
+  if (created.length !== 1) {
+    results.push({ op: "POST /chapters/provision", as: "member", outcome: "FAIL", detail: `expected 1 new chapter, found ${created.length}` });
+    console.log(`  FAIL chapter creation produced ${created.length} new chapters, expected 1`);
   }
   for (const id of created) {
     sql(`delete from memberships where chapter_id='${id}'`);
