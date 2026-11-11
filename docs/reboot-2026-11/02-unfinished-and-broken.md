@@ -10,7 +10,21 @@ The six blockers in the August audit are fixed, and so is everything `e2e/FINDIN
 2. **Features that are wired but do not work.** Saving intake questions returns a 500. Open Voting is broken for ordinary members. "Anonymous votes" changes nothing. The `exec` role cannot be assigned. GPA eligibility has no UI.
 3. **Operations.** Both GitHub workflows are disabled and the production backend did not answer when probed.
 
-Of the 112 items in the August audit and `e2e/FINDINGS.md`: **51 fixed, 37 still open, 23 changed** (partly fixed, or fixed in a different shape), and 1 that cannot be checked from the repo. Most of the 37 still open are design-polish items from the audit's page-by-page section. Appendices A and B list every item with its file and line.
+Of the 112 items in the August audit and `e2e/FINDINGS.md`, as first assessed: **51 fixed, 37 still open, 23 changed** (partly fixed, or fixed in a different shape), and 1 that cannot be checked from the repo. Appendices A and B list every item with its file and line.
+
+### Update: fixed on this branch after the assessment
+
+Of the 37 open items, 25 were then fixed on this branch and one ("Warm the backend") was changed as far as code can take it; Appendix A and B rows are marked **Fixed on this branch**. The other 11 were left open on purpose and are listed at the end of this section. Findings fixed along the way:
+
+- **F28** (partly): the roster's PowerPoint button is shown to admin and exec only, and "Export Filtered" now filters.
+- **F29** (partly): "Total votes cast" counts votes. The hardcoded "+12%" badge and the two "coming soon" buttons remain.
+- **F26** (partly): a magic link opened in another browser now says so instead of doing nothing. The founder still gets no password.
+- **F33**: a taken chapter name returns a readable 409 instead of a 500.
+- **New, found and fixed:** `/analytics` rendered a second, placeholder top bar (a Subframe logo, "Home / Inbox / Reports" and a stock-photo avatar) under the real one.
+
+Still open from the August list, by choice: no chapter switcher; the `.bg-white` dark-mode override; `/login` dark variants, fixed-width card and duplicated reset branch; `/get-started` unstyled inputs and unlabeled stepper; "Add PNM" in two dashboard grids; the native event dropdown on `/rush`; the 1200px roster table on a phone; "Your Progress" resetting on refresh.
+
+Every security finding (section 1) and every other functional finding (section 2) below is unchanged unless listed above.
 
 ## How to read this
 
@@ -133,7 +147,7 @@ Of the 112 items in the August audit and `e2e/FINDINGS.md`: **51 fixed, 37 still
 | "Anonymous votes" is fake | Changed | `supabase/migrations/0014_session_timer.sql:21`; `python_server/routes.py:2500` | Persisted and shown as a badge; enforced nowhere: F5. |
 | Favoriting before voting fails | Changed | `python_server/routes.py:1761-1766` | No longer a 400, but see F13. |
 | Any member can open a round | Fixed | `python_server/routes.py:2300-2305` | The fix broke Open Voting for members: F4. |
-| Rounds snapshot PNMs at creation | Still open | `python_server/routes.py:2357-2369,2524-2547` | |
+| Rounds snapshot PNMs at creation | **Fixed on this branch** for live sessions | `python_server/live_round.py`; called from `python_server/services.py` (create), `routes.py` (prospect to rush, unarchive), `csv_import.py` (import) | A PNM who becomes eligible while a live session is open is appended to the end of its running order. Rounds created by cuts are left alone on purpose. Tested in `tests/integration/test_live_append_and_round_summary.py` and `e2e/ws-voting.mjs`. |
 | `setIsChair(... \|\| true)` | Fixed | `(dashboard)/voting/page.tsx:354` | Confirmed at runtime: a member joining is not chair. |
 
 ### §2.2 Bid list
@@ -151,7 +165,7 @@ Of the 112 items in the August audit and `e2e/FINDINGS.md`: **51 fixed, 37 still
 | `/settings`, `/admin/users`, `/admin/tags`, `/analytics`, `/profile` | Fixed | `(dashboard)/layout.tsx:118-123,185-226,250-263` | |
 | `/admin/analytics` duplicate | Fixed | deleted | |
 | `/voting/admin` prototype | Fixed | deleted | |
-| `/compare` | Still open | no file links to it | Confirmed at runtime. |
+| `/compare` | **Fixed on this branch** | `(dashboard)/pnms/page.tsx` (Compare button) | Tick 2 to 5 PNMs on the roster and choose Compare. Checked by `e2e/roles.mjs`. |
 | Dashboard toast "Invite your team from Settings" | Changed | `(dashboard)/dashboard/page.tsx:43-46` | Settings is reachable now, but invites are on User Management. |
 
 ### §2.4 Landing-page claims
@@ -186,32 +200,34 @@ Of the 112 items in the August audit and `e2e/FINDINGS.md`: **51 fixed, 37 still
 | `.bg-white` dark override hack | Still open | `frontend/app/globals.css:162-170` |
 | Landing: no header or sign-in | Fixed | `frontend/components/marketing/MarketingHeader.tsx:14-35` |
 | Landing: footer text invisible | Fixed | `frontend/components/marketing/MarketingFooter.tsx:13,21,43,64` |
-| Landing: footer hover is white on cream | Still open | `MarketingFooter.tsx:23-55` |
-| Landing: six footer links are `href="#"` | Still open | `MarketingFooter.tsx:23,28,33,45,50,55` |
+| Landing: footer hover is white on cream | **Fixed on this branch** | `frontend/components/marketing/MarketingFooter.tsx` |
+| Landing: six footer links are `href="#"` | **Fixed on this branch** | `MarketingFooter.tsx`: Features, See it work, Try the demo, Get started, Sign in. Pricing, About, Blog and Contact had no page and were removed. |
 | Landing: BID badge has no colour | Fixed | `frontend/tailwind.config.ts:69` |
-| Landing: star counter can never move | Still open | `frontend/components/marketing/SwipeDemo.tsx:8,31-32,98` |
-| Landing: cards do not animate out | Still open | `SwipeDemo.tsx:25-34,109` |
-| Landing: stale "Fall 2026" and Beta Theta Pi copy | Still open | `frontend/components/marketing/SocialProof.tsx:10-11` |
-| `/login`: no dark variants, no link out, fixed 384px card, duplicated reset branch | Still open (4 items) | `frontend/app/login/page.tsx:203-331` |
-| `/get-started`: unstyled inputs, unlabeled stepper, bare error line, no loading state on return | Still open (4 items) | `frontend/components/marketing/SignupWizard.tsx:130-227` |
+| Landing: star counter can never move | **Fixed on this branch** | `frontend/components/marketing/SwipeDemo.tsx`: Pass, Star and Bid buttons under the deck |
+| Landing: cards do not animate out | **Fixed on this branch** | `SwipeDemo.tsx`: cards leave in the direction they were decided |
+| Landing: stale "Fall 2026" and Beta Theta Pi copy | **Fixed on this branch** | `frontend/components/marketing/SocialProof.tsx`: no chapter name, no date |
+| `/login`: no link out | **Fixed on this branch** | `frontend/app/login/page.tsx`: links to `/get-started` and the home page |
+| `/login`: no dark variants, fixed 384px card, duplicated reset branch | Still open (3 items) | `frontend/app/login/page.tsx:203-331` |
+| `/get-started`: bare error line, no loading state on return | **Fixed on this branch** | `frontend/components/marketing/SignupWizard.tsx`: "Setting up your chapter", an error panel with Try again, and a message when the link is opened in another browser. A taken chapter name now returns a readable 409 (`python_server/services.py` provision_chapter). |
+| `/get-started`: unstyled inputs, unlabeled stepper | Still open (2 items) | `frontend/components/marketing/SignupWizard.tsx` |
 | `/get-started`: builds its API URL differently | Fixed | `SignupWizard.tsx:39-41` |
 | `/dashboard`: third stat card spans two columns | Changed: no span; three cards in two columns | `(dashboard)/dashboard/page.tsx:312-343` |
 | `/dashboard`: "Add PNM" in two grids | Still open (one shows per viewport) | `(dashboard)/dashboard/page.tsx:371-434` |
 | `/rush`: native `<select>` | Still open | `(dashboard)/rush/page.tsx:149-160` |
-| `/pnms`: four-column grid with one card | Still open | `(dashboard)/pnms/page.tsx:439-446` |
+| `/pnms`: four-column grid with one card | **Fixed on this branch** | `(dashboard)/pnms/page.tsx`: Total, Showing, Nobody has met |
 | `/pnms`: search refetches per keystroke | Changed: debounced, but still refetches a list the backend does not filter | `(dashboard)/pnms/page.tsx:127-130,146-147,170` |
-| `/pnms`: multi-select cannot reach `/compare` | Still open | `(dashboard)/pnms/page.tsx:386-415` |
-| `/pnms`: PowerPoint export shown to everyone | Still open | `(dashboard)/pnms/page.tsx:417-425` |
-| `/pnms`: two "add PNM" destinations | Still open | `(dashboard)/pnms/page.tsx:433,527` |
+| `/pnms`: multi-select cannot reach `/compare` | **Fixed on this branch** | see `/compare` above |
+| `/pnms`: PowerPoint export shown to everyone | **Fixed on this branch** | `(dashboard)/pnms/page.tsx`: shown to admin and exec only, matching the API. Checked by `e2e/roles.mjs`. |
+| `/pnms`: two "add PNM" destinations | **Fixed on this branch** | Both go to `/intake` |
 | `/pnms`: 1200px table on mobile | Still open | `(dashboard)/pnms/page.tsx:537` |
 | `/voting`: timer input, lock swipe-through, Votes Collected | Fixed (3 items) | see §2.1 |
 | `/voting`: anonymity checkbox does nothing | Changed | see F5 |
 | `/voting`: "Your Progress" resets on refresh | Still open | `(dashboard)/voting/page.tsx:96,781-802` |
 | `/results`: empty, and 0% / 0 / 0 | Fixed (2 items) | see B3, B4 |
-| `/results`: nested `<thead>` | Still open | `(dashboard)/results/page.tsx:272-273,292` |
-| `/exports`: Filtered and Comparison cards permanently disabled | Still open (2 items) | `(dashboard)/exports/page.tsx:53-55,249,264-275` |
-| `/exports`: raw Tailwind heading | Still open | `(dashboard)/exports/page.tsx:201` |
-| `/events`: `console.log` in the load path | Still open | `(dashboard)/events/page.tsx:96,103,105` |
+| `/results`: nested `<thead>` | **Fixed on this branch** | `(dashboard)/results/page.tsx`; the same fault on `(dashboard)/pnms/import/page.tsx` also fixed |
+| `/exports`: Filtered and Comparison cards permanently disabled | **Fixed on this branch** (2 items) | The roster has an Export CSV button that exports exactly the rows on screen; the Exports card points there, and `frontend/lib/export.ts` now applies the search and tag filters it used to send to a backend that ignored them. The Comparison card is reached through Compare. |
+| `/exports`: raw Tailwind heading | **Fixed on this branch** | `(dashboard)/exports/page.tsx` |
+| `/events`: `console.log` in the load path | **Fixed on this branch** | `(dashboard)/events/page.tsx` |
 | `/intake`: requires a photo | Fixed | `frontend/app/intake/page.tsx:133-139` |
 | `/intake`: requires "Celebrity Crush" | Changed: only when signed in | `frontend/app/intake/page.tsx:115,151,511` |
 
@@ -224,9 +240,9 @@ Of the 112 items in the August audit and `e2e/FINDINGS.md`: **51 fixed, 37 still
 | Migration to drop legacy tables and reconcile roles | Changed | Roles reconciled; legacy tables copied, not dropped |
 | Integration suite on real Postgres | Changed | 145 tests in `python_server/tests/integration/`, all passing locally on 11 Nov 2026. They are service-level and cover selected areas, not every route. |
 | CI triggers, lint, vitest | Changed | `.github/workflows/ci.yml` is correct; the workflow is disabled on GitHub (O1). Vitest has one file. |
-| Warm the backend | Still open | Workflow disabled; `render.yaml:6` is still `plan: free` |
+| Warm the backend | Changed | `render.yaml` now has `healthCheckPath: /health/db`; `.github/workflows/warm-backend.yml` now fails when the backend does not answer; the frontend retries a read once, with a "Waking up the server" message, when it times out or gets 502–504 (`frontend/lib/api.ts`). Still on `plan: free`, and the workflow is still disabled on GitHub: both are your decision. |
 | Load test with 60 websocket clients | Changed | 25-browser run in August; a 24-voter run with frame-level checks passed locally on 11 Nov 2026. No 60-client test. |
-| Error monitoring | Still open | O3 |
+| Error monitoring | **Fixed on this branch** (off until configured) | `python_server/monitoring.py`; `frontend/components/ErrorMonitoring.tsx`. Set `SENTRY_DSN` on Render and `NEXT_PUBLIC_SENTRY_DSN` on Vercel to turn it on. No personal data is attached. |
 
 ### Closing notes
 
@@ -247,12 +263,12 @@ Of the 112 items in the August audit and `e2e/FINDINGS.md`: **51 fixed, 37 still
 | Fixed 7: theme endpoint returned unnormalised JSONB | Fixed | `python_server/services.py:171-183` | |
 | Product call 8: chair can end a session | Fixed | `python_server/routes.py:2801-2843`; `(dashboard)/voting/page.tsx:384-411` | Confirmed at runtime with 24 voters. |
 | Product call 9: Voting in the bottom nav | Fixed | `frontend/components/BottomNav.tsx:21,41` | |
-| Open: analytics fans out a query per round, twice | Still open | `(dashboard)/analytics/page.tsx:163,268` | |
-| Open: tap targets below 44px | Still open | `frontend/components/TopbarWithLeftNav.tsx:29`; `frontend/ui/components/Avatar.tsx:35`; `frontend/ui/components/Button.tsx:53,55` | |
-| Open: native `window.confirm()` | Still open | eight call sites, e.g. `(dashboard)/pnms/page.tsx:228,256,293` | |
-| Open: two logo images have no alt text | Still open | `frontend/components/marketing/MarketingHeader.tsx:17` | |
+| Open: analytics fans out a query per round, twice | **Fixed on this branch** | New `GET /chapters/{chapter_id}/round-summary` (`python_server/routes.py`, `services.py` get_round_summary) replaces about 150 requests for a 50-PNM chapter with two. "Total votes cast" now counts votes (it counted result rows) and "completed rounds" now counts `ENDED` rounds (it never matched). |
+| Open: tap targets below 44px | **Fixed on this branch** | A `touch:` Tailwind variant (`frontend/tailwind.config.ts`) gives controls a 44px target on touch screens only; the laptop layout is unchanged. `e2e/visual.mjs` now reports no tap-target findings on any of the 26 pages. |
+| Open: native `window.confirm()` | **Fixed on this branch** | `frontend/components/ConfirmProvider.tsx`; all eight call sites use it. Focus starts on Cancel. |
+| Open: two logo images have no alt text | **Fixed on this branch** | The header logo's `alt=""` was correct (the word "RushRank" sits beside it); `e2e/visual.mjs` was treating an empty alt as missing and now does not. The one real missing alt was a placeholder top bar on `/analytics`, now removed. |
 | Open: tag deletion untested | Changed | `(dashboard)/admin/tags/page.tsx:354-391` | The endpoint is now tested by `e2e/api-contract.mjs`; the kebab menu in the UI still is not. |
-| Open: live-session header crowds on a phone | Still open | `(dashboard)/voting/page.tsx:639-646` | |
+| Open: live-session header crowds on a phone | **Fixed on this branch** | `(dashboard)/voting/page.tsx`: the header wraps and the join code stays on one line |
 
 ## Appendix C. `docs/PRODUCT-GAPS-2026-08.md` Tier 1–2
 

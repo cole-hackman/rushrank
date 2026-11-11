@@ -32,6 +32,8 @@ Finding numbers (S1, F5 and so on) refer to `02-unfinished-and-broken.md`.
 
 **What:** open the Render dashboard. Establish whether the service is suspended, crashing at boot, or merely asleep. Then decide: pay for an always-on instance, or accept cold starts and fix the frontend to wait for them.
 
+**Done on this branch:** the frontend now retries a read once, with a "Waking up the server" message, when the backend times out or answers 502–504; `render.yaml` has a database health check; the keep-warm workflow fails visibly when the backend does not answer. What remains is yours: why production is down, the plan, and re-enabling the workflow.
+
 **Why:** three health checks timed out at 120 seconds on 11 Nov [O2]. A free instance with a disabled keep-warm job [O1] means the first brother to open the app at a meeting gets an error toast, because the frontend gives up after 20 seconds. Every performance improvement in `01-tech-stack.md` is moot until this is settled.
 
 **Effort:** 1 hour.
@@ -73,6 +75,8 @@ Finding numbers (S1, F5 and so on) refer to `02-unfinished-and-broken.md`.
 ### P8. Add error monitoring and request timing
 
 **What:** Sentry (or equivalent) on the backend and frontend, and a middleware that logs duration per route.
+
+**Done on this branch:** Sentry error reporting on both sides, switched off until `SENTRY_DSN` (Render) and `NEXT_PUBLIC_SENTRY_DSN` (Vercel) are set. Request timing is not done yet.
 
 **Why:** a production 500 is currently invisible [O3], and there is not a single production latency number. The questionnaire save has probably been returning 500 for months [F1] without anyone knowing. Timing is also the first step of the performance work in `01-tech-stack.md`.
 

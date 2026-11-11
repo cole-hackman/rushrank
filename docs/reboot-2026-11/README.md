@@ -2,7 +2,9 @@
 
 **Written 11 November 2026 against `main` at `bd82ecc`,** two months after the last commit (2 Sep 2026). It builds on `docs/AUDIT-2026-08.md`, `docs/PRODUCT-GAPS-2026-08.md` and `e2e/FINDINGS.md`, and re-checks every claim in them against the current code.
 
-This assessment changed no application code, migrations or configuration. It added documents here and in `docs/onboarding/`, and new test scripts in `e2e/`.
+The assessment itself changed no application code. It added documents here and in `docs/onboarding/`, and new test scripts in `e2e/`.
+
+**Follow-up on the same branch:** 25 of the 37 items the August audit left open were then fixed in the application, and the keep-warm item was improved as far as code can take it (see the update at the top of [`02-unfinished-and-broken.md`](02-unfinished-and-broken.md)). The four points below are unaffected; none of those fixes touched security, row-level security or the broken features listed in point 4.
 
 ## Where things stand
 
@@ -21,7 +23,7 @@ Four things need attention before feature work resumes:
 |---|---|---|
 | 7 | [`07-proposals.md`](07-proposals.md) | What to do first. Start here if you have ten minutes. |
 | 2 | [`02-unfinished-and-broken.md`](02-unfinished-and-broken.md) | Every August audit and e2e finding marked fixed, still open or changed, with file and line; plus 18 security and 34 functional findings that are new. |
-| 6 | [`06-test-plan.md`](06-test-plan.md) | Inventory of all 26 pages and 103 endpoints with their test coverage, and the runbook for your Mac. |
+| 6 | [`06-test-plan.md`](06-test-plan.md) | Inventory of all 26 pages and 104 endpoints with their test coverage, and the runbook for your Mac. |
 | 1 | [`01-tech-stack.md`](01-tech-stack.md) | Where the latency is, what was measured and what was inferred, and 20 improvements ranked by impact against effort. |
 | 3 | [`03-features.md`](03-features.md) | 17 enhancements and 10 additions, ranked, each with why it matters to a chapter. |
 | 4 | [`04-competitors.md`](04-competitors.md) | 11 products, with prices sourced and dated, and where RushRank can stand out. |

@@ -40,6 +40,11 @@ Before this plan, the e2e harness loaded all 26 pages but only as the admin, ass
 
 None of the existing scripts checks which database it is pointed at.
 
+**Changes to existing scripts on this branch** (needed by the application fixes, not new coverage):
+
+- `lib/harness.mjs` gains `acceptConfirm(page)`. Destructive actions now use an in-app dialog instead of `window.confirm()`, so `destructive.mjs` and `verify-changes.mjs` click its confirm button rather than accepting a native dialog.
+- `visual.mjs` measures before taking its full-page screenshot (in Playwright's phone emulation the screenshot switches off the coarse-pointer media feature, so touch-sized controls were measured at their desktop size), counts an input's enclosing `<label>` as its tap area, and no longer treats `alt=""` as missing alt text.
+
 ### New scripts
 
 | Script | What it does | Writes? |
@@ -117,7 +122,7 @@ Every page now has at least one check in every role. Pages 2, 3, 4, 5 (form), 8 
 
 ## 3. Endpoint inventory and coverage
 
-103 endpoints in `python_server/routes.py`, each mounted under `/api/v1` and again under `/api`. `python_server/main.py` adds five HTTP routes and the websocket.
+104 endpoints in `python_server/routes.py` (103 at the assessment, plus `round-summary` added on this branch), each mounted under `/api/v1` and again under `/api`. `python_server/main.py` adds five HTTP routes and the websocket.
 
 **Legend**
 
@@ -230,6 +235,7 @@ Every page now has at least one check in every role. Pages 2, 3, 4, 5 (form), 8 
 | 101 | GET `/health` (under `/api`) | 3137 | P | | none | |
 | 102 | GET `/qr.png` | 3143 | P | | none | |
 | 103 | GET `/qr` | 3153 | P | | none | |
+| 104 | GET `/chapters/{chapter_id}/round-summary` (added on this branch) | – | M | | none | api-contract (matched against per-round results and the votes table) |
 
 `python_server/main.py`:
 
@@ -242,7 +248,7 @@ Every page now has at least one check in every role. Pages 2, 3, 4, 5 (form), 8 
 | OPTIONS `/{full_path}` | 190 | none | api-contract (allowed origin 200, foreign origin refused) |
 | WS `/ws/session/{session_id}` | 287 | voting (connection only) | **ws-voting** (all four events, plus an unauthenticated listener) |
 
-**Summary.** Before: 11 endpoints asserted, about 28 exercised only at page load, about 25 only by a lucky click, about 40 not at all. After: all 103 plus the six in `main.py` are called with an expected status in each role. Nine of them (marked ext) are checked for authentication and role only.
+**Summary.** Before: 11 endpoints asserted, about 28 exercised only at page load, about 25 only by a lucky click, about 40 not at all. After: all 104 plus the six in `main.py` are called with an expected status in each role. Nine of them (marked ext) are checked for authentication and role only.
 
 ### Websocket contract asserted by `ws-voting.mjs`
 
@@ -401,13 +407,13 @@ node smoke.mjs
 node roles.mjs
 ```
 
-**Expected (about 4 minutes):** `88 page loads`, and `0 new`. Seven findings tagged `(known)` are listed in section 6. Exit code 0.
+**Expected (about 4 minutes):** `88 page loads`, and `0 new`. Six findings tagged `(known)` are listed in section 6. Exit code 0. It also checks, per role, that Compare opens `/compare` from two ticked rows and that only admin and exec are offered the PowerPoint export.
 
 ```bash
 node visual.mjs
 ```
 
-**Expected:** screenshots in `e2e/screens/` and `e2e/report-visual.json`. Compare its findings with the open design items in `02-unfinished-and-broken.md`.
+**Expected:** `0 visual finding(s)`, with screenshots in `e2e/screens/` and `e2e/report-visual.json`. It checks horizontal overflow, 44px tap targets on the phone viewport, contrast and alt text on all 26 pages.
 
 ### Step 9. Live voting
 
@@ -415,7 +421,7 @@ node visual.mjs
 node ws-voting.mjs 24 4
 ```
 
-**Expected (about 1 minute):** `57 checks passed`, `0 new blocker/high`, exit code 0. Four findings tagged `(known)`: the lock bypass on the legacy vote endpoint, the favourite cleared by a later vote, the polling voter not told the session ended, and the unauthenticated websocket.
+**Expected (about 1 minute):** `59 checks passed`, `0 new blocker/high`, exit code 0. Four findings tagged `(known)`: the lock bypass on the legacy vote endpoint, the favourite cleared by a later vote, the polling voter not told the session ended, and the unauthenticated websocket.
 
 To push harder, raise the voter count. The seed has 28 members, and one is reserved as the polling voter, so 27 is the ceiling without changing the seed.
 
@@ -431,7 +437,7 @@ node guard.mjs --api && node voting.mjs 24
 node api-contract.mjs
 ```
 
-**Expected (about 15 seconds):** `283 assertions over 107 operations`, `FAILED 0`, `uncovered 0`, `external 9`, and twelve `known` lines. Exit code 0.
+**Expected (about 15 seconds):** `286 assertions over 108 operations`, `FAILED 0`, `uncovered 0`, `external 9`, and twelve `known` lines. Exit code 0.
 
 Then reseed, because this script deletes PNMs and finalizes the bid list:
 
@@ -467,7 +473,7 @@ cd .. && python3 e2e/guard.py --seed && cd e2e
 node guard.mjs --api && node destructive.mjs
 ```
 
-**Expected:** 5 of 5 checks pass, as in August.
+**Expected:** `6/6 checks passed`. The tag-delete step prints "no delete control reachable"; the kebab menu has never been reachable by this script.
 
 ```bash
 cd .. && python3 e2e/guard.py --seed && cd e2e
@@ -485,13 +491,13 @@ From `python_server/`, with the virtualenv active:
 pytest -q -m "not integration"
 ```
 
-**Expected:** `91 passed`.
+**Expected:** `84 passed`.
 
 ```bash
 TEST_DATABASE_URL=postgresql://$(whoami)@localhost:5432/postgres pytest -q -m integration
 ```
 
-**Expected:** `145 passed`.
+**Expected:** `153 passed`.
 
 The integration tests create and drop three databases of their own on that server: `rr_it_fresh`, `rr_it_legacy` and `rr_it_demo`. They do not touch `rushrank_e2e`. **Only ever point `TEST_DATABASE_URL` at your local Postgres**, because the suite issues `DROP DATABASE`.
 
@@ -564,18 +570,21 @@ Environment: Linux container, PostgreSQL 16 on localhost, one `uvicorn` process,
 | Script | Result |
 |---|---|
 | `guard.mjs`, `guard.py` | Passed on the local database. Refused, with exit code 2: a hosted-looking URL, a database named `postgres`, an unset `E2E_DATABASE_URL`, and a conflicting `DATABASE_URL`. |
-| `ws-voting.mjs 24 4` | 57 checks passed. 4 known findings. Exit 0. |
-| `api-contract.mjs` | 283 assertions over 107 operations. 0 failed, 0 uncovered, 9 external, 12 known. Exit 0. |
-| `roles.mjs` | 88 page loads. 7 known findings, 0 new. Exit 0. |
+| `ws-voting.mjs 24 4` | 59 checks passed (including End Session's confirm dialog and a PNM added mid-session joining the end of the order). 4 known findings. Exit 0. |
+| `api-contract.mjs` | 286 assertions over 108 operations (the new round-summary endpoint is checked against the per-round results and the votes table). 0 failed, 0 uncovered, 9 external, 12 known. Exit 0. |
+| `roles.mjs` | 88 page loads. 6 known findings, 0 new. Exit 0. |
 | `flows.mjs` | 10 flows: 7 ok, 3 known. Exit 0. |
 | `voting.mjs 8` (existing) | 0 findings |
-| `pytest -m "not integration"` | 91 passed |
-| `pytest -m integration` | 145 passed |
+| `pytest -m "not integration"` | 84 passed |
+| `pytest -m integration` | 153 passed |
 | `smoke.mjs` (existing) | Landed on `/dashboard`, 0 errors |
 | `next build`, `tsc --noEmit` | Passed |
 | `npm run lint`, `npm run test` | Lint: warnings only. Vitest: 12 passed. |
 
-Not run: `crawl.mjs`, `destructive.mjs`, `visual.mjs`, `verify-changes.mjs`.
+| `destructive.mjs` (existing) | 6/6 checks passed. The tag-delete step still cannot reach the kebab menu, as in August. |
+| `verify-changes.mjs` (existing) | 12 passed |
+| `voting.mjs 24` (existing) | 0 findings |
+| `visual.mjs` (existing) | 0 findings on all 26 pages at desktop and phone width |
 
 Defects the new scripts confirmed at runtime, all detailed in `02-unfinished-and-broken.md`:
 

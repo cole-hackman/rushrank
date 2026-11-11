@@ -2,7 +2,7 @@
 
 **For:** the rush chair and rush committee: whoever creates events, runs check-in, chairs voting, makes cuts and builds the bid list.
 
-**Written 11 November 2026.** Every step here was confirmed in the code on that date. Things that currently do not work are listed separately under [Known problems](#known-problems).
+**Written 11 November 2026, updated the same day** after the fixes on this branch. Every step here was confirmed in the code. Things that currently do not work are listed separately under [Known problems](#known-problems).
 
 > **You need the Admin role for most of this guide.** RushRank has no working "exec" role today. Creating events, starting and chairing a voting session, making cuts, tagging and importing all require Admin. Ask your chapter's admin to set your role on **Admin → User Management**. Ordinary members can still check PNMs in, add PNMs at an event, post notes and vote.
 
@@ -59,7 +59,12 @@ Prospects arrive through the interest link; see the [admin setup guide](admin-se
 
 "Nobody's met" is the list to read out at a meeting: PNMs no brother has marked as met.
 
-Tick rows to act on several at once. Admins can **Bulk Tag**, **Archive** and **Delete**.
+Tick rows to act on several at once:
+
+- **Compare**: tick two to five PNMs to see them side by side.
+- **Export CSV**: downloads exactly what the roster is showing, or only the ticked rows if any are ticked. Search and filter first to export a subset.
+- Admins can also **Bulk Tag**, **Archive** and **Delete**. Each asks you to confirm first.
+- **Export → PowerPoint** (admins only) builds a slide per PNM.
 
 ### A PNM's page
 
@@ -104,6 +109,8 @@ For each PNM:
 4. Choose **Next PNM**. Every phone moves to the next person.
 
 Any admin in the session has the chair controls, not only the person who started it.
+
+**Someone added during the session** (a walk-up added in Rush Mode, a prospect moved to rush, an unarchived PNM, a CSV import) joins the end of the running order, so you reach them after everyone already queued.
 
 ### Finish
 
@@ -158,6 +165,7 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 - **Export Event Attendance**: a spreadsheet for one event.
 - **Export All PNM Images (ZIP)**: a card image per PNM.
 - **Download .pptx**: a slide per PNM for the bid meeting. Admins only, up to 200 PNMs.
+- **Export Filtered** and **Export Comparison**: reached from the roster. Filter the roster and use its **Export CSV**, or tick PNMs and use **Compare**.
 
 **Admin → Analytics:**
 
@@ -175,7 +183,7 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 | Problem | What to do |
 |---|---|
 | **There is no usable exec role.** It cannot be assigned, and almost everything in this guide needs Admin. | Make the rush committee Admins. |
-| **Members see buttons they cannot use:** Add Event, event edit and delete, Start Session, Make cuts, Bulk Tag, Export → PowerPoint. They get an error. | Tell members to ignore them. |
+| **Members see buttons they cannot use:** Add Event, event edit and delete, Start Session, Make cuts, Bulk Tag. They get an error. | Tell members to ignore them. |
 
 ### Events and check-in
 
@@ -210,7 +218,6 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 | **You cannot go back to an earlier PNM.** | Start a new session if you must revote. |
 | **A brother whose phone shows "Polling" is not sent to Results when the session ends.** His screen stays on the last PNM. | Tell him to open Results himself. |
 | **The "Open Voting" tab does not work for members.** | Use live sessions only. |
-| **The session heading wraps awkwardly on a phone,** pushing the join code out of line. | Read the code from a laptop. |
 
 ### Results, cuts and bids
 
@@ -227,11 +234,9 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 
 | Problem | What to do |
 |---|---|
-| **"Export Filtered" and "Export Comparison" cannot be used.** | Use Export All PNMs and filter in your spreadsheet. |
 | **"Export All PNMs" includes prospects and archived PNMs, with email and phone,** and any member can run it. | Be careful who you send it to. |
 | **The PowerPoint includes prospects and leaves GPA blank.** | Delete the extra slides. |
 | **Analytics shows a "+12% vs last round" badge that is not real,** and "Generate Report" and "Filter PNMs" do nothing. | Ignore them. |
-| **The Compare page has no link.** | It only opens from a hand-typed address. |
 
 ---
 

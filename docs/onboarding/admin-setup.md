@@ -4,7 +4,7 @@
 
 **Time:** about 30 minutes, plus however long it takes to gather your PNM spreadsheet.
 
-**Written 11 November 2026.** Every step here was confirmed in the code on that date. Steps that currently do not work are listed separately under [Known problems](#known-problems), so the main steps only describe things that work. Read that section before you start: two of its items affect your first ten minutes.
+**Written 11 November 2026, updated the same day** after the fixes on this branch. Every step here was confirmed in the code. Steps that currently do not work are listed separately under [Known problems](#known-problems), so the main steps only describe things that work. Read that section before you start: two of its items affect your first ten minutes.
 
 ## Before you start
 
@@ -18,7 +18,9 @@
 2. **Your chapter:** enter your **Fraternity**, your **School** and a **Chapter name**. The chapter name fills itself in as "Fraternity at School"; you can change it. Choose **Continue**.
 3. **You:** enter **Your name** and **Email**, then choose **Send magic link**.
 4. Open the email and click the sign-in link, **in the same browser**. If it does not arrive, choose **Resend**.
-5. You land on the dashboard with a welcome message. Your chapter exists and you are its admin.
+5. You see **Setting up your chapter** for a few seconds, then land on the dashboard with a welcome message. Your chapter exists and you are its admin.
+
+If setup fails you see the reason, with **Try again** and **Change chapter details**. Your email is already confirmed, so trying again does not send another link.
 
 ## 2. Set a password straight away
 
@@ -144,8 +146,8 @@ These do not work as you would expect today. Each has a workaround where one exi
 | Problem | What to do |
 |---|---|
 | **Signup never asks for a password.** If you log out before setting one, you cannot get back in with the Sign in form. | Do step 2 immediately. If you are already locked out, use **Forgot password?** on the Sign in page. |
-| **The sign-in link only works in the browser you signed up in.** Opening it on another device signs you in but creates no chapter, with no error. | Open the link on the same device and browser. If it went wrong, start again at **Get started** in one browser. |
-| **Two chapters cannot have the same chapter name.** Signup fails if the name is taken. | Include your school in the chapter name. |
+| **The sign-in link only works in the browser you signed up in.** Opened anywhere else, it signs you in and then tells you it cannot finish there. | Open the link in the browser you started in, or choose **Enter details here** and sign up again in that browser. |
+| **Two chapters cannot have the same chapter name.** If the name is taken, signup stops and says so. | Choose **Change chapter details** and add your school or city to the name. |
 
 ### Inviting brothers
 

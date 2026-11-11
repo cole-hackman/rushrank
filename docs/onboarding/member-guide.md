@@ -2,7 +2,7 @@
 
 **For:** every brother in the chapter. This covers signing in, helping at events, getting to know PNMs and voting.
 
-**Written 11 November 2026.** Every step here was confirmed in the code on that date. Things that currently do not work are listed separately under [Known problems](#known-problems).
+**Written 11 November 2026, updated the same day** after the fixes on this branch. Every step here was confirmed in the code. Things that currently do not work are listed separately under [Known problems](#known-problems).
 
 RushRank works in your phone's browser. There is nothing to install.
 
@@ -127,7 +127,7 @@ If you have not met the PNM, **Don't Know** is the honest vote.
 | Problem | What to do |
 |---|---|
 | **You may not get an invitation email.** | Use **Forgot password?** as in step 1. |
-| **Some buttons will not work for you** and show an error: Start Session, Add Event, Make cuts, Bulk Tag, Export → PowerPoint, and editing or deleting an event. They are for admins. | Ignore them. |
+| **Some buttons will not work for you** and show an error: Start Session, Add Event, Make cuts, Bulk Tag, and editing or deleting an event. They are for admins. | Ignore them. |
 | **The "Open Voting" tab does not work for members.** You get "Failed to start open voting". | Vote in live sessions. |
 | **If you star a PNM and then vote, the star is removed.** | Vote first, then tap the star. |
 | **Tapping the star without voting counts as a "Don't Know" vote.** | Vote first, then star. |

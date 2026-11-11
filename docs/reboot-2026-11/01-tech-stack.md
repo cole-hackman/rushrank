@@ -144,6 +144,8 @@ Each finding is marked **[measured]** or **[inferred]**.
 
 ## Improvements, ranked by impact against effort
 
+**Since this was written:** on this branch the frontend retries a read once when the backend looks asleep (part of rank 1), and the analytics page's fan-out of about 150 requests was replaced by one endpoint (not in this table; it was listed in `e2e/FINDINGS.md`). Nothing else in the table has been done.
+
 Impact is the effect on what a brother experiences during rush. Effort is working time for one person who knows the code.
 
 | Rank | Change | Impact | Effort | Basis |
