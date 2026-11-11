@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 import logging
 import secrets
 import string
+import asyncio
 import asyncpg
 import html
 from urllib.parse import quote
@@ -1635,6 +1636,92 @@ async def end_round(
 
     return APIResponse(success=True, message="Round ended successfully")
 
+# A vote is the hottest write in the app: a room of brothers sends one each, at
+# the same moment, for every PNM. It used to be seven statements, each on its
+# own pooled connection. This is one: the checks, the upsert and the new tallies.
+#
+# The insert only happens when every check passes, so a refused vote writes
+# nothing. A data-modifying CTE cannot be seen by the rest of its own statement,
+# which is why the tallies count everyone else's votes and the caller adds this
+# one. $4 (choice) and $5 (favorite) may be null: "keep what was there".
+#
+# timed_out: a session with a timer stops taking votes for the PNM on screen
+# once the time is up (two seconds of grace for a tap already on its way).
+VOTE_TIMER_GRACE_SECONDS = 2
+VOTE_SQL = f"""
+    WITH ctx AS (
+        SELECT vr.status::text AS status,
+               EXISTS (SELECT 1 FROM memberships m
+                        WHERE m.chapter_id = vr.chapter_id AND m.user_id = $3::uuid) AS is_member,
+               (EXISTS (SELECT 1 FROM round_pnms rp
+                         WHERE rp.round_id = vr.id AND rp.pnm_id = $2::uuid)
+                OR $2::text = ANY(vr.selected_pnm_ids::text[])) AS in_round,
+               s.id AS session_id,
+               COALESCE(s.locked, false) AS locked,
+               COALESCE(
+                   s.timer_seconds IS NOT NULL
+                   AND s.current_pnm_started_at IS NOT NULL
+                   AND s.current_pnm_id = $2::uuid
+                   AND NOW() > s.current_pnm_started_at
+                             + make_interval(secs => s.timer_seconds + {VOTE_TIMER_GRACE_SECONDS}),
+                   false) AS timed_out
+        FROM voting_rounds vr
+        LEFT JOIN LATERAL (
+            SELECT id, locked, timer_seconds, current_pnm_started_at, current_pnm_id
+            FROM sessions
+            WHERE round_id = vr.id AND ended_at IS NULL
+            ORDER BY started_at DESC LIMIT 1
+        ) s ON true
+        WHERE vr.id = $1::uuid
+    ),
+    prev AS (
+        SELECT value, favorite FROM votes
+        WHERE round_id = $1::uuid AND pnm_id = $2::uuid AND voter_user_id = $3::uuid
+    ),
+    ins AS (
+        INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
+        SELECT $1::uuid, $2::uuid, $3::uuid,
+               COALESCE($4::text::vote_value, (SELECT value FROM prev), 'UNKNOWN'),
+               COALESCE($5::boolean, (SELECT favorite FROM prev), false)
+        FROM ctx
+        WHERE ctx.status = 'ACTIVE' AND ctx.is_member AND ctx.in_round
+          AND NOT ctx.locked AND NOT ctx.timed_out
+        ON CONFLICT (round_id, pnm_id, voter_user_id)
+        DO UPDATE SET value = EXCLUDED.value, favorite = EXCLUDED.favorite, voted_at = NOW()
+        RETURNING id, value::text AS value, favorite, voted_at
+    ),
+    others AS (
+        SELECT COUNT(*) FILTER (WHERE value = 'YES') AS other_yes,
+               COUNT(*) FILTER (WHERE value = 'NO') AS other_no,
+               COUNT(*) FILTER (WHERE value = 'UNKNOWN') AS other_unknown,
+               COUNT(*) FILTER (WHERE favorite) AS other_favorites
+        FROM votes
+        WHERE round_id = $1::uuid AND pnm_id = $2::uuid AND voter_user_id <> $3::uuid
+    ),
+    voters AS (
+        SELECT COUNT(DISTINCT voter_user_id) AS other_voters
+        FROM votes WHERE round_id = $1::uuid AND voter_user_id <> $3::uuid
+    )
+    SELECT ctx.status, ctx.is_member, ctx.in_round, ctx.session_id, ctx.locked, ctx.timed_out,
+           ins.id AS vote_id, ins.value, ins.favorite, ins.voted_at,
+           others.other_yes, others.other_no, others.other_unknown, others.other_favorites,
+           voters.other_voters
+    FROM ctx
+    LEFT JOIN ins ON true
+    CROSS JOIN others
+    CROSS JOIN voters
+"""
+
+_background_tasks: set = set()
+
+
+def _in_background(coro) -> None:
+    """Run a coroutine without making the request wait for it."""
+    task = asyncio.get_running_loop().create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 @router.post("/votes")
 @limiter.limit(VOTE_RATE_LIMIT)
 async def create_vote(
@@ -1646,113 +1733,62 @@ async def create_vote(
     round_id = vote_data.get("round_id")
     pnm_id = vote_data.get("pnm_id")
     choice = vote_data.get("choice")  # YES, NO, or UNKNOWN (optional if only updating favorite)
-    favorite = vote_data.get("favorite", False)
-    
+    # None means "leave the star as it is". It used to default to False, so
+    # starring a PNM and then voting cleared the star.
+    favorite = vote_data.get("favorite")
+
     if not round_id or not pnm_id:
         raise HTTPException(status_code=400, detail="round_id and pnm_id are required")
-    
-    db = get_db()
-    
-    # Verify round exists and user has access
-    round_row = await db.execute_one("""
-        SELECT chapter_id, status FROM voting_rounds WHERE id = $1
-    """, round_id)
-    
-    if not round_row:
-        raise HTTPException(status_code=404, detail="Round not found")
-    
-    await chapter_service.verify_membership(current_user["user_id"], str(round_row["chapter_id"]))
-    
-    if round_row["status"] != "ACTIVE":
-        raise HTTPException(status_code=400, detail="Round is not active")
-
-    in_round = await db.execute_one("""
-        SELECT 1
-        WHERE EXISTS (SELECT 1 FROM round_pnms WHERE round_id = $1::uuid AND pnm_id = $2::uuid)
-           OR EXISTS (SELECT 1 FROM voting_rounds
-                       WHERE id = $1::uuid AND $2::text = ANY(selected_pnm_ids::text[]))
-    """, str(round_id), str(pnm_id))
-    if not in_round:
-        raise HTTPException(status_code=400, detail="That PNM is not part of this round")
-
-    # The lock was cosmetic: it flipped a boolean and broadcast it, but nothing
-    # here checked it, so a locked session still accepted votes -- and the
-    # client only disabled the buttons, not the swipe handler.
-    session_row = await db.execute_one("""
-        SELECT id, locked FROM sessions
-        WHERE round_id = $1 AND ended_at IS NULL
-        ORDER BY started_at DESC LIMIT 1
-    """, round_id)
-
-    if session_row and session_row["locked"]:
-        raise HTTPException(status_code=409, detail="Voting is locked by the chair")
-
-    existing_vote = await db.execute_one("""
-        SELECT value, favorite FROM votes
-        WHERE round_id = $1 AND pnm_id = $2 AND voter_user_id = $3
-    """, round_id, pnm_id, current_user["user_id"])
-
-    # If only updating favorite and a vote exists, preserve the existing choice
-    if choice is None and existing_vote:
-        choice = existing_vote["value"]
-    elif not choice:
-        # Starring a PNM you haven't voted on yet is a normal gesture; it used to
-        # 400. Record it as UNKNOWN so the favourite is not lost.
-        choice = "UNKNOWN"
-
-    if choice not in ["YES", "NO", "UNKNOWN"]:
+    if choice is not None and choice not in ("YES", "NO", "UNKNOWN"):
         raise HTTPException(status_code=400, detail="choice must be YES, NO, or UNKNOWN")
+    if favorite is not None and not isinstance(favorite, bool):
+        raise HTTPException(status_code=400, detail="favorite must be true or false")
 
-    vote_row = await db.execute_one("""
-        INSERT INTO votes (round_id, pnm_id, voter_user_id, value, favorite)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (round_id, pnm_id, voter_user_id)
-        DO UPDATE SET value = $4, favorite = $5, voted_at = NOW()
-        RETURNING id, round_id, pnm_id, voter_user_id, value, favorite, voted_at
-    """, round_id, pnm_id, current_user["user_id"], choice, favorite)
+    try:
+        row = await get_db().execute_one(VOTE_SQL, str(round_id), str(pnm_id), current_user["user_id"], choice, favorite)
+    except asyncpg.exceptions.DataError:
+        raise HTTPException(status_code=400, detail="round_id and pnm_id must be ids")
 
-    # Updated tallies for this PNM in this round
-    tallies_row = await db.execute_one("""
-        SELECT
-            COUNT(CASE WHEN value = 'YES' THEN 1 END) as yes_count,
-            COUNT(CASE WHEN value = 'NO' THEN 1 END) as no_count,
-            COUNT(CASE WHEN value = 'UNKNOWN' THEN 1 END) as unknown_count,
-            COUNT(CASE WHEN favorite = true THEN 1 END) as favorites_count
-        FROM votes
-        WHERE round_id = $1 AND pnm_id = $2
-    """, round_id, pnm_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Round not found")
+    if not row["is_member"]:
+        raise HTTPException(status_code=403, detail="Access denied: You are not a member of this chapter")
+    if row["status"] != "ACTIVE":
+        raise HTTPException(status_code=400, detail="Round is not active")
+    if not row["in_round"]:
+        raise HTTPException(status_code=400, detail="That PNM is not part of this round")
+    if row["locked"]:
+        raise HTTPException(status_code=409, detail="Voting is locked by the chair")
+    if row["timed_out"]:
+        raise HTTPException(status_code=409, detail="Time is up for this PNM")
 
+    value = row["value"]
+    is_favorite = bool(row["favorite"])
     tallies = {
-        "yes": tallies_row["yes_count"] if tallies_row else 0,
-        "no": tallies_row["no_count"] if tallies_row else 0,
-        "unknown": tallies_row["unknown_count"] if tallies_row else 0,
-        "favorites": tallies_row["favorites_count"] if tallies_row else 0,
+        "yes": row["other_yes"] + (1 if value == "YES" else 0),
+        "no": row["other_no"] + (1 if value == "NO" else 0),
+        "unknown": row["other_unknown"] + (1 if value == "UNKNOWN" else 0),
+        "favorites": row["other_favorites"] + (1 if is_favorite else 0),
     }
 
-    # ws_manager.broadcast_vote_cast has existed since the websocket manager was
-    # written and was never called, so the chair's "Votes Collected" bar was set
-    # once at session creation and never moved. Open (non-session) voting has no
-    # session to broadcast to, hence the guard.
-    if session_row:
-        voters_row = await db.execute_one("""
-            SELECT COUNT(DISTINCT voter_user_id) as votes_collected
-            FROM votes WHERE round_id = $1
-        """, round_id)
-        await ws_manager.broadcast_vote_cast(
-            str(session_row["id"]),
+    # Open (non-session) voting has no session to broadcast to. The broadcast is
+    # not awaited: one slow phone in the room must not hold up this voter.
+    if row["session_id"]:
+        _in_background(ws_manager.broadcast_vote_cast(
+            str(row["session_id"]),
             str(pnm_id),
-            {**tallies, "votes_collected": voters_row["votes_collected"] if voters_row else 0},
-        )
+            {**tallies, "votes_collected": row["other_voters"] + 1},
+        ))
 
     return {
-        "id": str(vote_row["id"]),
-        "round_id": str(vote_row["round_id"]),
-        "pnm_id": str(vote_row["pnm_id"]),
+        "id": str(row["vote_id"]),
+        "round_id": str(round_id),
+        "pnm_id": str(pnm_id),
         # Response key stays `voter_id` -- it is part of the API surface.
-        "voter_id": str(vote_row["voter_user_id"]),
-        "choice": vote_row["value"],
-        "favorite": vote_row["favorite"],
-        "created_at": vote_row["voted_at"].isoformat() if vote_row["voted_at"] else None,
+        "voter_id": str(current_user["user_id"]),
+        "choice": value,
+        "favorite": is_favorite,
+        "created_at": row["voted_at"].isoformat() if row["voted_at"] else None,
         "tallies": tallies,
     }
 
@@ -2737,8 +2773,13 @@ async def toggle_session_lock(
     await chapter_service.verify_admin_access(current_user["user_id"], str(session_row["chapter_id"]))
     
     locked = payload.get("locked", True)
+    # Unlocking restarts the clock for the PNM on screen. Otherwise a chair who
+    # reopens voting after the timer ran out would reopen nothing.
     await db.execute_command("""
-        UPDATE sessions SET locked = $1 WHERE id = $2
+        UPDATE sessions
+        SET locked = $1,
+            current_pnm_started_at = CASE WHEN $1 THEN current_pnm_started_at ELSE NOW() END
+        WHERE id = $2
     """, locked, session_id)
     
     # Broadcast lock change via WebSocket
@@ -2876,9 +2917,19 @@ async def advance_session(
             "photo_url": pnm_row["photo_url"],
             "tags": list(pnm_row["tags"]) if pnm_row["tags"] else []
         }
-    
+
+    # The clock restarts with each PNM. Without these two fields only the
+    # chair's countdown reset; every voter's went stale.
+    timer_row = await db.execute_one("SELECT timer_seconds FROM sessions WHERE id = $1", session_id)
+    extra = {
+        "timer_remaining": timer_row["timer_seconds"] if timer_row else None,
+        "next_photo_url": await _next_photo_url(pnm_ids, next_pnm_id),
+        "position": next_index + 1,
+        "total": len(pnm_ids),
+    }
+
     # Broadcast PNM advance via WebSocket
-    await ws_manager.broadcast_pnm_advance(session_id, next_pnm_id, pnm_data)
+    await ws_manager.broadcast_pnm_advance(session_id, next_pnm_id, pnm_data, extra)
     
     return {"success": True, "current_pnm_id": next_pnm_id, "session_ended": False}
 
@@ -2893,7 +2944,11 @@ async def get_session_current(
     # Get session and verify access
     session_row = await db.execute_one("""
         SELECT s.id, s.round_id, s.current_pnm_id, s.locked, s.timer_seconds,
-               s.current_pnm_started_at, vr.chapter_id
+               s.current_pnm_started_at, vr.chapter_id, vr.selected_pnm_ids,
+               (SELECT COUNT(*) FROM votes v
+                 WHERE v.round_id = s.round_id AND v.pnm_id = s.current_pnm_id) AS current_votes,
+               (SELECT COUNT(*) FROM memberships m
+                 WHERE m.chapter_id = vr.chapter_id AND m.role <> 'observer') AS eligible_voters
         FROM sessions s
         JOIN voting_rounds vr ON vr.id = s.round_id
         WHERE s.id = $1 AND s.ended_at IS NULL
@@ -2939,7 +2994,18 @@ async def get_session_current(
         elapsed = (datetime.now(timezone.utc) - session_row["current_pnm_started_at"]).total_seconds()
         timer_remaining = max(0, int(session_row["timer_seconds"] - elapsed))
 
+    order = [str(p) for p in (session_row["selected_pnm_ids"] or [])]
+    position = order.index(current_pnm_id) if current_pnm_id in order else None
+
     return {
+        # How many votes are in for the PNM on screen, out of how many members
+        # could vote. The projector view shows this; it never shows the split.
+        "current_votes": session_row["current_votes"],
+        "eligible_voters": session_row["eligible_voters"],
+        "position": position + 1 if position is not None else None,
+        "total": len(order),
+        # So each phone can fetch the next photo before the chair advances.
+        "next_photo_url": await _next_photo_url(order, current_pnm_id),
         "pnm": {
             "id": str(pnm_row["id"]),
             "name": pnm_row["name"],
@@ -2955,6 +3021,58 @@ async def get_session_current(
         "timer_remaining": timer_remaining,
         "votes_collected": votes_collected,
     }
+
+async def _next_photo_url(order: List[str], current_pnm_id: Optional[str]) -> Optional[str]:
+    """Photo of whoever follows `current_pnm_id` in the running order, if any."""
+    if not current_pnm_id or current_pnm_id not in order:
+        return None
+    index = order.index(current_pnm_id) + 1
+    if index >= len(order):
+        return None
+    row = await get_db().execute_one("SELECT photo_url FROM pnms WHERE id = $1::uuid", order[index])
+    return row["photo_url"] if row else None
+
+
+@router.get("/sessions/{session_id}/waiting")
+async def get_session_waiting(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Who has not voted on the PNM on screen yet (admin only).
+
+    This is the chair's real question in the room: "who are we waiting on?".
+    It says who has voted, never how. Observers cannot vote and are left out.
+    """
+    db = get_db()
+    session_row = await db.execute_one("""
+        SELECT s.round_id, s.current_pnm_id, vr.chapter_id
+        FROM sessions s
+        JOIN voting_rounds vr ON vr.id = s.round_id
+        WHERE s.id = $1 AND s.ended_at IS NULL
+    """, session_id)
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    await chapter_service.verify_admin_access(current_user["user_id"], str(session_row["chapter_id"]))
+
+    if not session_row["current_pnm_id"]:
+        return {"pnm_id": None, "voted": 0, "waiting": []}
+
+    rows = await db.execute_query("""
+        SELECT u.id, COALESCE(NULLIF(u.name, ''), u.email) AS name,
+               EXISTS (SELECT 1 FROM votes v
+                        WHERE v.round_id = $2 AND v.pnm_id = $3 AND v.voter_user_id = u.id) AS voted
+        FROM memberships m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.chapter_id = $1 AND m.role <> 'observer'
+        ORDER BY name
+    """, session_row["chapter_id"], session_row["round_id"], session_row["current_pnm_id"])
+
+    return {
+        "pnm_id": str(session_row["current_pnm_id"]),
+        "voted": sum(1 for r in rows if r["voted"]),
+        "waiting": [{"id": str(r["id"]), "name": r["name"]} for r in rows if not r["voted"]],
+    }
+
 
 # Unified export endpoint
 @router.get("/export/csv")

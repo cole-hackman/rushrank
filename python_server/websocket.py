@@ -59,9 +59,11 @@ class ConnectionManager:
                     if session_id in self.active_connections:
                         self.active_connections[session_id].discard(ws)
     
-    async def broadcast_pnm_advance(self, session_id: str, pnm_id: Optional[str], pnm_data: Optional[dict] = None):
-        """Broadcast PNM advance event"""
+    async def broadcast_pnm_advance(self, session_id: str, pnm_id: Optional[str],
+                                    pnm_data: Optional[dict] = None, extra: Optional[dict] = None):
+        """Broadcast PNM advance event. `extra` adds optional fields (timer, next photo)."""
         await self.broadcast_to_session(session_id, {
+            **(extra or {}),
             "type": "pnm_advance",
             "current_pnm_id": pnm_id,
             "pnm": pnm_data
