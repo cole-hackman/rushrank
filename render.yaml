@@ -6,6 +6,9 @@ services:
     plan: free
     buildCommand: pip install -r python_server/requirements.txt
     startCommand: uvicorn python_server.main:app --host 0.0.0.0 --port $PORT
+    # /health/db runs SELECT 1, so Render only routes traffic to an instance
+    # that can reach the database. /health only checks the pool object exists.
+    healthCheckPath: /health/db
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
@@ -21,3 +24,8 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      # Optional. Error reports go to Sentry when set; nothing is sent otherwise.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production

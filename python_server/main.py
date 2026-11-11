@@ -21,6 +21,7 @@ from .routes import router
 from .exceptions import AppException, register_exception_handlers
 from .rate_limit import setup_rate_limiting
 from .websocket import manager as ws_manager
+from .monitoring import init_monitoring, capture_exception
 
 # Configure structured JSON logging for production
 class JSONFormatter(logging.Formatter):
@@ -80,6 +81,9 @@ def _load_env_from_files():
             logger.warning(f"Could not read env file {env_path}: {e}")
 
 _load_env_from_files()
+
+# Before the app is built, so the FastAPI integration can hook in.
+init_monitoring()
 
 # Confirm environment is configured (without exposing sensitive values)
 logger.debug(f"Environment configured: DATABASE_URL={'present' if os.getenv('DATABASE_URL') else 'missing'}")
@@ -165,6 +169,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     # Log the error
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    # This handler turns the crash into a normal 500 response, so report it
+    # explicitly; otherwise Sentry may never see it.
+    capture_exception(exc)
     
     # Validate origin against allowed origins (security fix)
     request_origin = request.headers.get("origin", "")
