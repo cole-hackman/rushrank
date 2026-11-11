@@ -21,6 +21,11 @@ type SessionMessage = {
   current_pnm_id?: string | null;
   pnm?: PNM | null;
   locked?: boolean;
+  // Sent with pnm_advance: the clock restarts and the next photo can be fetched early.
+  timer_remaining?: number | null;
+  next_photo_url?: string | null;
+  position?: number | null;
+  total?: number | null;
   pnm_id?: string;
   tallies?: {
     yes: number;
@@ -35,9 +40,16 @@ type SessionMessage = {
   round_id?: string;
 };
 
+export type AdvanceExtra = {
+  timer_remaining?: number | null;
+  next_photo_url?: string | null;
+  position?: number | null;
+  total?: number | null;
+};
+
 type UseSessionWebSocketProps = {
   sessionId: string | null;
-  onPnmAdvance?: (pnmId: string | null, pnm: PNM | null) => void;
+  onPnmAdvance?: (pnmId: string | null, pnm: PNM | null, extra?: AdvanceExtra) => void;
   onLockChange?: (locked: boolean) => void;
   onVoteCast?: (pnmId: string, tallies: SessionMessage["tallies"]) => void;
   onSessionEnd?: (roundId: string) => void;
@@ -146,13 +158,19 @@ export function useSessionWebSocket({
         try {
           if (event.data === "pong") return;
 
-          const message: SessionMessage | { type: "auth_ok" } = JSON.parse(event.data);
-          if (message.type === "auth_ok") return;
+          const parsed: SessionMessage | { type: "auth_ok" } = JSON.parse(event.data);
+          if (parsed.type === "auth_ok") return;
+          const message = parsed as SessionMessage;
           const handlers = handlersRef.current;
 
           switch (message.type) {
             case "pnm_advance":
-              handlers.onPnmAdvance?.(message.current_pnm_id || null, message.pnm || null);
+              handlers.onPnmAdvance?.(message.current_pnm_id || null, message.pnm || null, {
+                timer_remaining: message.timer_remaining,
+                next_photo_url: message.next_photo_url,
+                position: message.position,
+                total: message.total,
+              });
               break;
             case "lock_change":
               if (message.locked !== undefined) {

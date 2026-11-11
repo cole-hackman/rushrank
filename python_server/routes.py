@@ -3064,7 +3064,7 @@ async def get_session_waiting(
         FROM memberships m
         JOIN users u ON u.id = m.user_id
         WHERE m.chapter_id = $1 AND m.role <> 'observer'
-        ORDER BY name
+        ORDER BY lower(COALESCE(NULLIF(u.name, ''), u.email))
     """, session_row["chapter_id"], session_row["round_id"], session_row["current_pnm_id"])
 
     return {
