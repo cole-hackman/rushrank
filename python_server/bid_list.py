@@ -46,8 +46,9 @@ class BidListService:
         """
         db = get_db()
         round_row = await db.execute_one(
-            "SELECT selected_pnm_ids FROM voting_rounds WHERE id = $1",
-            source_round_id,
+            # Scoped to the caller's chapter: another chapter's round is "not found".
+            "SELECT selected_pnm_ids FROM voting_rounds WHERE id = $1 AND chapter_id = $2",
+            source_round_id, chapter_id,
         )
         if not round_row:
             raise HTTPException(status_code=404, detail="Source round not found")
@@ -247,6 +248,11 @@ class BidListService:
             raise HTTPException(status_code=400, detail=f"Invalid bucket: {bucket}")
         await self._require_lock(bid_list_id, user_id)
         db = get_db()
+        finalized = await db.execute_one(
+            "SELECT 1 FROM bid_lists WHERE id = $1 AND finalized_at IS NOT NULL", bid_list_id
+        )
+        if finalized:
+            raise HTTPException(status_code=409, detail="This bid list is finalized and can no longer be edited")
         await db.execute_command(
             """UPDATE bid_list_entries
                   SET bucket = $1::bid_bucket, position = $2, updated_at = NOW()

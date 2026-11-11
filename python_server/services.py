@@ -2643,7 +2643,8 @@ class NoteService:
             Note(
                 id=str(r["id"]),
                 pnm_id=str(r["pnm_id"]),
-                author_id=str(r["author_user_id"]) if r["author_user_id"] else None,
+                # An anonymous note names nobody, in any field.
+                author_id=str(r["author_user_id"]) if r["author_user_id"] and not r["anonymous"] else None,
                 author="Anonymous" if r["anonymous"] else (r["author_email"] or "Member"),
                 body=r["body"],
                 anonymous=r["anonymous"],
@@ -2663,7 +2664,7 @@ class NoteService:
         return Note(
             id=str(row["id"]),
             pnm_id=str(row["pnm_id"]),
-            author_id=str(row["author_user_id"]) if row["author_user_id"] else None,
+            author_id=str(row["author_user_id"]) if row["author_user_id"] and not row["anonymous"] else None,
             body=row["body"],
             anonymous=row["anonymous"],
             likes_count=row["likes_count"] or 0,
@@ -2718,14 +2719,16 @@ class TagService:
             "chapter_id": str(row["chapter_id"]),
         }
     
-    async def update_tag(self, tag_id: str, label: str, color: Optional[str]) -> Dict[str, Any]:
+    async def update_tag(self, tag_id: str, chapter_id: str, label: str, color: Optional[str]) -> Dict[str, Any]:
         db = get_db()
         row = await db.execute_one("""
             UPDATE tags
             SET label = $2, color = $3
-            WHERE id = $1
+            WHERE id = $1 AND chapter_id = $4
             RETURNING id, label, color, chapter_id
-        """, tag_id, label, color)
+        """, tag_id, label, color, chapter_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Tag not found")
         return {
             "id": str(row["id"]),
             "label": row["label"],
@@ -2733,18 +2736,29 @@ class TagService:
             "chapter_id": str(row["chapter_id"]),
         }
     
-    async def delete_tag(self, tag_id: str) -> bool:
+    async def delete_tag(self, tag_id: str, chapter_id: str) -> bool:
         db = get_db()
-        res = await db.execute_command("DELETE FROM tags WHERE id = $1", tag_id)
+        res = await db.execute_command(
+            "DELETE FROM tags WHERE id = $1 AND chapter_id = $2", tag_id, chapter_id
+        )
         return "DELETE 1" in res
     
     async def add_tag_to_pnm(self, pnm_id: str, tag_id: str) -> bool:
+        """Attach a tag to a PNM. False when the tag is not one of the PNM's chapter's."""
         db = get_db()
-        await db.execute_command("""
+        res = await db.execute_command("""
             INSERT INTO pnm_tags (pnm_id, tag_id)
-            VALUES ($1, $2) ON CONFLICT DO NOTHING
+            SELECT p.id, t.id
+            FROM pnms p JOIN tags t ON t.chapter_id = p.chapter_id
+            WHERE p.id = $1 AND t.id = $2
+            ON CONFLICT DO NOTHING
         """, pnm_id, tag_id)
-        return True
+        if "INSERT 0 1" in res:
+            return True
+        # Nothing inserted: already attached, or the tag belongs elsewhere.
+        return bool(await db.execute_one("""
+            SELECT 1 FROM pnm_tags WHERE pnm_id = $1 AND tag_id = $2
+        """, pnm_id, tag_id))
     
     async def remove_tag_from_pnm(self, pnm_id: str, tag_id: str) -> bool:
         db = get_db()
@@ -3308,7 +3322,6 @@ class InvitationService:
             
             # Log credentials for manual verification/debugging
             logger.info(f"📧 Sending invitation to {email}")
-            logger.info(f"🔑 Credentials -> Email: {email} | Password: {password}")
             logger.info(f"👉 Login URL: {login_url}")
             
             # Add group ID if provided (triggers automation)
