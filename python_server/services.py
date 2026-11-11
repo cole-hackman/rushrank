@@ -11,6 +11,7 @@ import re
 import json
 
 from .database import get_db
+from .live_round import add_to_live_session
 from .models import *
 from io import StringIO, BytesIO
 import csv
@@ -289,6 +290,20 @@ class ChapterService:
         )
         if existing:
             return {"chapter_id": str(existing["id"])}
+        # chapters.name is globally unique. Without this check a second chapter
+        # choosing a taken name hit the constraint and the signup wizard showed
+        # a raw "duplicate key value" 500 on return from the magic link.
+        taken = await db.execute_one(
+            "SELECT 1 FROM chapters WHERE lower(name) = lower($1)", chapter_name,
+        )
+        if taken:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f'A chapter called "{chapter_name}" already exists. '
+                    "Add your school or city to the chapter name and try again."
+                ),
+            )
         row = await db.execute_one(
             """INSERT INTO chapters (name, fraternity, school, theme)
                VALUES ($1, $2, $3, $4::jsonb)
@@ -1125,7 +1140,12 @@ class PNMService:
         
         # Fire and forget - don't await
         asyncio.create_task(background_tasks())
-        
+
+        # A walk-up added while the chapter is mid-session joins the end of the
+        # running order rather than waiting for the next session.
+        if stage != "prospect":
+            await add_to_live_session(chapter_id, [pnm_id])
+
         return pnm
     
     async def list_pipeline(self, chapter_id: str, owner_user_id: Optional[str] = None) -> dict:
@@ -1753,6 +1773,82 @@ class VotingService:
             created_at=row["voted_at"]
         )
     
+    async def get_round_summary(self, chapter_id: str) -> Dict[str, Any]:
+        """Every round's results for a chapter, in two queries.
+
+        The analytics page used to call GET /rounds/{id}/results once per round
+        for its headline numbers, and once per PNM per round (three rounds deep)
+        for the comparison tab: about 150 requests for a 50-PNM chapter, each
+        re-running the full results aggregate. This returns the same per-PNM
+        figures for every round at once.
+
+        Rounds come back in the same order as GET /rounds (newest first).
+        """
+        db = get_db()
+        rounds = await db.execute_query(
+            """
+            SELECT vr.id, vr.name, vr.type, vr.status, vr.started_at, vr.ended_at, vr.created_at,
+                   (SELECT COUNT(*) FROM round_pnms rp WHERE rp.round_id = vr.id) AS pnm_count,
+                   (SELECT COUNT(*) FROM votes v WHERE v.round_id = vr.id) AS total_votes,
+                   (SELECT COUNT(DISTINCT v.voter_user_id) FROM votes v
+                     WHERE v.round_id = vr.id) AS voter_count
+            FROM voting_rounds vr
+            WHERE vr.chapter_id = $1
+            ORDER BY vr.created_at DESC
+            """,
+            chapter_id,
+        )
+        per_pnm = await db.execute_query(
+            """
+            SELECT rp.round_id, rp.pnm_id,
+                   COUNT(v.id) AS vote_count,
+                   COUNT(*) FILTER (WHERE v.value = 'YES') AS yes_count,
+                   COUNT(*) FILTER (WHERE v.value = 'NO') AS no_count,
+                   COUNT(*) FILTER (WHERE v.value = 'UNKNOWN') AS dont_know_count,
+                   COUNT(*) FILTER (WHERE v.favorite) AS favorite_count,
+                   CASE WHEN COUNT(v.id) > 0 THEN
+                       ROUND(COUNT(*) FILTER (WHERE v.value = 'YES') * 100.0 / COUNT(v.id), 2)
+                   ELSE 0 END AS yes_percentage
+            FROM round_pnms rp
+            JOIN voting_rounds vr ON vr.id = rp.round_id
+            LEFT JOIN votes v ON v.round_id = rp.round_id AND v.pnm_id = rp.pnm_id
+            WHERE vr.chapter_id = $1
+            GROUP BY rp.round_id, rp.pnm_id
+            """,
+            chapter_id,
+        )
+        by_round: Dict[str, List[Dict[str, Any]]] = {}
+        for r in per_pnm:
+            by_round.setdefault(str(r["round_id"]), []).append({
+                "pnm_id": str(r["pnm_id"]),
+                "vote_count": int(r["vote_count"]),
+                "yes_count": int(r["yes_count"]),
+                "no_count": int(r["no_count"]),
+                "dont_know_count": int(r["dont_know_count"]),
+                "favorite_count": int(r["favorite_count"]),
+                "yes_percentage": float(r["yes_percentage"]),
+            })
+        out = []
+        for r in rounds:
+            rid = str(r["id"])
+            out.append({
+                "id": rid,
+                "name": r["name"],
+                "type": r["type"],
+                "status": r["status"],
+                "started_at": r["started_at"].isoformat() if r["started_at"] else None,
+                "ended_at": r["ended_at"].isoformat() if r["ended_at"] else None,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "pnm_count": int(r["pnm_count"]),
+                "total_votes": int(r["total_votes"]),
+                "voter_count": int(r["voter_count"]),
+                "results": by_round.get(rid, []),
+            })
+        return {
+            "rounds": out,
+            "total_votes": sum(r["total_votes"] for r in out),
+        }
+
     async def get_round_results(self, round_id: str) -> List[PNMWithVotes]:
         """Get voting results for a round"""
         db = get_db()

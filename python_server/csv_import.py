@@ -27,6 +27,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from .database import get_db
+from .live_round import add_to_live_session
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +305,10 @@ async def _insert_rows(chapter_id: str, rows: list[dict]) -> list[str]:
     )
 
     pnm_ids = [str(r["id"]) for r in inserted]
+
+    # Imported rows are formal-rush PNMs (stage defaults to 'pnm'), so if a
+    # live session is running they join the end of it like any other addition.
+    await add_to_live_session(chapter_id, pnm_ids)
 
     tagged = [(pnm_ids[i], r["tags"]) for i, r in enumerate(rows) if r.get("tags")]
     if tagged:

@@ -31,6 +31,7 @@ from .services import (
 )
 from .bid_list import BidListService
 from . import audit
+from .live_round import add_to_live_session
 from . import merge as merge_service
 from .csv_import import parse_and_import
 from .rate_limit import limiter, VOTE_RATE_LIMIT, AUTH_RATE_LIMIT, WRITE_RATE_LIMIT
@@ -1126,6 +1127,9 @@ async def update_pnm_pipeline(
     # rush, or marking a bid accepted. Status and owner churn is not, and
     # logging every drag would bury the decisions.
     if result["before"]["stage"] != result["after"]["stage"]:
+        # A prospect converted to formal rush during a live session joins it.
+        if result["before"]["stage"] == "prospect":
+            await add_to_live_session(result["chapter_id"], [pnm_id])
         await audit.record(
             result["chapter_id"], current_user["user_id"], "pnm.stage_change",
             entity_type="pnm", entity_id=pnm_id,
@@ -1429,6 +1433,9 @@ async def bulk_archive_pnms(
     try:
         await db.execute_command(query, request.archived, request.pnm_ids)
         action = "archived" if request.archived else "unarchived"
+        if not request.archived:
+            for cid in chapter_ids:
+                await add_to_live_session(cid, request.pnm_ids)
         await audit.record(
             next(iter(chapter_ids), None), current_user["user_id"], "pnm.bulk_archive",
             entity_type="pnm",
@@ -1618,6 +1625,19 @@ async def get_voting_patterns(
     """
     await chapter_service.verify_admin_access(current_user["user_id"], chapter_id)
     return await voting_service.get_voting_patterns(chapter_id)
+
+
+@router.get("/chapters/{chapter_id}/round-summary")
+async def get_round_summary(
+    chapter_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Every round's per-PNM results in one response, for the analytics page.
+
+    Same visibility as GET /rounds/{id}/results: any member of the chapter.
+    """
+    await chapter_service.verify_membership(current_user["user_id"], chapter_id)
+    return await voting_service.get_round_summary(chapter_id)
 
 
 @router.get("/rounds", response_model=List[VotingRound])
