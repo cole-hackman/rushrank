@@ -112,6 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { label: "PNMs", href: "/pnms" },
     { label: "Events", href: "/events" },
     { label: "Voting", href: "/voting" },
+    { label: "Results", href: "/results" },
     ...(isAdmin
       ? [
           { label: "Bid List", href: "/bid-list" },

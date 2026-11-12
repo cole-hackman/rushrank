@@ -75,7 +75,6 @@ export default function PNMsPage() {
   // round trips, and on a cold Render instance the answers came back out of
   // order. The local filter below still runs on `search`, so typing stays
   // instant -- only the fetch waits.
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showEmail, setShowEmail] = useState(true);
@@ -135,16 +134,13 @@ export default function PNMsPage() {
   }, [toast]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  useEffect(() => {
     if (chapterId) {
       loadPnms();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, debouncedSearch, selectedTags, showArchived]);
+    // Search and tags filter the loaded list in the browser (see filteredPnms),
+    // so typing or toggling a tag does not go back to the server.
+  }, [chapterId, showArchived]);
 
   const loadPnms = async () => {
     if (!chapterId) return;
@@ -153,8 +149,6 @@ export default function PNMsPage() {
     try {
       const query = new URLSearchParams();
       query.set("chapter_id", chapterId);
-      if (debouncedSearch.trim()) query.set("search", debouncedSearch.trim());
-      if (selectedTags.length > 0) query.set("tags", selectedTags.join(","));
       if (showArchived) query.set("include_archived", "true");
       const data = await api<PNM[]>(`/pnms?${query.toString()}`);
       setPnms(data);
@@ -441,15 +435,15 @@ export default function PNMsPage() {
               >
                 Compare ({selectedPnmIds.length})
               </Button>
-              <Button
-                variant="neutral-secondary"
-                icon={<FeatherTag />}
-                onClick={() => setShowBulkTagModal(true)}
-              >
-                Bulk Tag ({selectedPnmIds.length})
-              </Button>
               {isAdmin && (
                 <>
+                  <Button
+                    variant="neutral-secondary"
+                    icon={<FeatherTag />}
+                    onClick={() => setShowBulkTagModal(true)}
+                  >
+                    Bulk Tag ({selectedPnmIds.length})
+                  </Button>
                   <Button
                     variant="neutral-secondary"
                     icon={<FeatherArchive />}

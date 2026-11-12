@@ -124,6 +124,10 @@ class PNM(BaseModel):
     gpa: Optional[float] = None
     gpa_waived: bool = False
     gpa_waived_reason: Optional[str] = None
+    # The chapter's floor and where this PNM stands against it. Filled by the
+    # endpoints that have the chapter to hand; None elsewhere.
+    min_gpa: Optional[float] = None
+    eligibility: Optional[str] = None
     # Pipeline (migration 0015). Defaults match the column defaults so a row
     # selected before those columns existed still validates.
     stage: PNMStage = PNMStage.PNM
@@ -353,6 +357,8 @@ class PNMAnswers(BaseModel):
 class UserProfile(BaseModel):
     user_id: str
     email: str
+    # What other members see beside this person's notes and contacts.
+    name: Optional[str] = None
     memberships: List[Dict[str, Any]]
 
 class APIResponse(BaseModel):

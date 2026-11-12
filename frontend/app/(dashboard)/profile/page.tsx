@@ -75,6 +75,12 @@ export default function ProfilePage() {
         updates.data = { name: name.trim() };
       }
 
+      // The app shows names from its own users table, so that is saved first.
+      // Supabase's copy only feeds the auth emails.
+      if (nameChanged) {
+        await api("/me", { method: "PATCH", body: { name: name.trim() } });
+      }
+
       const { error } = await supabase.auth.updateUser(updates);
 
       if (error) {

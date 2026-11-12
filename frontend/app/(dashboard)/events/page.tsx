@@ -11,6 +11,7 @@ import { Progress } from "@/ui/components/Progress";
 import { Table } from "@/ui/components/Table";
 import { TextField } from "@/ui/components/TextField";
 import { Dialog } from "@/ui/components/Dialog";
+import { useMyRole } from "@/hooks/useMyRole";
 import { api, getChapterId, API_BASE } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 import { useToast } from "@/components/ToastProvider";
@@ -58,6 +59,8 @@ type EventWithAttendance = Event & {
 function RushRankEventPage() {
   const router = useRouter();
   const { toast } = useToast();
+  // Creating, editing, deleting and exporting events are admin-only in the API.
+  const { isAdmin } = useMyRole();
   const confirm = useConfirm();
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [events, setEvents] = useState<EventWithAttendance[]>([]);
@@ -88,6 +91,13 @@ function RushRankEventPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // The dashboard's "Create Event" button links to /events?action=add.
+  useEffect(() => {
+    if (isAdmin && new URLSearchParams(window.location.search).get("action") === "add") {
+      setShowCreateForm(true);
+    }
+  }, [isAdmin]);
 
   const loadData = async () => {
     try {
@@ -394,6 +404,7 @@ function RushRankEventPage() {
             Manage rush events and track attendance
           </span>
         </div>
+        {isAdmin && (
         <div className="flex w-full items-center gap-2">
           <Button
             variant="neutral-secondary"
@@ -417,6 +428,7 @@ function RushRankEventPage() {
             Add Event
           </Button>
         </div>
+        )}
         <div className="flex w-full flex-col items-start gap-8">
 
           {/* Stats Cards */}
@@ -531,7 +543,7 @@ function RushRankEventPage() {
                   {search ? "Try a different search term" : "Create your first event to get started"}
                 </p>
               </div>
-              {!search && (
+              {!search && isAdmin && (
                 <Button
                   variant="brand-primary"
                   icon={<FeatherPlus />}
@@ -626,24 +638,28 @@ function RushRankEventPage() {
                             onClick={() => router.push(`/events/${event.id}/checkin`)}
                             title="View Details"
                           />
-                          <IconButton
-                            size="small"
-                            icon={<FeatherEdit />}
-                            onClick={() => handleEditEvent(event)}
-                            title="Edit Event"
-                          />
-                          <IconButton
-                            size="small"
-                            icon={<FeatherDownload />}
-                            onClick={handleExportAttendance}
-                            title="Export Attendance"
-                          />
-                          <IconButton
-                            size="small"
-                            icon={<FeatherTrash />}
-                            onClick={() => handleDeleteEvent(event.id)}
-                            title="Delete Event"
-                          />
+                          {isAdmin && (
+                            <>
+                              <IconButton
+                                size="small"
+                                icon={<FeatherEdit />}
+                                onClick={() => handleEditEvent(event)}
+                                title="Edit Event"
+                              />
+                              <IconButton
+                                size="small"
+                                icon={<FeatherDownload />}
+                                onClick={handleExportAttendance}
+                                title="Export Attendance"
+                              />
+                              <IconButton
+                                size="small"
+                                icon={<FeatherTrash />}
+                                onClick={() => handleDeleteEvent(event.id)}
+                                title="Delete Event"
+                              />
+                            </>
+                          )}
                         </div>
                       </Table.Cell>
                     </Table.Row>

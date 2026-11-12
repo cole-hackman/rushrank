@@ -565,7 +565,7 @@ export interface ImportResult {
 }
 
 export const IMPORT_FIELDS = [
-  "name", "email", "phone", "major", "hometown", "year", "photo_url", "tags",
+  "name", "email", "phone", "major", "hometown", "year", "photo_url", "tags", "gpa",
 ] as const;
 
 /**
@@ -725,6 +725,10 @@ export async function setGpaWaiver(
     method: "POST",
     body: { waived, reason: reason ?? null },
   });
+}
+
+export async function getChapterMinGpa(chapterId: string): Promise<{ min_gpa: number | null }> {
+  return api(`/chapters/${chapterId}/min-gpa`);
 }
 
 /** null turns the check off for the chapter. */

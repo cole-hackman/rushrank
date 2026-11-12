@@ -34,6 +34,7 @@ import { TextField } from "@/ui/components/TextField";
 import { Checkbox } from "@/ui/components/Checkbox";
 import { Avatar } from "@/ui/components/Avatar";
 import { cn } from "@/lib/utils";
+import { useMyRole } from "@/hooks/useMyRole";
 
 type Round = { id: string; created_at: string; name?: string };
 type PNMResult = {
@@ -52,6 +53,7 @@ type PNMResult = {
 type SortKey = "rank" | "name" | "yes_percentage" | "favorites";
 
 export default function ResultsPage() {
+  const { isAdmin } = useMyRole();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -183,14 +185,17 @@ export default function ResultsPage() {
         <Button icon={<FeatherDownload />} onClick={handleExport} disabled={!selectedRound}>
           Export CSV
         </Button>
-        <Button
-          variant="destructive-secondary"
-          icon={<FeatherScissors />}
-          disabled={!selectedRound || results.length === 0}
-          onClick={() => setShowCutoff(true)}
-        >
-          Make cuts
-        </Button>
+        {/* Cutting ends the round; the API allows it for admins only. */}
+        {isAdmin && (
+          <Button
+            variant="destructive-secondary"
+            icon={<FeatherScissors />}
+            disabled={!selectedRound || results.length === 0}
+            onClick={() => setShowCutoff(true)}
+          >
+            Make cuts
+          </Button>
+        )}
       </div>
 
       {showCutoff && selectedRound && (
