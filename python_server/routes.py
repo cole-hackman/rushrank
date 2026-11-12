@@ -1,7 +1,7 @@
 """
 FastAPI routes for RushRank
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse, Response, HTMLResponse
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
@@ -1639,6 +1639,8 @@ async def end_round(
 # A vote is the hottest write in the app: a room of brothers sends one each, at
 # the same moment, for every PNM. It used to be seven statements, each on its
 # own pooled connection. This is one: the checks, the upsert and the new tallies.
+# (The broadcast to the room is a second, separate read that runs after the
+# voter has his answer; see _broadcast_vote.)
 #
 # The insert only happens when every check passes, so a refused vote writes
 # nothing. A data-modifying CTE cannot be seen by the rest of its own statement,
@@ -1712,14 +1714,29 @@ VOTE_SQL = f"""
     CROSS JOIN voters
 """
 
-_background_tasks: set = set()
+async def _broadcast_vote(session_id: str, round_id: str, pnm_id: str) -> None:
+    """Tell the room the count moved, with tallies read after this vote committed.
 
-
-def _in_background(coro) -> None:
-    """Run a coroutine without making the request wait for it."""
-    task = asyncio.get_running_loop().create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    The tallies in the voter's own response come from the same statement as his
+    vote, so they cannot see a vote that commits at the same instant. A room of
+    brothers does exactly that. Counting again here, after the commit, means the
+    last frame the room receives for a PNM always agrees with the database.
+    """
+    try:
+        row = await get_db().execute_one("""
+            SELECT COUNT(*) FILTER (WHERE pnm_id = $2::uuid AND value = 'YES') AS yes,
+                   COUNT(*) FILTER (WHERE pnm_id = $2::uuid AND value = 'NO') AS no,
+                   COUNT(*) FILTER (WHERE pnm_id = $2::uuid AND value = 'UNKNOWN') AS unknown,
+                   COUNT(*) FILTER (WHERE pnm_id = $2::uuid AND favorite) AS favorites,
+                   COUNT(DISTINCT voter_user_id) AS votes_collected
+            FROM votes WHERE round_id = $1::uuid
+        """, round_id, pnm_id)
+        await ws_manager.broadcast_vote_cast(session_id, pnm_id, {
+            "yes": row["yes"], "no": row["no"], "unknown": row["unknown"],
+            "favorites": row["favorites"], "votes_collected": row["votes_collected"],
+        })
+    except Exception as exc:  # a failed broadcast must never fail or undo a vote
+        logger.warning(f"vote_cast broadcast failed for session {session_id}: {exc}")
 
 
 @router.post("/votes")
@@ -1727,6 +1744,7 @@ def _in_background(coro) -> None:
 async def create_vote(
     request: Request,
     vote_data: Dict[str, Any],
+    background_tasks: BackgroundTasks = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Create a vote (YES/NO/UNKNOWN) for a PNM in a round, or update favorite status only"""
@@ -1771,14 +1789,15 @@ async def create_vote(
         "favorites": row["other_favorites"] + (1 if is_favorite else 0),
     }
 
-    # Open (non-session) voting has no session to broadcast to. The broadcast is
-    # not awaited: one slow phone in the room must not hold up this voter.
+    # Open (non-session) voting has no session to broadcast to. The broadcast
+    # runs after the response has gone out: one slow phone in the room must not
+    # hold up this voter. (Called directly, with no request, it runs inline.)
     if row["session_id"]:
-        _in_background(ws_manager.broadcast_vote_cast(
-            str(row["session_id"]),
-            str(pnm_id),
-            {**tallies, "votes_collected": row["other_voters"] + 1},
-        ))
+        broadcast = (str(row["session_id"]), str(round_id), str(pnm_id))
+        if background_tasks is not None:
+            background_tasks.add_task(_broadcast_vote, *broadcast)
+        else:
+            await _broadcast_vote(*broadcast)
 
     return {
         "id": str(row["vote_id"]),

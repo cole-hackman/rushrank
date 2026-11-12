@@ -75,8 +75,6 @@ async def test_tallies_count_everyone_and_the_broadcast_matches(seeded, room, wi
     assert changed["tallies"] == {"yes": 0, "no": 2, "unknown": 0, "favorites": 0}
     assert await db.fetchval("SELECT COUNT(*) FROM votes WHERE round_id = $1", seeded["round"]) == 2
 
-    await asyncio.sleep(0)  # let the background broadcast run
-    await asyncio.sleep(0)
     casts = [m for m in wired if m["type"] == "vote_cast"]
     assert casts[-1]["tallies"] == {"yes": 0, "no": 2, "unknown": 0, "favorites": 0, "votes_collected": 2}
     assert casts[-1]["pnm_id"] == str(seeded["pnm_a"])
