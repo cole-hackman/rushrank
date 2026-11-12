@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timezone
 
 from .auth import get_current_user, get_optional_user
+from .site import public_site_url
 from .models import *
 from .database import get_db
 from .services import (
@@ -1177,7 +1178,7 @@ async def get_interest_qr(
     import qrcode
     from io import BytesIO
 
-    site = os.getenv("PUBLIC_SITE_URL", "https://rushrank.app").rstrip("/")
+    site = public_site_url()
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(f"{site}/interest?chapter={chapter_id}&source={source}")
     qr.make(fit=True)

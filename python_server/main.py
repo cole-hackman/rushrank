@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 
 from .auth import get_current_user, verify_token
+from .site import public_site_url
 from .database import get_db_pool, close_db_pool, set_db_manager
 from .routes import router
 from .exceptions import AppException, register_exception_handlers
@@ -123,6 +124,9 @@ ALLOWED_ORIGINS = [
     for origin in _raw_origins.split(",")
     if origin.strip() and not origin.strip().startswith('https://vercel.com')  # Filter out invalid Vercel project URLs
 ]
+# The site's own origin is always allowed, whatever ALLOWED_ORIGINS says.
+if public_site_url() not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append(public_site_url())
 
 # Add middleware to normalize paths (remove double slashes)
 # This must be added BEFORE CORS middleware
