@@ -5,10 +5,14 @@ Run this script from the project root.
 """
 import asyncio
 import os
+import sys
 import asyncpg
 
 async def add_memberships():
-    database_url = os.getenv("DATABASE_URL", "postgresql://postgres.xzlgutaygqaoasfmznen:cysQu4-nuhjij-caxdyk@aws-1-us-east-2.pooler.supabase.com:5432/postgres")
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        print("DATABASE_URL is not set. Export it (or put it in your .env) and rerun.", file=sys.stderr)
+        sys.exit(1)
     
     # Users to add
     emails = [
