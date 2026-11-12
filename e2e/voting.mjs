@@ -211,9 +211,18 @@ for (let round = 0; round < PNMS_TO_RUN; round++) {
     })
   );
   expected.set(pnmId, picks);
-  await sleep(1800);
-
-  const [[stored]] = sql(
+  // The page shows a vote the moment it is tapped and sends it in the
+  // background, so wait for the rows themselves rather than a fixed pause.
+  let stored = "0";
+  for (let waited = 0; waited < 8000; waited += 400) {
+    await sleep(400);
+    [[stored]] = sql(
+      `select count(*)::text from votes where round_id='${roundId}' and pnm_id='${pnmId}'`
+    );
+    if (Number(stored) >= voterSessions.length) break;
+  }
+  await sleep(600);
+  [[stored]] = sql(
     `select count(*)::text from votes where round_id='${roundId}' and pnm_id='${pnmId}'`
   );
   console.log(`PNM ${round + 1}: ${voterSessions.length} voted concurrently -> ${stored} rows in DB`);
