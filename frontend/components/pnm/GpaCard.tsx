@@ -64,7 +64,7 @@ export function GpaCard({ pnmId, gpa, minGpa, waived, waivedReason, eligibility,
         {!editing && (
           <button
             type="button"
-            className="text-sm font-medium text-beta-navy underline underline-offset-2 touch:min-h-[44px]"
+            className="text-sm font-medium text-beta-navy underline underline-offset-2 touch:min-h-[44px] touch:min-w-[44px]"
             onClick={() => {
               setValue(gpa == null ? "" : String(gpa));
               setEditing(true);

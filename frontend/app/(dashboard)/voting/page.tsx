@@ -24,6 +24,7 @@ import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { useSessionWebSocket } from "@/hooks/useSessionWebSocket";
+import { useMyRole } from "@/hooks/useMyRole";
 import { Tabs } from "@/ui/components/Tabs";
 import { Button } from "@/ui/components/Button";
 import { Badge } from "@/ui/components/Badge";
@@ -64,6 +65,7 @@ const swipeThreshold = 80;
 
 export default function VotingPage() {
   const { toast } = useToast();
+  const { isAdmin } = useMyRole();
   const confirm = useConfirm();
   const router = useRouter();
   
@@ -622,7 +624,7 @@ export default function VotingPage() {
               ) : !session ? (
                 <div className="grid gap-6 md:grid-cols-2">
                   {/* Starting a session is admin-only in the API; members only join. */}
-                  {canOpenRound && (
+                  {isAdmin && (
                   <div className="rounded-xl border border-beta-gray/30 bg-white p-6 shadow-sm">
                     <div className="mb-4 text-xl font-semibold text-beta-navy">Start Session</div>
                     <div className="space-y-4">
