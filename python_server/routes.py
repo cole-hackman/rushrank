@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from .auth import get_current_user, get_optional_user
 from .site import public_site_url
+from . import email_sender
 from .models import *
 from .database import get_db
 from .services import (
@@ -3091,6 +3092,211 @@ async def get_session_waiting(
         "voted": sum(1 for r in rows if r["voted"]),
         "waiting": [{"id": str(r["id"]), "name": r["name"]} for r in rows if not r["voted"]],
     }
+
+
+# ---------------------------------------------------------------------------
+# Self check-in
+#
+# At a 150-person event one brother with a scanner is the bottleneck. Each
+# event has a short code; a QR on a poster or a screen opens a public page
+# carrying it, the PNM types his email, and he is checked in. No sign-in.
+# ---------------------------------------------------------------------------
+
+SELF_CHECKIN_RATE_LIMIT = os.getenv("RATE_LIMIT_SELF_CHECKIN", "120/minute")
+_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to misread off a poster
+
+
+async def _event_with_code(event_id: str, code: str):
+    """The active event this id and code name, or None. Wrong code and no such event look the same."""
+    try:
+        row = await get_db().execute_one("""
+            SELECT e.id, e.chapter_id, e.name, e.date, e.check_in_code, c.name AS chapter_name
+            FROM events e JOIN chapters c ON c.id = e.chapter_id
+            WHERE e.id = $1::uuid AND e.is_active = true
+        """, event_id)
+    except asyncpg.exceptions.DataError:
+        return None
+    if not row or not row["check_in_code"]:
+        return None
+    if not secrets.compare_digest(str(row["check_in_code"]).upper(), (code or "").strip().upper()):
+        return None
+    return row
+
+
+@router.get("/events/{event_id}/self-check-in")
+async def get_self_check_in(
+    event_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """The link PNMs open to check themselves in. Gives the event a code if it has none."""
+    event = await event_service.get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    await chapter_service.verify_membership(current_user["user_id"], event.chapter_id)
+
+    code = event.check_in_code
+    if not code:
+        code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
+        await get_db().execute_command(
+            "UPDATE events SET check_in_code = $2 WHERE id = $1::uuid AND check_in_code IS NULL", event_id, code
+        )
+        row = await get_db().execute_one("SELECT check_in_code FROM events WHERE id = $1::uuid", event_id)
+        code = row["check_in_code"]
+    return {"code": code, "url": f"{public_site_url()}/checkin?e={event_id}&c={quote(code, safe='')}"}
+
+
+@router.get("/events/{event_id}/self-check-in/qr.png")
+async def get_self_check_in_qr(
+    event_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """The same link as a QR code, for a poster or a screen at the door."""
+    link = await get_self_check_in(event_id, current_user)
+
+    import qrcode
+    from io import BytesIO
+
+    qr = qrcode.QRCode(version=1, box_size=12, border=4)
+    qr.add_data(link["url"])
+    qr.make(fit=True)
+    buf = BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+class SelfCheckIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=32)
+    email: str = Field(..., min_length=3, max_length=254)
+
+
+@router.get("/public/events/{event_id}")
+@limiter.limit(SELF_CHECKIN_RATE_LIMIT, key_func=get_ip_rate_limit_key)
+async def public_event(request: Request, event_id: str, code: str = Query(..., max_length=32)):
+    """What the self check-in page shows before the PNM types anything."""
+    event = await _event_with_code(event_id, code)
+    if not event:
+        raise HTTPException(status_code=404, detail="This check-in link is not valid any more")
+    return {
+        "event_name": event["name"],
+        "chapter_name": event["chapter_name"],
+        "chapter_id": str(event["chapter_id"]),
+        "date": event["date"].isoformat() if event["date"] else None,
+    }
+
+
+@router.post("/public/events/{event_id}/check-in")
+@limiter.limit(SELF_CHECKIN_RATE_LIMIT, key_func=get_ip_rate_limit_key)
+async def public_self_check_in(request: Request, event_id: str, payload: SelfCheckIn):
+    """Check a PNM in by the email he signed up with. Needs the event's code."""
+    event = await _event_with_code(event_id, payload.code)
+    if not event:
+        raise HTTPException(status_code=404, detail="This check-in link is not valid any more")
+
+    db = get_db()
+    pnm = await db.execute_one("""
+        SELECT id, name FROM pnms
+        WHERE chapter_id = $1 AND lower(email) = lower($2) AND archived = false
+        ORDER BY created_at DESC LIMIT 1
+    """, event["chapter_id"], payload.email.strip())
+    if not pnm:
+        # The page offers the sign-up form instead. Anyone holding the code is
+        # standing at the event, so saying "not on the list" tells them little.
+        raise HTTPException(status_code=404, detail="not_on_roster")
+
+    inserted = await db.execute_one("""
+        INSERT INTO event_attendance (event_id, pnm_id, checked_in_by_user_id, method)
+        VALUES ($1, $2, NULL, 'SELF')
+        ON CONFLICT (event_id, pnm_id) DO NOTHING
+        RETURNING pnm_id
+    """, event["id"], pnm["id"])
+    return {
+        "status": "checked_in" if inserted else "already_checked_in",
+        "first_name": (pnm["name"] or "").split(" ")[0],
+        "event_name": event["name"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Messages to PNMs
+#
+# "Sports night, Thursday 7pm" to eighty people. The chapter picks PNMs on the
+# roster and writes one message. If the server has SMTP configured it sends one
+# email per PNM; if not, the same request with dry_run tells the page who would
+# get it, and the page hands the list to the sender's own mail app.
+# ---------------------------------------------------------------------------
+
+MAX_MESSAGE_RECIPIENTS = 500
+
+
+class PnmMessage(BaseModel):
+    pnm_ids: List[str] = Field(..., min_length=1, max_length=MAX_MESSAGE_RECIPIENTS)
+    subject: str = Field("", max_length=200)
+    message: str = Field("", max_length=5000)
+    # True: say who would receive it and send nothing.
+    dry_run: bool = False
+
+
+@router.post("/chapters/{chapter_id}/pnm-messages")
+@limiter.limit(AUTH_RATE_LIMIT)
+async def message_pnms(
+    request: Request,
+    chapter_id: str,
+    payload: PnmMessage,
+    current_user: dict = Depends(get_current_user)
+):
+    """Email a set of this chapter's PNMs (admin or exec)."""
+    role = await chapter_service.get_user_role(chapter_id, current_user["user_id"])
+    if role not in ("admin", "exec"):
+        raise HTTPException(status_code=403, detail="Admin or exec role required")
+
+    db = get_db()
+    try:
+        rows = await db.execute_query("""
+            SELECT id, name, email FROM pnms
+            WHERE chapter_id = $1::uuid AND id = ANY($2::uuid[]) AND archived = false
+            ORDER BY name
+        """, chapter_id, list(dict.fromkeys(payload.pnm_ids)))
+    except asyncpg.exceptions.DataError:
+        raise HTTPException(status_code=400, detail="pnm_ids must be PNM ids")
+
+    seen, emails = set(), []
+    for r in rows:
+        address = (r["email"] or "").strip()
+        if address and "@" in address and address.lower() not in seen:
+            seen.add(address.lower())
+            emails.append(address)
+    summary = {
+        "recipients": len(emails),
+        "without_email": sum(1 for r in rows if not (r["email"] or "").strip()),
+        "not_found": len(set(payload.pnm_ids)) - len(rows),
+        "email_configured": email_sender.is_configured(),
+    }
+
+    if payload.dry_run:
+        return {**summary, "emails": emails, "sent": 0}
+
+    if not payload.subject.strip() or not payload.message.strip():
+        raise HTTPException(status_code=400, detail="A subject and a message are both required")
+    if not emails:
+        raise HTTPException(status_code=400, detail="None of those PNMs has an email address")
+    if not email_sender.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="This server is not set up to send email. Use your own mail app instead.",
+        )
+
+    chapter = await db.execute_one("SELECT name FROM chapters WHERE id = $1::uuid", chapter_id)
+    sent, failed = await email_sender.send_individually(
+        emails, payload.subject.strip(), payload.message.strip(),
+        reply_to=current_user.get("email"),
+        sender_name=chapter["name"] if chapter else None,
+    )
+    await audit.record(
+        chapter_id, current_user["user_id"], "pnm.message",
+        entity_type="chapter", entity_id=chapter_id,
+        after={"subject": payload.subject.strip(), "recipients": len(emails), "sent": sent, "failed": len(failed)},
+    )
+    return {**summary, "sent": sent, "failed": len(failed)}
 
 
 # Unified export endpoint

@@ -29,7 +29,23 @@ Still open from the August list, by choice: no chapter switcher; the `.bg-white`
 
 All eighteen findings in section 1 are fixed in their own pull request, with tests: `python_server/tests/integration/test_security_hardening.py`, `test_rls_deny_all.py`, a second seeded chapter in `e2e/seed.py`, and cross-chapter assertions in `e2e/api-contract.mjs` and `e2e/ws-voting.mjs`. Each row below says what changed. Two things are not done: the row-level-security migration is not applied to production (that is your call), and a member still cannot be removed from a chapter. Also fixed along the way: F18 (the legacy round endpoints are removed) and the part of F25 that wrote invite passwords to the server log.
 
-Every other functional finding (section 2) below is unchanged unless listed above.
+### Update, 12 November: functional fixes in the pull requests after the security one
+
+Each of these is in a stacked pull request with tests. The rows in section 2 still describe the defect as it was found.
+
+- **F8, F9** GPA eligibility: the minimum is set under Settings, a GPA is entered and a waiver recorded on the PNM's page, and GPA is in the import mapping menu.
+- **F10** Check-in search narrows the list: `GET /pnms` now honours `search`.
+- **F12** The timer closes voting at zero (the server refuses late votes), restarts on every phone at each advance, and restarts when the chair unlocks.
+- **F13** A vote no longer clears a star. A star with no vote still records `UNKNOWN`; that is unchanged.
+- **F14** A voter without a websocket is sent to Results when the session ends.
+- **F19** (partly) `/events?action=add` opens the form. End time, capacity and the per-event export are unchanged.
+- **F21** PNMs can check themselves in from an event QR, and the emailed QR link opens a real page.
+- **F24** Profile names are saved to `users.name` and shown on notes.
+- **F31, F32** Members no longer see Start Session, Add Event, event edit and delete, Make cuts or Bulk Tag; Results is in the phone menu.
+- **F34** Invite and QR links come from `PUBLIC_SITE_URL`.
+- **New:** the projector view (`/present`), the chair's "Waiting on" list, a one-statement vote path, and email to a set of PNMs.
+
+Not touched, because each needs your decision: F5 (anonymous votes), F6 and F7 (the exec role), and the mid-session additions behaviour. Everything else in section 2 that is not listed here is still open.
 
 ## How to read this
 

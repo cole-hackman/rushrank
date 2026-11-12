@@ -404,6 +404,64 @@ await t("GET /events/{event_id}/attendance", "member", `/events/${EV}/attendance
 await t("POST /events/{event_id}/attendance", "none", `/events/${EV2}/attendance`, { body: { event_id: EV2, pnm_id: P2 }, expect: DENIED });
 await t("POST /events/{event_id}/attendance", "member", `/events/${EV2}/attendance`, { body: { event_id: EV2, pnm_id: P2 }, expect: OK });
 await t("POST /events/{event_id}/attendance", "member", `/events/${EV2}/attendance`, { body: { event_id: EV2, pnm_id: P2 }, expect: 400, note: "already checked in" });
+
+// ------------------------------------------------------------ self check-in
+// A PNM checks himself in from the event's QR code: no sign-in, needs the code.
+await t("GET /events/{event_id}/self-check-in", "none", `/events/${EV}/self-check-in`, { expect: DENIED });
+const sci = await t("GET /events/{event_id}/self-check-in", "member", `/events/${EV}/self-check-in`, { expect: 200 });
+const SCODE = sci.json?.code || "";
+await t("GET /events/{event_id}/self-check-in/qr.png", "none", `/events/${EV}/self-check-in/qr.png`, { expect: DENIED });
+await t("GET /events/{event_id}/self-check-in/qr.png", "member", `/events/${EV}/self-check-in/qr.png`, { expect: 200 });
+await t("GET /public/events/{event_id}", "none", `/public/events/${EV}?code=WRONG1`, { expect: 404, note: "wrong code" });
+await t("GET /public/events/{event_id}", "none", `/public/events/${EV}?code=${SCODE}`, { expect: 200 });
+{
+  const [selfId, selfEmail] = sql(
+    `select p.id::text, p.email from pnms p where p.chapter_id='${C}' and p.email is not null and p.email <> '' and not p.archived
+       and not exists (select 1 from event_attendance a where a.event_id='${EV}' and a.pnm_id=p.id) order by p.name limit 1`
+  )[0] || [];
+  await t("POST /public/events/{event_id}/check-in", "none", `/public/events/${EV}/check-in`, { body: { code: "WRONG1", email: selfEmail }, expect: 404, note: "wrong code" });
+  await t("POST /public/events/{event_id}/check-in", "none", `/public/events/${EV}/check-in`, { body: { code: SCODE, email: `nobody-${stamp}@example.com` }, expect: 404, note: "email not on the roster" });
+  if (fx.other) {
+    const otherEmail = `otto-${stamp}@other-campus.test`;
+    sql(`update pnms set email='${otherEmail}' where id='${fx.other.pnm}'`);
+    await t("POST /public/events/{event_id}/check-in", "none", `/public/events/${EV}/check-in`, { body: { code: SCODE, email: otherEmail }, expect: 404, note: "another chapter's PNM" });
+  }
+  if (selfId) {
+    const done = await t("POST /public/events/{event_id}/check-in", "none", `/public/events/${EV}/check-in`, { body: { code: SCODE, email: selfEmail.toUpperCase() }, expect: 200 });
+    const method = sql(`select method::text from event_attendance where event_id='${EV}' and pnm_id='${selfId}'`)[0]?.[0];
+    if (done.json?.status !== "checked_in" || method !== "SELF") {
+      results.push({ op: "POST /public/events/{event_id}/check-in", as: "none", outcome: "FAIL", detail: `status=${done.json?.status} method=${method}` });
+      console.log(`  FAIL self check-in did not record a SELF attendance row (status=${done.json?.status}, method=${method})`);
+    }
+    await t("POST /public/events/{event_id}/check-in", "none", `/public/events/${EV}/check-in`, { body: { code: SCODE, email: selfEmail }, expect: 200, note: "second time is not an error" });
+  } else {
+    results.push({ op: "POST /public/events/{event_id}/check-in", as: "none", outcome: "FAIL", detail: "no seeded PNM with an email to check in" });
+    console.log("  FAIL no seeded PNM with an email to check in");
+  }
+}
+
+// --------------------------------------------------------- messages to PNMs
+{
+  const ids = roster.slice(0, 5).map((p) => p.id);
+  await t("POST /chapters/{chapter_id}/pnm-messages", "none", `/chapters/${C}/pnm-messages`, { body: { pnm_ids: ids, dry_run: true }, expect: DENIED });
+  await t("POST /chapters/{chapter_id}/pnm-messages", "member", `/chapters/${C}/pnm-messages`, { body: { pnm_ids: ids, dry_run: true }, expect: 403 });
+  const dry = await t("POST /chapters/{chapter_id}/pnm-messages", "exec", `/chapters/${C}/pnm-messages`, { body: { pnm_ids: ids, dry_run: true }, expect: 200 });
+  if (dry.status === 200 && (dry.json?.sent !== 0 || !Array.isArray(dry.json?.emails))) {
+    results.push({ op: "POST /chapters/{chapter_id}/pnm-messages", as: "exec", outcome: "FAIL", detail: "dry run should list emails and send nothing" });
+    console.log("  FAIL pnm-messages dry run has the wrong shape");
+  }
+  // The local stack has no SMTP configured, so a real send must be refused, not faked.
+  await t("POST /chapters/{chapter_id}/pnm-messages", "admin", `/chapters/${C}/pnm-messages`, {
+    body: { pnm_ids: ids, subject: "E2E", message: "E2E" }, expect: [400, 503], note: "email is not configured locally",
+  });
+  if (fx.other) {
+    const cross = await t("POST /chapters/{chapter_id}/pnm-messages", "admin", `/chapters/${C}/pnm-messages`, { body: { pnm_ids: [fx.other.pnm], dry_run: true }, expect: 200, note: "another chapter's PNM is not a recipient" });
+    if (cross.json?.recipients !== 0) {
+      results.push({ op: "POST /chapters/{chapter_id}/pnm-messages", as: "admin", outcome: "FAIL", detail: "another chapter's PNM was included" });
+      console.log("  FAIL pnm-messages included another chapter's PNM");
+    }
+  }
+}
 await t("POST /events/export", "none", `/events/export?chapter_id=${C}`, { expect: DENIED });
 await t("POST /events/export", "member", `/events/export?chapter_id=${C}`, { expect: 403 });
 await t("POST /events/export", "admin", `/events/export?chapter_id=${C}`, { expect: 200 });

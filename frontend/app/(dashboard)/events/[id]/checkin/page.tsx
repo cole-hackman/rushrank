@@ -8,6 +8,7 @@
  * - Live attendee count
  * - Recent check-ins list
  */
+import { SelfCheckInCard } from "@/components/events/SelfCheckInCard";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, getChapterId } from "@/lib/api";
@@ -232,6 +233,7 @@ export default function CheckInPage() {
 
       {/* Main Content */}
       <div className="flex-1 space-y-4 p-4">
+        <SelfCheckInCard eventId={eventId} />
         {/* Search Section */}
         <div className="space-y-3">
           <div className="flex gap-2">

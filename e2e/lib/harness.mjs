@@ -134,6 +134,7 @@ export function routes(fx) {
     { path: "/admin/duplicates", name: "admin-duplicates" },
     { path: "/settings", name: "settings" },
     { path: "/profile", name: "profile" },
+    { path: "/present", name: "present" },
   ].filter((r) => r.path);
 }
 
@@ -146,6 +147,7 @@ export function publicRoutes(fx) {
     { path: `/interest?chapter=${fx.chapter.id}`, name: "interest" },
     { path: "/get-started", name: "get-started" },
     { path: "/demo", name: "demo" },
+    { path: "/checkin?p=00000000-0000-4000-8000-000000000000", name: "checkin" },
   ];
 }
 

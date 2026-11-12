@@ -10,6 +10,8 @@ import { FeatherDownload } from "@subframe/core";
 import { FeatherEye } from "@subframe/core";
 import { FeatherSearch } from "@subframe/core";
 import { FeatherTag } from "@subframe/core";
+import { FeatherMail } from "@subframe/core";
+import { EmailPnmsModal } from "@/components/pnm/EmailPnmsModal";
 import { FeatherUsers } from "@subframe/core";
 import { FeatherTrash2 } from "@subframe/core";
 import { FeatherImage } from "@subframe/core";
@@ -87,6 +89,8 @@ export default function PNMsPage() {
   // The PowerPoint export is allowed for admin and exec (routes.py
   // export_pnms_pptx). Members used to see the button and get a 403.
   const [canExportDeck, setCanExportDeck] = useState(false);
+  // Ids the Email dialog is open for; null when it is closed.
+  const [emailIds, setEmailIds] = useState<string[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   // The list the academic chair needs before bids go out.
   const [belowMinOnly, setBelowMinOnly] = useState(false);
@@ -477,6 +481,21 @@ export default function PNMsPage() {
           >
             {selectedPnmIds.length > 0 ? `Export CSV (${selectedPnmIds.length})` : "Export CSV"}
           </Button>
+          {/* Admin and exec, like the deck: the API refuses everyone else. With
+              rows ticked it emails those; otherwise everyone the filters show. */}
+          {canExportDeck && filteredPnms.length > 0 && (
+            <Button
+              variant="neutral-secondary"
+              icon={<FeatherMail />}
+              onClick={() =>
+                setEmailIds(
+                  (selectedPnmIds.length > 0 ? selectedPnmIds : filteredPnms.map((p) => p.id)).slice(0, 500)
+                )
+              }
+            >
+              Email ({selectedPnmIds.length > 0 ? selectedPnmIds.length : filteredPnms.length})
+            </Button>
+          )}
           {canExportDeck && (
             <Button
               variant="neutral-secondary"
@@ -801,6 +820,10 @@ export default function PNMsPage() {
           chapterId={chapterId}
           onComplete={handleBulkTagComplete}
         />
+
+        {emailIds && chapterId && (
+          <EmailPnmsModal chapterId={chapterId} pnmIds={emailIds} onClose={() => setEmailIds(null)} />
+        )}
       </div>
     </div>
   );
