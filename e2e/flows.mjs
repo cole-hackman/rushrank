@@ -386,6 +386,30 @@ await flow("9. admin opens a round; a member votes in Open Voting", async (sink)
   return { ok: true, detail: `member voted Yes on "${first}" and moved on to "${next}"` };
 });
 
+// 10 ----------------------------------------------------------- self check-in
+await flow("10. a PNM checks himself in from the event's QR link", async (sink) => {
+  const ev = fx.event.id;
+  const link = await (await fetch(`${API}/api/v1/events/${ev}/self-check-in`, { headers: { Authorization: `Bearer ${member.token}` } })).json();
+  if (!link?.url) return { ok: false, detail: "GET /events/{id}/self-check-in returned no link" };
+  const row = sql(
+    `select p.id::text, p.name, p.email from pnms p where p.chapter_id='${C}' and p.email is not null and p.email <> '' and not p.archived
+       and not exists (select 1 from event_attendance a where a.event_id='${ev}' and a.pnm_id=p.id) order by p.name desc limit 1`
+  )[0];
+  if (!row) return { ok: false, detail: "no seeded PNM with an email left to check in" };
+  const [pnmId, pnmName, pnmEmail] = row;
+
+  const ctx = await ctxFor(null, true); // signed out, on a phone
+  const page = await open(ctx, new URL(link.url).pathname + new URL(link.url).search, sink, "self-checkin");
+  await page.getByLabel(/email you signed up with/i).fill(pnmEmail);
+  await page.getByRole("button", { name: /^Check in$/i }).click();
+  const shown = await page.getByText(/You are checked in/i).isVisible({ timeout: 5000 }).catch(() => false);
+  const method = one(`select method::text from event_attendance where event_id='${ev}' and pnm_id='${pnmId}'`);
+  await ctx.close();
+  if (!shown) return { ok: false, detail: "the page did not say the PNM was checked in" };
+  if (method !== "SELF") return { ok: false, detail: `attendance method is ${method}, expected SELF` };
+  return { ok: true, detail: `${pnmName} checked himself in` };
+});
+
 await browser.close();
 
 writeFileSync(join(ROOT, "report-flows.json"), JSON.stringify({ script: "flows", outcomes }, null, 2));
