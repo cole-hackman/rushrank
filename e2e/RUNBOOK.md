@@ -73,13 +73,13 @@ Run from `e2e/`. "Reseed" means `cd .. && python3 e2e/guard.py --seed && cd e2e`
 | Order | Command | Writes | Expected | Then |
 |---|---|---|---|---|
 | 1 | `node smoke.mjs` | no | `redirected to login: false`, `errors : 0` | |
-| 2 | `node roles.mjs` | no | `88 page loads`, `0 new` (5 known) | |
+| 2 | `node roles.mjs` | no | `93 page loads`, `0 new` (4 known) | |
 | 3 | `node visual.mjs` | no | `0 visual finding(s)`; screenshots in `screens/` | |
-| 4 | `node ws-voting.mjs 24 4` | yes | `63 checks passed`, `0 new blocker/high` (2 known) | |
+| 4 | `node ws-voting.mjs 24 4` | yes | `64 checks passed`, `0 finding(s)` | |
 | 5 | `node voting.mjs 24` | yes | `0 finding(s)` | Reseed |
-| 6 | `node api-contract.mjs` | yes, deletes | `285 assertions`, `FAILED 0`, `uncovered 0` (2 known, 8 external) | Reseed |
-| 7 | `node flows.mjs` | yes | `12 flows: 10 ok, 2 known defect(s), 0 new failure(s)` | Reseed |
-| 8 | `node crawl.mjs` | yes | `report-crawl.json` | Reseed |
+| 6 | `node api-contract.mjs` | yes, deletes | `310 assertions`, `FAILED 0`, `uncovered 0` (2 known, 8 external) | Reseed |
+| 7 | `node flows.mjs` | yes | `13 flows: 13 ok, 0 known defect(s), 0 new failure(s)` | Reseed |
+| 8 | `node crawl.mjs` (about 12 minutes) | yes | `report-crawl.json`; the only findings are 502s from card exports, which need cloud storage the local stack does not have | Reseed |
 | 9 | `node destructive.mjs` | deletes | `6/6 checks passed` | Reseed |
 | 10 | `node verify-changes.mjs` | yes | `12 passed, 0 failed` | Reseed |
 
@@ -99,7 +99,7 @@ cd python_server && pytest -q -m "not integration"
 TEST_DATABASE_URL=postgresql://$(whoami)@localhost:5432/postgres pytest -q -m integration
 ```
 
-Expected: `88 passed`, then `177 passed`. The integration suite creates and drops its own databases (`rr_it_fresh`, `rr_it_legacy`, `rr_it_demo`). Only ever point `TEST_DATABASE_URL` at local Postgres.
+Expected: `88 passed`, then `195 passed`. The integration suite creates and drops its own databases (`rr_it_fresh`, `rr_it_legacy`, `rr_it_demo`). Only ever point `TEST_DATABASE_URL` at local Postgres.
 
 ```bash
 cd frontend && npm run lint && npm run typecheck && npm run test
