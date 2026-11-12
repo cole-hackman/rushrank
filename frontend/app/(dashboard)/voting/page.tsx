@@ -278,8 +278,16 @@ export default function VotingPage() {
         );
       }
       setTimerRemaining(res?.timer_remaining ?? null);
-    } catch {
-      // ignore
+    } catch (e: any) {
+      // A 404 means the session is over. A voter whose websocket is down only
+      // has this poll, and used to sit on a dead card until he reloaded.
+      if (e?.status === 404 && session?.id === id && session.round_id) {
+        const roundId = session.round_id;
+        setSession(null);
+        setSessionPNM(null);
+        toast({ title: "Session completed", description: "Redirecting to results..." });
+        router.push(`/results?roundId=${roundId}`);
+      }
     }
   };
 

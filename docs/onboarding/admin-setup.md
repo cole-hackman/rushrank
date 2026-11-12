@@ -86,6 +86,15 @@ Questions every PNM answers when they sign up, such as "Why this chapter?".
 
 The questions appear on the intake form, on Rush Mode's Add PNM, and on the public `/intake?chapter=` link. A PNM's answers show on their page under **Intake answers**.
 
+## 6c. Set a minimum GPA (optional)
+
+If your chapter or campus has a GPA floor:
+
+1. Go to **Admin → Settings → Academic eligibility**.
+2. Enter the minimum and choose **Save**. **Turn off** removes it.
+
+PNMs below it are flagged on the roster. Any brother can enter a PNM's GPA on that PNM's page under **Academic eligibility**; an admin or exec can **Waive the minimum** there, with a reason that is kept in the Activity Log. A PNM with no GPA on file is never treated as below the minimum.
+
 ## 7. Create your tags
 
 Tags are labels such as "Athlete" or "Legacy" that you can put on PNMs.
@@ -175,14 +184,12 @@ These do not work as you would expect today. Each has a workaround where one exi
 
 | Problem | What to do |
 |---|---|
-| **There is no place to set a GPA minimum,** enter a GPA by hand, or record a waiver. | GPA can only come in through a CSV import column. Track eligibility outside RushRank for now. |
 | The welcome message says "Invite your team from Settings". | Invites are on **User Management**. |
 
 ### Importing and intake
 
 | Problem | What to do |
 |---|---|
-| **In the import preview, a GPA column shows as "Ignore this column".** | It is imported anyway. Leave it. |
 | **The full intake form has no shareable link in the app,** and when opened by someone who is not signed in, its photo upload fails. | Build the link yourself: your site address, then `/intake?chapter=` and your chapter id (the id is in your interest link). Or use Rush Mode's Add PNM at events. |
 | **Imported PNMs are not emailed a check-in QR code.** | Check them in by name at events. |
 | **The public forms do not check for duplicates.** Submitting twice creates two records. | Merge them on the Duplicates page. |

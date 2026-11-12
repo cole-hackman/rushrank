@@ -94,7 +94,9 @@ You see one PNM at a time: the one the chair has put up.
 - Or swipe the card: right for Yes, left for No, up for Don't Know.
 - Tap the star to mark a favourite.
 
-You will see "Voted YES", "Voted NO" or "Voted Don't Know". You can change your vote for as long as that PNM is on screen; your latest tap is the one that counts.
+Your choice shows under the card straight away as **Your vote**. You can change it for as long as that PNM is on screen; your latest tap is the one that counts. If the chair has set a timer, voting on that PNM closes when it reaches zero and you see "Time is up".
+
+A star stays when you vote, and a vote stays when you star.
 
 If you have not met the PNM, **Don't Know** is the honest vote.
 
@@ -131,17 +133,12 @@ Sometimes the rush chair opens a round outside a meeting. Tap **Voting**, then *
 | Problem | What to do |
 |---|---|
 | **You may not get an invitation email.** | Use **Forgot password?** as in step 1. |
-| **Some buttons will not work for you** and show an error: Start Session, Add Event, Make cuts, Bulk Tag, and editing or deleting an event. They are for admins. | Ignore them. |
 | **If you star a PNM and then vote, the star is removed.** | Vote first, then tap the star. |
 | **Tapping the star without voting counts as a "Don't Know" vote.** | Vote first, then star. |
 | **The star still looks tappable when voting is locked,** then shows "Failed to favorite". | Wait for the next PNM. |
 | **You cannot see how you already voted on the current PNM,** and the "Your Progress" counts reset if you reload the page. | If unsure, vote again. Your latest vote replaces the earlier one. |
 | **A session marked "Anonymous" is not anonymous.** Your votes are stored against your account as usual. | Assume admins can see your voting pattern. |
-| **The timer on your phone may not restart** when the chair moves to the next PNM. | Go by the chair. |
-| **If your screen says "Polling" when the session ends, you are not taken to the results.** | Open Results yourself (on a laptop, or ask the chair for the link). |
-| **There is no Results button on a phone.** | You are taken there after a session. Otherwise use a laptop. |
 | **"Post anonymously" hides your name on screen only.** The note still carries your account id. | Do not write anything you would not sign. |
-| **Changing your name on the Profile page does not stick,** and other brothers may see you as "A brother" or as your email address. | None today. |
 | **On an event's check-in page, typing a name does not narrow the list.** | Check in from **Rush → Check In → Manual List** instead. |
 | **Observers cannot vote, post notes or mark "met".** If every button gives an error, you have been set as an observer. | Ask your rush chair to make you a Member. |
 

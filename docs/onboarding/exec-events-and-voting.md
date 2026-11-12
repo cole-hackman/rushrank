@@ -28,6 +28,15 @@ Any member can do this, on a phone.
 
 If someone is already checked in you will see "Already checked in".
 
+**Let PNMs check themselves in:**
+
+1. On the event's check-in page, open **Let PNMs check themselves in**. A QR code appears.
+2. Choose **Show full screen** and leave it on a laptop or tablet at the door, or **Copy link** and put it on a poster.
+3. A PNM scans it with his phone's camera, types the email he signed up with, and is checked in. He does not need an account.
+4. If his email is not on your roster he is offered your sign-up form. A brother can also check him in by name.
+
+Self check-ins appear in the same count and **Recent Check-Ins** list.
+
 **From Rush Mode:**
 
 1. Go to **Rush**. Pick the event under **ACTIVE EVENT**; today's event is selected for you.
@@ -65,6 +74,7 @@ Tick rows to act on several at once:
 - **Export CSV**: downloads exactly what the roster is showing, or only the ticked rows if any are ticked. Search and filter first to export a subset.
 - Admins can also **Bulk Tag**, **Archive** and **Delete**. Each asks you to confirm first.
 - **Export → PowerPoint** (admins only) builds a slide per PNM.
+- **Email** (admins and exec): one message to the ticked PNMs, or to everyone the roster is showing if none are ticked. Write a subject and a message. If your installation is set up to send email, **Send** delivers one email to each PNM, with replies coming to you. If it is not, **Open in my mail app** starts the message in your own mail app with everyone as a blind copy, and **Copy the addresses** is there for long lists. PNMs with no email on file are left out and counted.
 
 ### A PNM's page
 
@@ -104,11 +114,13 @@ Each screen shows **Live** when it is connected. **Polling** means that phone is
 For each PNM:
 
 1. Brothers vote **Yes**, **No** or **Don't Know**, by tapping or by swiping (right for Yes, left for No, up for Don't Know). They can change their vote while the PNM is on screen.
-2. Watch **Votes Collected**. It counts brothers who have voted so far in the session, out of everyone in the chapter.
-3. To stop voting on this PNM, choose **Lock Voting**. Brothers' buttons grey out and late votes are refused. **Unlock Voting** reopens it.
+2. Watch **Votes Collected**. It counts brothers who have voted so far in the session, out of everyone in the chapter. Under the card, **Waiting on** lists the brothers who have not voted on this PNM yet. It shows who has voted, never how.
+3. If you set a timer, voting on the PNM closes by itself when it reaches zero and brothers see "Time is up". To stop sooner, choose **Lock Voting**. Brothers' buttons grey out and late votes are refused. **Unlock Voting** reopens voting and restarts the timer.
 4. Choose **Next PNM**. Every phone moves to the next person.
 
 Any admin in the session has the chair controls, not only the person who started it.
+
+**Put it on the wall.** Choose **Open the projector view in a new tab** and move that tab to the projector. It shows the PNM's photo and name, how many votes are in, the timer and the join code. It has no controls, and it never shows how the vote is splitting.
 
 **Someone added during the session** (a walk-up added in Rush Mode, a prospect moved to rush, an unarchived PNM, a CSV import) joins the end of the running order, so you reach them after everyone already queued.
 
@@ -199,12 +211,9 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 
 | Problem | What to do |
 |---|---|
-| **Searching on an event's check-in page does not narrow the list.** Typing a name still shows everyone, so the first **Check In** button is not the person you typed. | Scroll to the right name before tapping, or use **Rush → Check In → Manual List**, whose search does work. |
 | **Rush Mode's Check In can open on the wrong event.** It picks the first event in the list, not the one you selected. | Check the event shown at the top of the check-in screen before you start. |
 | **End Time and Capacity Limit are not saved.** | Put them in the description. |
 | **Export Attendance on an event's row exports every event's attendance.** | Use **Export Center → Export Event Attendance** for one event. |
-| **The dashboard's Create Event and New Event buttons open the Events page without the form.** | Choose **Add Event** on the page. |
-| **PNMs cannot check themselves in.** There is no event QR to display, and the QR a PNM is emailed opens a page that does not exist if they scan it with their own camera. | A brother checks each PNM in, by name or by scanning the PNM's code with the in-app scanner. |
 | **A PNM's QR code cannot be viewed inside RushRank.** It only reaches them by email, and only if email is configured for your installation. | Check in by name. |
 | **The selected active event is remembered per phone,** not shared. | Each brother doing check-in selects the event himself. |
 
@@ -214,19 +223,14 @@ Each PNM in the **Bid** column has a dropdown: **Not sent**, **Offered**, **Acce
 |---|---|
 | **A PNM's page cannot be edited.** No changing details, tags or photo from there. | Tag from the roster with Bulk Tag. Photos can only be added when the PNM is created in Rush Mode. |
 | **"Yes Rate" always shows a dash and "Favorites" always shows 0** on a PNM's page. | Use the Results page. |
-| **Anonymous notes are not fully anonymous.** Your name is hidden on screen, but the note still carries your account id to other brothers' browsers. | Do not treat a note as private. |
-| **Brothers may appear as "A brother" or as an email address** in "Who's met him" and on notes. | None today. |
 
 ### Voting
 
 | Problem | What to do |
 |---|---|
 | **"Anonymous votes" does nothing.** The box adds an "Anonymous" badge only. Votes are stored against each brother, and admins can still see each brother's voting pattern on Analytics. | Do not tell the chapter a session is anonymous. |
-| **The timer does not do anything at zero,** and on brothers' phones it does not restart when you move to the next PNM. | Treat it as a guide for the chair. Lock by hand. |
 | **A session always includes the whole active roster.** It ignores the new round created by a cut. | Tick "Also archive…" when you cut, or archive by hand first. |
-| **You cannot see who has not voted,** only how many have. | Ask the room. |
 | **You cannot go back to an earlier PNM.** | Start a new session if you must revote. |
-| **A brother whose phone shows "Polling" is not sent to Results when the session ends.** His screen stays on the last PNM. | Tell him to open Results himself. |
 
 ### Results, cuts and bids
 
