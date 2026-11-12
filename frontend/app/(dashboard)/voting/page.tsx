@@ -23,7 +23,7 @@ import {
 import { api, getChapterId } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { useSessionWebSocket } from "@/hooks/useSessionWebSocket";
+import { useSessionWebSocket, type AdvanceExtra } from "@/hooks/useSessionWebSocket";
 import { useMyRole } from "@/hooks/useMyRole";
 import { Tabs } from "@/ui/components/Tabs";
 import { Button } from "@/ui/components/Button";
@@ -98,6 +98,14 @@ export default function VotingPage() {
   // every device in the room shows the same number; a local interval only
   // animates between refreshes.
   const [timerRemaining, setTimerRemaining] = useState<number | null>(null);
+
+  // The choice shown for the PNM on screen. Set the moment the brother taps, and
+  // taken back if the server refuses the vote.
+  const [myVote, setMyVote] = useState<{ pnmId: string; choice: VoteChoice } | null>(null);
+  // Photo of whoever is next in the running order, fetched ahead of the advance.
+  const [nextPhotoUrl, setNextPhotoUrl] = useState<string | null>(null);
+  // Chair only: who has not voted on the PNM on screen.
+  const [waiting, setWaiting] = useState<{ voted: number; waiting: { id: string; name: string }[] } | null>(null);
 
   // Shared UI state
   const [dragDirection, setDragDirection] = useState<"left" | "right" | "up" | null>(null);
@@ -250,8 +258,10 @@ export default function VotingPage() {
         timer_seconds?: number | null;
         timer_remaining?: number | null;
         votes_collected?: number;
+        next_photo_url?: string | null;
       }>(`/sessions/${id}/current`);
       setSessionPNM(res?.pnm || null);
+      setNextPhotoUrl(res?.next_photo_url ?? null);
       if (res?.locked !== undefined || res?.votes_collected !== undefined) {
         setSession((prev) =>
           prev
@@ -278,6 +288,14 @@ export default function VotingPage() {
     const roundId = mode === "open" ? openRoundId : session?.round_id;
     if (!target || !roundId) return;
 
+    // Live session: show the choice at once and send it in the background. The
+    // room moves at the speed of the slowest phone otherwise. A refused vote is
+    // taken back below.
+    const previous = myVote;
+    if (mode === "session") {
+      setMyVote({ pnmId: target.id, choice });
+    }
+
     try {
       await api(`/votes`, {
         method: "POST",
@@ -285,7 +303,8 @@ export default function VotingPage() {
           round_id: roundId,
           pnm_id: target.id,
           choice,
-          favorite,
+          // Only sent when starring. Leaving it out keeps an existing star.
+          ...(favorite ? { favorite: true } : {}),
         },
       });
       setVoteStats((prev) => ({
@@ -300,6 +319,9 @@ export default function VotingPage() {
         await fetchNextOpenPNM();
       }
     } catch (e: any) {
+      if (mode === "session") {
+        setMyVote((current) => (current?.pnmId === target.id ? previous : current));
+      }
       const locked = e?.status === 409;
       // api() already retried a 429 once. If it still failed, say plainly that
       // the vote did not land -- the old generic "Vote failed" left brothers
@@ -308,7 +330,9 @@ export default function VotingPage() {
       toast({
         title: locked ? "Voting is locked" : busy ? "Vote not recorded" : "Vote failed",
         description: locked
-          ? "The chair has locked voting for this PNM."
+          ? e?.message?.includes("Time is up")
+            ? "Time is up for this PNM."
+            : "The chair has locked voting for this PNM."
           : busy
             ? "The server was busy. Swipe again to record your vote."
             : e?.message,
@@ -473,7 +497,10 @@ export default function VotingPage() {
   };
 
   // WebSocket for real-time session updates
-  const handleWsPnmAdvance = useCallback((pnmId: string | null, pnm: PNM | null) => {
+  const handleWsPnmAdvance = useCallback((pnmId: string | null, pnm: PNM | null, extra?: AdvanceExtra) => {
+    // A new PNM: the clock restarts for everyone, not only the chair.
+    if (extra?.timer_remaining !== undefined) setTimerRemaining(extra.timer_remaining ?? null);
+    setNextPhotoUrl(extra?.next_photo_url ?? null);
     if (pnm) {
       setSessionPNM(pnm);
     } else if (pnmId) {
@@ -494,6 +521,8 @@ export default function VotingPage() {
   const handleWsLockChange = useCallback((locked: boolean) => {
     if (session) {
       setSession({ ...session, locked });
+      // Unlocking restarts the clock on the server; pick the new time up.
+      if (!locked) fetchSessionCurrent(session.id);
     }
   }, [session]);
 
@@ -527,6 +556,49 @@ export default function VotingPage() {
 
     return () => clearInterval(interval);
   }, [session?.id, activeTab, wsConnected]);
+
+  // With a timer set, voting on the PNM on screen stops at zero. The server
+  // refuses late votes too; this keeps the buttons honest.
+  const timeUp = !!session?.timer_seconds && timerRemaining === 0;
+
+  // A new PNM on screen starts with no choice shown.
+  useEffect(() => {
+    setMyVote((current) => (current && current.pnmId !== sessionPNM?.id ? null : current));
+  }, [sessionPNM?.id]);
+
+  // Fetch the next photo before the chair advances, so the next card does not
+  // open on a blank frame while a phone downloads it.
+  useEffect(() => {
+    if (!nextPhotoUrl) return;
+    const img = new Image();
+    img.src = nextPhotoUrl;
+  }, [nextPhotoUrl]);
+
+  // Chair only: who the room is waiting on. Refreshed every few seconds while a
+  // PNM is on screen; it is one small request from one device.
+  useEffect(() => {
+    if (!isChair || !session?.id || !sessionPNM?.id || activeTab !== "session") {
+      setWaiting(null);
+      return;
+    }
+    let live = true;
+    const load = async () => {
+      try {
+        const res = await api<{ voted: number; waiting: { id: string; name: string }[] }>(
+          `/sessions/${session.id}/waiting`
+        );
+        if (live) setWaiting(res);
+      } catch {
+        // The list is a convenience; the session carries on without it.
+      }
+    };
+    load();
+    const interval = setInterval(load, 3000);
+    return () => {
+      live = false;
+      clearInterval(interval);
+    };
+  }, [isChair, session?.id, sessionPNM?.id, activeTab]);
 
   useEffect(() => {
     if (timerRemaining === null) return;
@@ -718,12 +790,44 @@ export default function VotingPage() {
                       <VoteCard
                         pnm={sessionPNM}
                         dragDirection={dragDirection}
-                        disabled={session.locked}
+                        disabled={session.locked || timeUp}
                         onFavorite={() => handleFavorite("session")}
                         onVote={(choice) => submitVote("session", choice)}
                         onDrag={handleDrag}
                         onDragEnd={handleDragEnd}
                       />
+                      {(timeUp || myVote?.pnmId === sessionPNM.id) && (
+                        <div className="flex flex-wrap items-center justify-center gap-2 text-sm" aria-live="polite">
+                          {myVote?.pnmId === sessionPNM.id && (
+                            <span className="rounded-full bg-beta-navy/10 px-3 py-1 font-medium text-beta-navy">
+                              Your vote: {myVote.choice === "UNKNOWN" ? "Don't know" : myVote.choice === "YES" ? "Yes" : "No"}
+                            </span>
+                          )}
+                          {timeUp && (
+                            <span className="rounded-full bg-amber-100 px-3 py-1 font-medium text-amber-800">
+                              Time is up. Voting on this PNM is closed.
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {isChair && waiting && (
+                        <div className="rounded-xl border border-beta-gray/30 bg-white p-4 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-beta-navy">
+                              {waiting.waiting.length === 0
+                                ? "Everyone has voted"
+                                : `Waiting on ${waiting.waiting.length}`}
+                            </span>
+                            <span className="text-beta-gray">{waiting.voted} voted</span>
+                          </div>
+                          {waiting.waiting.length > 0 && (
+                            <p className="mt-2 text-beta-gray">
+                              {waiting.waiting.slice(0, 12).map((w) => w.name).join(", ")}
+                              {waiting.waiting.length > 12 ? `, and ${waiting.waiting.length - 12} more` : ""}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       {isChair && (
                         <div className="space-y-3">
                           <div className="flex gap-3">
@@ -749,6 +853,14 @@ export default function VotingPage() {
                               in a session, often on a phone; a destructive
                               control the same size and colour immediately next
                               to it is a mis-tap waiting to happen. */}
+                          <a
+                            href="/present"
+                            target="_blank"
+                            rel="noopener"
+                            className="block w-full rounded-lg border border-beta-gray/40 px-4 py-2 text-center text-sm font-medium text-beta-navy touch:min-h-[44px] touch:py-3"
+                          >
+                            Open the projector view in a new tab
+                          </a>
                           <Button
                             variant="destructive-secondary"
                             icon={<Square className="h-4 w-4" />}

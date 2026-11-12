@@ -527,6 +527,22 @@ await t("POST /sessions/join", "member", "/sessions/join", { body: { join_code: 
 await t("POST /sessions/join", "member", "/sessions/join", { body: { join_code: "ZZZZZ0" }, expect: 404, note: "wrong code" });
 await t("GET /sessions/{session_id}/current", "none", `/sessions/${S}/current`, { expect: DENIED });
 const cur = await t("GET /sessions/{session_id}/current", "member", `/sessions/${S}/current`, { expect: 200 });
+for (const key of ["current_votes", "eligible_voters", "position", "total", "next_photo_url"]) {
+  if (cur.json?.pnm && !(key in cur.json)) {
+    results.push({ op: "GET /sessions/{session_id}/current", as: "member", outcome: "FAIL", detail: `response has no ${key}` });
+    console.log(`  FAIL GET /sessions/{id}/current has no ${key}`);
+  }
+}
+// Who the chair is waiting on: names only, never choices, and admin only.
+await t("GET /sessions/{session_id}/waiting", "none", `/sessions/${S}/waiting`, { expect: DENIED });
+await t("GET /sessions/{session_id}/waiting", "member", `/sessions/${S}/waiting`, { expect: 403 });
+{
+  const w = await t("GET /sessions/{session_id}/waiting", "admin", `/sessions/${S}/waiting`, { expect: 200 });
+  if (w.status === 200 && (!Array.isArray(w.json?.waiting) || typeof w.json?.voted !== "number")) {
+    results.push({ op: "GET /sessions/{session_id}/waiting", as: "admin", outcome: "FAIL", detail: "expected {voted, waiting[]}" });
+    console.log("  FAIL GET /sessions/{id}/waiting has the wrong shape");
+  }
+}
 await t("POST /sessions/{session_id}/lock", "none", `/sessions/${S}/lock`, { body: { locked: true }, expect: DENIED });
 await t("POST /sessions/{session_id}/lock", "member", `/sessions/${S}/lock`, { body: { locked: true }, expect: 403 });
 await t("POST /sessions/{session_id}/lock", "admin", `/sessions/${S}/lock`, { body: { locked: true }, expect: 200 });
