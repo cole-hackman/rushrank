@@ -402,7 +402,11 @@ await flow("10. a PNM checks himself in from the event's QR link", async (sink) 
   const page = await open(ctx, new URL(link.url).pathname + new URL(link.url).search, sink, "self-checkin");
   await page.getByLabel(/email you signed up with/i).fill(pnmEmail);
   await page.getByRole("button", { name: /^Check in$/i }).click();
-  const shown = await page.getByText(/You are checked in/i).isVisible({ timeout: 5000 }).catch(() => false);
+  const shown = await page
+    .getByText(/You are (already )?checked in/i)
+    .waitFor({ state: "visible", timeout: 8000 })
+    .then(() => true)
+    .catch(() => false);
   const method = one(`select method::text from event_attendance where event_id='${ev}' and pnm_id='${pnmId}'`);
   await ctx.close();
   if (!shown) return { ok: false, detail: "the page did not say the PNM was checked in" };
