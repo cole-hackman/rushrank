@@ -237,6 +237,9 @@ function Centered({ title, detail }: { title: string; detail?: string }) {
     <section className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
       <h1 className="text-4xl font-bold sm:text-6xl">{title}</h1>
       {detail && <p className="max-w-xl text-xl text-white/70 sm:text-2xl">{detail}</p>}
+      <p className="max-w-xl text-base text-white/50">
+        This screen is for the room. Brothers vote on their own phones, under Voting.
+      </p>
     </section>
   );
 }
