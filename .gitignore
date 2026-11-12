@@ -40,3 +40,6 @@ e2e/screens/
 e2e/report-*.json
 e2e/fixtures.json
 e2e/node_modules/
+
+# Private audit notes (local only, never commit to this public repo)
+.audit/
