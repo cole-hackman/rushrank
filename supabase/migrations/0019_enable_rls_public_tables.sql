@@ -30,17 +30,31 @@ ALTER TABLE IF EXISTS public.tags                      ENABLE ROW LEVEL SECURITY
 
 ALTER VIEW IF EXISTS public.v_round_rankings SET (security_invoker = true);
 ALTER VIEW IF EXISTS public.v_votes_public   SET (security_invoker = true);
-REVOKE ALL ON public.v_round_rankings FROM anon;
-REVOKE ALL ON public.v_votes_public   FROM anon;
 
--- Fail the migration if any public table is still without RLS.
+-- The anon role only exists on Supabase, not on the plain Postgres used in CI.
 DO $$
-DECLARE missing text;
 BEGIN
-  SELECT string_agg(c.relname, ', ') INTO missing
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity;
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'public tables without RLS: %', missing;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    IF to_regclass('public.v_round_rankings') IS NOT NULL THEN
+      REVOKE ALL ON public.v_round_rankings FROM anon;
+    END IF;
+    IF to_regclass('public.v_votes_public') IS NOT NULL THEN
+      REVOKE ALL ON public.v_votes_public FROM anon;
+    END IF;
   END IF;
+END $$;
+
+-- Catch-all: databases built only from migrations never enabled RLS on the core
+-- tables (users, chapters, ...); production got it from the Supabase-origin
+-- schema. Enable it anywhere it is still off so both origins match.
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN
+    SELECT c.relname
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.relname);
+  END LOOP;
 END $$;
