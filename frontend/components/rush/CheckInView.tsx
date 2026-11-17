@@ -156,14 +156,14 @@ export function CheckInView({ onBack }: CheckInViewProps) {
       toast({ title: "No event selected", description: "Please select an event first" });
       return;
     }
-    // QR code should contain URL format: https://rushrank.app/checkin?p={pnm_id}
+    // QR code should contain URL format: https://<site>/checkin?p={pnm_id}
     // Or just the PNM ID (for backwards compatibility)
     let pnmId: string | null = null;
     
     const trimmed = decodedText.trim();
     
     // Check if it's a URL format
-    if (trimmed.includes("rushrank.app/checkin") || trimmed.includes("/checkin")) {
+    if (trimmed.includes("/checkin")) {
       try {
         const url = new URL(trimmed);
         pnmId = url.searchParams.get("p");
