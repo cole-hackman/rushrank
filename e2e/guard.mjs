@@ -73,6 +73,13 @@ export function vetUrl() {
 
   if (FORBIDDEN.test(raw)) fail(`the URL looks like a hosted database: ${shown}`);
   if (!LOCAL_HOSTS.has(host)) fail(`host "${host}" is not local: ${shown}`);
+  // Query parameters and libpq variables that can replace the host in the URL.
+  if ([...u.searchParams.keys()].some((k) => ["host", "hostaddr", "service"].includes(k.toLowerCase()))) {
+    fail(`the URL sets the host in its query string: ${shown}`);
+  }
+  if (!host && (process.env.PGHOST || process.env.PGHOSTADDR || process.env.PGSERVICE)) {
+    fail("the URL has no host and PGHOST, PGHOSTADDR or PGSERVICE is set");
+  }
   if (!NAME_OK.test(name)) fail(`database name "${name}" does not end in _e2e or _test: ${shown}`);
 
   if (process.env.DATABASE_URL && process.env.DATABASE_URL !== raw) {

@@ -42,11 +42,16 @@ def mint(secret: str, user_id: str, email: str) -> str:
 
 
 async def main() -> None:
-    url = os.environ.get("E2E_DATABASE_URL") or os.environ.get("DATABASE_URL")
     secret = os.environ.get("SUPABASE_JWT_SECRET")
-    if not url or not secret:
-        sys.exit("set E2E_DATABASE_URL and SUPABASE_JWT_SECRET")
+    if not secret:
+        sys.exit("set SUPABASE_JWT_SECRET")
 
+    # Refuses (exit 2) unless E2E_DATABASE_URL is a local, disposable database.
+    # DATABASE_URL is never a fallback.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from guard import check
+
+    url = await check()
     conn = await asyncpg.connect(url)
     # The main seed chapter is the oldest; the second one exists for cross-chapter checks.
     chapter = await conn.fetchrow("SELECT id, name, min_gpa FROM chapters ORDER BY created_at, name LIMIT 1")

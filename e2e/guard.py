@@ -35,7 +35,7 @@ import os
 import re
 import runpy
 import sys
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SEED_CHAPTER_NAME = "Beta Theta Pi - Cal Poly SLO"
@@ -45,6 +45,9 @@ TEMP_CHAPTER_PREFIX = "E2E Temp "  # api-contract.mjs creates and deletes these
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", ""}
 FORBIDDEN = re.compile(r"supabase|render\.com|onrender|pooler|neon\.tech|amazonaws|rds\.|azure|gcp|cloud", re.I)
 NAME_OK = re.compile(r"(_e2e|_test)$")
+# Query parameters and libpq variables that can replace the host in the URL.
+HOST_PARAMS = {"host", "hostaddr", "service"}
+HOST_ENV = ("PGHOST", "PGHOSTADDR", "PGSERVICE")
 
 
 def refuse(reason: str) -> None:
@@ -68,6 +71,10 @@ def vet_url() -> tuple[str, str, str]:
         refuse(f"the URL looks like a hosted database: {shown}")
     if host not in LOCAL_HOSTS:
         refuse(f'host "{host}" is not local: {shown}')
+    if HOST_PARAMS & {k.lower() for k, _ in parse_qsl(u.query)}:
+        refuse(f"the URL sets the host in its query string: {shown}")
+    if not host and any(os.environ.get(v) for v in HOST_ENV):
+        refuse("the URL has no host and PGHOST, PGHOSTADDR or PGSERVICE is set")
     if not NAME_OK.search(name):
         refuse(f'database name "{name}" does not end in _e2e or _test: {shown}')
     return raw, name, shown
@@ -123,7 +130,7 @@ def main() -> None:
         print("guard: safe to proceed. (check only; pass --seed to wipe and reseed)")
         return
 
-    # Close the fallback: both scripts read `E2E_DATABASE_URL or DATABASE_URL`.
+    # Keep the two variables equal for anything the scripts start.
     os.environ["DATABASE_URL"] = raw
     os.environ["E2E_DATABASE_URL"] = raw
     if not os.environ.get("SUPABASE_JWT_SECRET"):
