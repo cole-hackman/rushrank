@@ -20,6 +20,7 @@ import os
 import httpx
 from supabase import create_client
 import qrcode
+from .site import public_site_url
 
 logger = logging.getLogger(__name__)
 
@@ -368,7 +369,7 @@ class PNMService:
     def get_qr_bytes(self, pnm_id: str) -> bytes:
         """Generate QR code bytes for PNM"""
         # Generate QR code with URL
-        qr_url = f"https://kiosk.rushrank.app/checkin?p={pnm_id}"
+        qr_url = f"{public_site_url()}/checkin?p={pnm_id}"
         qr = qrcode.QRCode(version=1, box_size=10, border=2)
         qr.add_data(qr_url)
         qr.make(fit=True)
@@ -385,7 +386,7 @@ class PNMService:
         """Generate QR code for PNM and upload to Supabase Storage"""
         try:
             # Generate QR code with URL
-            qr_url = f"https://rushrank.app/checkin?p={pnm_id}"
+            qr_url = f"{public_site_url()}/checkin?p={pnm_id}"
             qr = qrcode.QRCode(version=1, box_size=10, border=5)
             qr.add_data(qr_url)
             qr.make(fit=True)
@@ -3229,6 +3230,9 @@ class InvitationService:
             logger.warning("MAILERLITE_API_KEY not set, skipping invitation email")
             return False
         
+        login_url = f"{public_site_url()}/login"
+        login_url_display = login_url.split("://", 1)[-1]
+
         try:
             # Build HTML email template matching QR code email style
             html_content = f"""
@@ -3304,7 +3308,7 @@ class InvitationService:
             <!-- LOGIN BUTTON -->
             <tr>
               <td align="center" style="padding:20px 22px 12px 22px;">
-                <a href="https://rushrank.app/login" style="display:inline-block;padding:12px 28px;background-color:#013068;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">
+                <a href="{login_url}" style="display:inline-block;padding:12px 28px;background-color:#013068;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;font-weight:600;">
                   Log In to RushRank
                 </a>
               </td>
@@ -3325,7 +3329,7 @@ class InvitationService:
             <tr>
               <td style="padding:6px 22px 18px 22px;color:#111827;font-size:14px;line-height:1.5;">
                 <p style="margin:0 0 8px 0;">
-                  • Use the button above or visit <a href="https://rushrank.app/login" style="color:#013068;text-decoration:underline;">rushrank.app/login</a><br />
+                  • Use the button above or visit <a href="{login_url}" style="color:#013068;text-decoration:underline;">{login_url_display}</a><br />
                   • Enter your email and the password shown above<br />
                   • Update your password in account settings after logging in
                 </p>
@@ -3368,7 +3372,7 @@ class InvitationService:
                     "password": password,
                     "chapter_name": chapter_name,
                     "role": role,
-                    "login_url": "https://rushrank.app/login"
+                    "login_url": login_url
                 },
                 "status": "active"
             }
@@ -3376,7 +3380,7 @@ class InvitationService:
             # Log credentials for manual verification/debugging
             logger.info(f"📧 Sending invitation to {email}")
             logger.info(f"🔑 Credentials -> Email: {email} | Password: {password}")
-            logger.info(f"👉 Login URL: https://rushrank.app/login")
+            logger.info(f"👉 Login URL: {login_url}")
             
             # Add group ID if provided (triggers automation)
             try:
