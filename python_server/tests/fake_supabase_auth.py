@@ -5,6 +5,8 @@ import uuid
 
 import httpx
 
+_RealAsyncClient = httpx.AsyncClient
+
 
 class FakeAuth:
     """`filters=False` returns every account whatever is asked, newest first."""
@@ -36,7 +38,6 @@ class FakeAuth:
         return httpx.Response(200, json={})
 
     def patch(self, monkeypatch, module):
-        real = httpx.AsyncClient
         monkeypatch.setattr(
-            module, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(self), **kw)
+            module, "AsyncClient", lambda **kw: _RealAsyncClient(transport=httpx.MockTransport(self), **kw)
         )

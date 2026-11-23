@@ -167,3 +167,74 @@ async def test_the_demo_bid_list_is_finalized(demo_conn):
         module.CHAPTER_ID,
     )
     assert {r["bucket"]: r["n"] for r in buckets} == {"bid": 10, "maybe": 8, "cut": 6}
+
+
+# ---- the demo login ---------------------------------------------------------
+
+async def _provision(conn, module, monkeypatch, auth, email="demo@test.local"):
+    import httpx
+
+    monkeypatch.setenv("SUPABASE_URL", "https://auth.example.invalid")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "unit-test")
+    monkeypatch.setenv("DEMO_USER_EMAIL", email)
+    monkeypatch.setenv("DEMO_USER_PASSWORD", "unit-test-password")
+    auth.patch(monkeypatch, httpx)
+    return await module._provision_demo_login(conn)
+
+
+def _fake_auth(*args, **kwargs):
+    from python_server.tests.fake_supabase_auth import FakeAuth
+
+    return FakeAuth(*args, **kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("filters", [True, False])
+async def test_demo_login_touches_only_the_demo_account(demo_conn, monkeypatch, filters):
+    module = _load_seed_module()
+    await _seed(demo_conn, module)
+    auth = _fake_auth(["newest@test.local", "xdemo@test.local"], filters=filters)
+
+    assert (await _provision(demo_conn, module, monkeypatch, auth)).startswith("created")
+    demo_id = auth.id_of("demo@test.local")
+    # Another account becomes the newest; the second run must still find ours.
+    auth.users.insert(0, {"id": str(module.uuid.uuid4()), "email": "later@test.local", "app_metadata": {}})
+    assert (await _provision(demo_conn, module, monkeypatch, auth)).startswith("password reset")
+
+    assert [user_id for user_id, _ in auth.updated] == [demo_id]
+    assert len(auth.created) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_other_chapter", [True, False])
+async def test_demo_login_refuses_someone_elses_account(demo_conn, monkeypatch, has_other_chapter):
+    module = _load_seed_module()
+    await _seed(demo_conn, module)
+    auth = _fake_auth(["demo@test.local"])
+    user_id = auth.id_of("demo@test.local")
+    if has_other_chapter:
+        chapter = await demo_conn.fetchval("INSERT INTO chapters (name) VALUES ('Real Chapter') RETURNING id")
+        await demo_conn.execute("INSERT INTO users (id, email) VALUES ($1::uuid, 'demo@test.local')", user_id)
+        await demo_conn.execute(
+            "INSERT INTO memberships (user_id, chapter_id, role) VALUES ($1::uuid, $2, 'observer'), ($1::uuid, $3, 'member')",
+            user_id, module.CHAPTER_ID, chapter,
+        )
+
+    assert (await _provision(demo_conn, module, monkeypatch, auth)).startswith("refused")
+    assert auth.updated == [] and auth.created == []
+
+
+@pytest.mark.asyncio
+async def test_demo_login_recognizes_an_unmarked_demo_account(demo_conn, monkeypatch):
+    module = _load_seed_module()
+    await _seed(demo_conn, module)
+    auth = _fake_auth(["demo@test.local"])
+    user_id = auth.id_of("demo@test.local")
+    await demo_conn.execute("INSERT INTO users (id, email) VALUES ($1::uuid, 'demo@test.local')", user_id)
+    await demo_conn.execute(
+        "INSERT INTO memberships (user_id, chapter_id, role) VALUES ($1::uuid, $2, 'observer')",
+        user_id, module.CHAPTER_ID,
+    )
+
+    assert (await _provision(demo_conn, module, monkeypatch, auth)).startswith("password reset")
+    assert [u for u, _ in auth.updated] == [user_id]
