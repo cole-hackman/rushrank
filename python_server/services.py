@@ -10,6 +10,7 @@ import logging
 import re
 import json
 
+from .auth_admin import AuthLookupError, find_auth_user_by_email
 from .database import get_db
 from .live_round import add_to_live_session
 from .models import *
@@ -2876,158 +2877,45 @@ class InvitationService:
         if not supabase_url or not supabase_service_key:
             raise HTTPException(status_code=500, detail="Supabase not configured")
         
-        # Generate random password
-        password = self._generate_password()
-        
-        user_id = None
+        # The demo login is shared, so it never joins a real chapter.
+        demo_email = (os.getenv("DEMO_USER_EMAIL") or "").strip().lower()
+        if demo_email and email == demo_email:
+            raise HTTPException(status_code=409, detail="That address is reserved for the demo account.")
+
+        # Only used when a new account is created. An existing account keeps its own.
+        password: Optional[str] = None
         user_created = False
-        
-        # First, check if user exists in Supabase Auth
+
         async with httpx.AsyncClient(timeout=30.0) as client:
-            # Check if user already exists in Supabase Auth
-            get_user_response = await client.get(
-                f"{supabase_url}/auth/v1/admin/users",
-                params={"email": email},
-                headers={
-                    "Authorization": f"Bearer {supabase_service_key}",
-                    "apikey": supabase_service_key
-                }
-            )
-            
-            if get_user_response.status_code == 200:
-                users_data = get_user_response.json()
-                if users_data.get("users") and len(users_data["users"]) > 0:
-                    # User exists in Supabase Auth
-                    user_id = users_data["users"][0]["id"]
-                    logger.info(f"User already exists in Supabase Auth: {user_id}")
-                    
-                    # Check if they're already a member - if so, this is a re-invitation (update password)
-                    # If not, just use existing user without changing password
-                    existing_membership_check = await db.execute_one("""
-                        SELECT id FROM memberships WHERE user_id = $1 AND chapter_id = $2
-                    """, user_id, chapter_id)
-                    
-                    if existing_membership_check:
-                        # Re-inviting existing member - update their password
-                        logger.info(f"Re-inviting existing member, updating password for: {user_id}")
-                    else:
-                        # User exists in Supabase but not a member yet - still set the password
-                        # because we're sending it in the invitation email
-                        logger.info(f"User exists in Supabase Auth but not a member yet - setting invitation password")
-                    
-                    # Update password for both cases (re-inviting or new invitation to existing user)
-                    update_response = await client.put(
-                        f"{supabase_url}/auth/v1/admin/users/{user_id}",
-                        json={
-                            "password": password,
-                            "email_confirm": True
-                        },
-                        headers={
-                            "Authorization": f"Bearer {supabase_service_key}",
-                            "Content-Type": "application/json",
-                            "apikey": supabase_service_key
-                        }
+            try:
+                existing_user = await find_auth_user_by_email(
+                    client, supabase_url, supabase_service_key, email
+                )
+            except AuthLookupError as e:
+                logger.error(f"Could not look up an account for an invitation: {e}")
+                raise HTTPException(status_code=502, detail="Could not check for an existing account. Try again.")
+
+            if existing_user:
+                user_id = existing_user["id"]
+                existing_membership = await db.execute_one("""
+                    SELECT id FROM memberships WHERE user_id = $1 AND chapter_id = $2
+                """, user_id, chapter_id)
+                if existing_membership:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "They are already in this chapter. Change their role on User Management, "
+                            "or have them choose Forgot password on the sign-in page."
+                        ),
                     )
-                    
-                    if update_response.status_code not in (200, 201):
-                        error_text = update_response.text
-                        logger.error(f"Failed to update password for user: {update_response.status_code} - {error_text}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to update user password: {error_text}"
-                        )
-                    
-                    logger.info(f"Password set for user {email}: {user_id}")
-                else:
-                    # User doesn't exist in Supabase Auth - create them
-                    logger.info(f"Creating new user in Supabase Auth: {email}")
-                    logger.info(f"Password length: {len(password)}, starts with: {password[:2]}...")
-                    
-                    # Supabase Admin API format
-                    create_payload = {
-                        "email": email,
-                        "password": password,
-                        "email_confirm": True,  # Auto-confirm email so they can log in immediately
-                        "user_metadata": {
-                            "chapter_id": chapter_id,
-                            "role": role
-                        }
-                    }
-                    
-                    logger.info(f"Creating user with payload: email={email}, email_confirm=True")
-                    
-                    create_user_response = await client.post(
-                        f"{supabase_url}/auth/v1/admin/users",
-                        json=create_payload,
-                        headers={
-                            "Authorization": f"Bearer {supabase_service_key}",
-                            "Content-Type": "application/json",
-                            "apikey": supabase_service_key
-                        }
-                    )
-                    
-                    response_text = create_user_response.text
-                    logger.info(f"Supabase create user response: {create_user_response.status_code}")
-                    logger.info(f"Response preview: {response_text[:300]}...")
-                    
-                    if create_user_response.status_code not in (200, 201):
-                        error_text = response_text
-                        logger.error(f"❌ Failed to create user in Supabase: {create_user_response.status_code}")
-                        logger.error(f"   Error details: {error_text}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to create user in Supabase: {error_text}"
-                        )
-                    
-                    try:
-                        user_data = create_user_response.json()
-                    except Exception as e:
-                        logger.error(f"❌ Failed to parse response as JSON: {e}")
-                        logger.error(f"   Response text: {response_text}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Invalid response from Supabase: {response_text[:200]}"
-                        )
-                    
-                    # Supabase Admin API can return user data in different formats
-                    user_id = user_data.get("id") or user_data.get("user", {}).get("id")
-                    
-                    if not user_id:
-                        logger.error(f"❌ No user_id in response. Full response: {user_data}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to get user_id from Supabase response. Response: {user_data}"
-                        )
-                    
-                    user_created = True
-                    logger.info(f"✅ Created new user in Supabase: {user_id} for {email}")
-                    logger.info(f"   User email: {user_data.get('email')}, confirmed: {user_data.get('email_confirmed_at') is not None}")
-                    
-                    # Verify the user was created and can be retrieved
-                    verify_response = await client.get(
-                        f"{supabase_url}/auth/v1/admin/users/{user_id}",
-                        headers={
-                            "Authorization": f"Bearer {supabase_service_key}",
-                            "apikey": supabase_service_key
-                        }
-                    )
-                    
-                    if verify_response.status_code == 200:
-                        verify_data = verify_response.json()
-                        logger.info(f"✅ Verified user exists in Supabase: {verify_data.get('email')}")
-                        logger.info(f"   Email confirmed: {verify_data.get('email_confirmed_at') is not None}")
-                        logger.info(f"   User can log in: {verify_data.get('email_confirmed_at') is not None and verify_data.get('banned_until') is None}")
-                    else:
-                        logger.warning(f"⚠️ Could not verify user creation: {verify_response.status_code} - {verify_response.text[:200]}")
             else:
-                # Error checking for user - try to create anyway
-                logger.warning(f"Error checking for existing user: {get_user_response.status_code}, attempting to create")
+                password = self._generate_password()
                 create_user_response = await client.post(
                     f"{supabase_url}/auth/v1/admin/users",
                     json={
                         "email": email,
                         "password": password,
-                        "email_confirm": True,
+                        "email_confirm": True,  # Auto-confirm email so they can log in immediately
                         "user_metadata": {
                             "chapter_id": chapter_id,
                             "role": role
@@ -3039,44 +2927,28 @@ class InvitationService:
                         "apikey": supabase_service_key
                     }
                 )
-                
-                response_text = create_user_response.text
-                logger.info(f"Supabase create user response (fallback): {create_user_response.status_code}")
-                
+
                 if create_user_response.status_code not in (200, 201):
-                    error_text = response_text
-                    logger.error(f"❌ Failed to create user in Supabase (fallback): {create_user_response.status_code}")
-                    logger.error(f"   Error details: {error_text}")
+                    error_text = create_user_response.text
+                    logger.error(f"Failed to create user in Supabase: {create_user_response.status_code}")
                     raise HTTPException(
                         status_code=500,
                         detail=f"Failed to create user in Supabase: {error_text}"
                     )
-                
+
                 try:
                     user_data = create_user_response.json()
-                except Exception as e:
-                    logger.error(f"❌ Failed to parse response as JSON (fallback): {e}")
-                    logger.error(f"   Response text: {response_text}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Invalid response from Supabase: {response_text[:200]}"
-                    )
-                
+                except ValueError:
+                    raise HTTPException(status_code=500, detail="Invalid response from Supabase")
+
+                # Supabase Admin API can return user data in different formats
                 user_id = user_data.get("id") or user_data.get("user", {}).get("id")
-                
                 if not user_id:
-                    logger.error(f"❌ No user_id in response (fallback). Full response: {user_data}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to get user_id from Supabase response. Response: {user_data}"
-                    )
-                
+                    raise HTTPException(status_code=500, detail="Failed to get user_id from Supabase response")
+
                 user_created = True
-                logger.info(f"✅ Created new user in Supabase (fallback): {user_id} for {email}")
-        
-        if not user_id:
-            raise HTTPException(status_code=500, detail="Failed to get or create user in Supabase Auth")
-        
+                logger.info(f"Created new user in Supabase: {user_id}")
+
         # Create or update user record in our database
         try:
             await db.execute_command("""
@@ -3101,30 +2973,14 @@ class InvitationService:
         if db_role not in valid_roles:
             raise HTTPException(status_code=400, detail=f"Invalid role: {role}. Must be one of: {', '.join(valid_roles)}")
         
-        # Check if membership already exists
-        existing_membership = await db.execute_one("""
-            SELECT id, role FROM memberships WHERE user_id = $1 AND chapter_id = $2
-        """, user_id, chapter_id)
-        
-        # Create or update membership (allow re-inviting to update password and resend email)
+        # Invitations only add a membership. Changing a role is its own endpoint.
         try:
-            if existing_membership:
-                # Update role if needed, but allow re-invitation
-                membership_id = await db.execute_one("""
-                    UPDATE memberships
-                    SET role = $3
-                    WHERE user_id = $1 AND chapter_id = $2
-                    RETURNING id
-                """, user_id, chapter_id, db_role)
-                logger.info(f"Updated existing membership for user {email} in chapter {chapter_id}")
-            else:
-                # Create new membership
-                membership_id = await db.execute_one("""
-                    INSERT INTO memberships (user_id, chapter_id, role)
-                    VALUES ($1, $2, $3)
-                    RETURNING id
-                """, user_id, chapter_id, db_role)
-                logger.info(f"Created new membership for user {email} in chapter {chapter_id}")
+            await db.execute_one("""
+                INSERT INTO memberships (user_id, chapter_id, role)
+                VALUES ($1, $2, $3)
+                RETURNING id
+            """, user_id, chapter_id, db_role)
+            logger.info(f"Created new membership for user {user_id} in chapter {chapter_id}")
         except Exception as e:
             logger.error(f"Error creating membership: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to create membership: {str(e)}")
@@ -3138,36 +2994,17 @@ class InvitationService:
         # Send invitation email
         email_sent = await self._send_invitation_email(email, password, chapter_name, role, user_created)
         
-        # Final verification: try to get the user from Supabase to confirm they exist
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as verify_client:
-                verify_user = await verify_client.get(
-                    f"{supabase_url}/auth/v1/admin/users/{user_id}",
-                    headers={
-                        "Authorization": f"Bearer {supabase_service_key}",
-                        "apikey": supabase_service_key
-                    }
-                )
-                if verify_user.status_code == 200:
-                    verify_data = verify_user.json()
-                    logger.info(f"✅ Final verification: User {email} exists in Supabase Auth with ID {user_id}")
-                    logger.info(f"   User email confirmed: {verify_data.get('email_confirmed_at') is not None}")
-                else:
-                    logger.warning(f"⚠️ Could not verify user after creation: {verify_user.status_code}")
-        except Exception as e:
-            logger.warning(f"⚠️ Verification check failed (non-critical): {e}")
-        
         return {
             "email": email,
             "user_id": user_id,
             "role": role,
-            "password": password,  # Only returned for logging/debugging
             "email_sent": email_sent,
             "user_created": user_created
         }
     
-    async def _send_invitation_email(self, email: str, password: str, chapter_name: str, role: str, is_new_user: bool) -> bool:
-        """Send invitation email with password via MailerLite"""
+    async def _send_invitation_email(self, email: str, password: Optional[str], chapter_name: str, role: str, is_new_user: bool) -> bool:
+        """Send the invitation through MailerLite. `password` is None for an existing account."""
+        password = password or "Use your existing password"
         api_key = os.getenv("MAILERLITE_API_KEY")
         if not api_key:
             logger.warning("MAILERLITE_API_KEY not set, skipping invitation email")
@@ -3320,7 +3157,6 @@ class InvitationService:
                 "status": "active"
             }
             
-            # Log credentials for manual verification/debugging
             logger.info(f"📧 Sending invitation to {email}")
             logger.info(f"👉 Login URL: {login_url}")
             
@@ -3364,8 +3200,8 @@ class InvitationService:
                     # The automation will send the email when subscriber is added to the group
                     return True
                 else:
-                    error_text = subscriber_response.text
-                    logger.error(f"❌ Failed to create subscriber for invitation: {subscriber_response.status_code} - {error_text}")
+                    # Not the body: it can repeat the fields that were sent.
+                    logger.error(f"Failed to create subscriber for invitation: {subscriber_response.status_code}")
                     # Still return True - user is created, email sending can be retried
                     return False
             

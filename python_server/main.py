@@ -18,7 +18,10 @@ from datetime import datetime
 
 from .auth import get_current_user, verify_token
 from .site import public_site_url
-from .database import get_db, get_db_pool, close_db_pool, set_db_manager
+from .database import (
+    get_db, get_db_pool, close_db_pool, set_db_manager,
+    is_local_database_url, remote_database_allowed,
+)
 from .routes import router
 from .exceptions import AppException, register_exception_handlers
 from .rate_limit import setup_rate_limiting
@@ -55,20 +58,27 @@ logger = logging.getLogger(__name__)
 # Global database pool
 db_pool: Optional[asyncpg.Pool] = None
 
-def _load_env_from_files():
+# Left out of the environment when a file's DATABASE_URL is remote and that was
+# not opted into: they belong to the same project as the database.
+_PROJECT_KEYS = ("DATABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_JWT_SECRET")
+
+def _load_env_from_files(repo_root: Optional[Path] = None):
     """
     Lightweight .env loader without external deps.
     Loads key=value pairs from root .env or backend/.env if present, without overriding existing env.
+    A file naming a remote database needs ALLOW_REMOTE_DB=1 in the real environment
+    (not in the file) before its database URL and server keys are used.
     """
     potential_paths = []
     # Repo root relative to this file
-    this_dir = Path(__file__).resolve().parent
-    repo_root = this_dir.parent
+    repo_root = repo_root or Path(__file__).resolve().parent.parent
+    remote_allowed = remote_database_allowed()
     potential_paths.append(repo_root / ".env")
     potential_paths.append(repo_root / "backend" / ".env")
     for env_path in potential_paths:
         try:
             if env_path.exists():
+                loaded = {}
                 with env_path.open("r") as f:
                     for line in f:
                         stripped = line.strip()
@@ -77,8 +87,22 @@ def _load_env_from_files():
                         key, value = stripped.split("=", 1)
                         key = key.strip()
                         value = value.strip().strip("'").strip('"')
-                        if key and key not in os.environ:
-                            os.environ[key] = value
+                        if key in ("ALLOW_REMOTE_DB", "RENDER"):
+                            continue
+                        if key:
+                            loaded.setdefault(key, value)
+                url = loaded.get("DATABASE_URL")
+                if url and not remote_allowed and not is_local_database_url(url):
+                    for key in _PROJECT_KEYS:
+                        loaded.pop(key, None)
+                    logger.warning(
+                        f"{env_path} names a remote database. Not loading "
+                        f"{', '.join(_PROJECT_KEYS)} from it. Set ALLOW_REMOTE_DB=1 for this run "
+                        "to use them; edits and deletes would then change real data."
+                    )
+                for key, value in loaded.items():
+                    if key not in os.environ:
+                        os.environ[key] = value
         except Exception as e:
             logger.warning(f"Could not read env file {env_path}: {e}")
 
@@ -386,7 +410,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host=os.getenv("BIND_HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", 8000)),
         reload=True,
         log_level="info"

@@ -4,13 +4,13 @@ This repo uses Supabase-compatible raw SQL migrations. The canonical DDL lives i
 
 - `supabase/migrations/0001_init.sql` (tables, constraints, enums)
 - `supabase/migrations/0002_views_indexes.sql` (indexes, views, materialized views)
-- Seed data for local/dev: `db/seed_dev.sql`
+- Seed data for local/dev: `db/scripts/seed_demo.py`
 
 ## Prerequisites
 
 - Node.js and npm
 - Supabase CLI (installed on-demand via `npx`)
-- psql (for running the seed against a DATABASE_URL)
+- psql (for applying migrations to a local Postgres)
 
 ## Local workflow (Supabase CLI)
 
@@ -20,35 +20,43 @@ Initialize Supabase locally (one-time):
 npx supabase init
 ```
 
-Apply migrations to your local Supabase instance:
+Start the local containers and apply new migrations to them:
 
 ```bash
-# Starts local containers and applies migrations
-npx supabase db push
+npx supabase start
+npx supabase migration up --local
 ```
 
-Reset local database (drops and re-applies migrations):
+Reset the local database (drops it and re-applies every migration). Always pass `--local`:
 
 ```bash
 npx supabase db reset --local
 ```
 
-Apply migrations to a remote database using a connection string:
+Without the Supabase CLI, on a local Postgres:
 
 ```bash
-# Use when you have a remote Postgres (e.g., Supabase project) URL
-npx supabase db push --db-url "$DATABASE_URL"
+for f in supabase/migrations/*.sql; do psql -h localhost -d rushrank -v ON_ERROR_STOP=1 -q -f "$f" || break; done
+```
+
+## Remote database
+
+> **WARNING: these commands change the database the live app uses.** `supabase db push` without `--local` goes to the linked remote project. Migrations cannot be undone, and some delete rows (`0013_reconcile_schema.sql` deletes from `memberships` and `users`). Take a backup, check the list with `--dry-run`, and have the project owner run it. Never run `supabase db reset` with `--linked` or `--db-url`: it drops everything.
+
+```bash
+npx supabase db push --dry-run   # lists what would be applied
+npx supabase db push
 ```
 
 ## Seeding dev data
 
-Run the seed script against any Postgres database via `psql`:
+On a local database only:
 
 ```bash
-psql "$DATABASE_URL" -f db/seed_dev.sql
+DATABASE_URL=postgresql://localhost:5432/rushrank python db/scripts/seed_demo.py
 ```
 
-Where `DATABASE_URL` is your Postgres connection string (from Supabase Project Settings → Database).
+`db/seed_dev.sql` was written for an older schema and no longer applies.
 
 ## Notes
 
@@ -75,20 +83,15 @@ Prereqs:
 
 Apply migrations locally:
 ```bash
-cd supabase
-supabase db reset   # drops + recreates schema, applies migrations in order
+npx supabase db reset --local   # drops and recreates the local schema, applies migrations in order
 ```
 
-Apply to a remote project:
-```bash
-# Set project ref or run `supabase link`
-supabase db push
-```
+For a remote project, see the warning under [Remote database](#remote-database).
 
 Files:
 - `supabase/migrations/0001_init.sql` — core schema, enums, constraints.
 - `supabase/migrations/0002_views_indexes.sql` — indexes, materialized view, ranking/anonymity views, RLS scaffolding (commented).
-- `db/seed_dev.sql` — optional dev seed data.
+- `db/seed_dev.sql` — old dev seed, no longer applies.
 
 Refresh the materialized view:
 ```sql

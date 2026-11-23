@@ -15,8 +15,9 @@ RushRank — fraternity rush management app. Next.js 14 frontend (`frontend/`) +
 - `npm run typecheck` — `tsc --noEmit`
 
 ### Backend (repo root)
-- `python run_fastapi.py` — uvicorn on port 8000 with reload
-- Direct: `uvicorn python_server.main:app --host 0.0.0.0 --port 8000 --reload`
+- `python run_fastapi.py` — uvicorn on 127.0.0.1:8000 with reload. `BIND_HOST=0.0.0.0` to reach it from another device.
+- Direct: `uvicorn python_server.main:app --host 127.0.0.1 --port 8000 --reload`
+- The backend refuses a remote `DATABASE_URL` unless `ALLOW_REMOTE_DB=1` is set for that run (Render is exempt). WARNING: with it set, every edit and delete made through the local server changes real chapter data.
 - Install deps: `pip install -r python_server/requirements.txt` (or `uv pip install ...`)
 - Tests: `cd python_server && pytest` (config in `python_server/pytest.ini`, async mode auto)
 - Single test: `pytest tests/test_voting.py::test_name -v`
@@ -24,9 +25,9 @@ RushRank — fraternity rush management app. Next.js 14 frontend (`frontend/`) +
 
 ### Database
 - **`supabase/migrations/` is the single source of truth.** Apply every file in numeric order.
-- `supabase/legacy/schema_pre_migrations.sql` is the pre-migrations schema the project was created from. Reference and test fixture only — never apply it.
+- `supabase/legacy/schema_pre_migrations.sql` is the pre-migrations schema the project was created from. Reference and test fixture only — never apply it. It drops every core table and refuses to run outside an `rr_it_*` test database.
 - `0013_reconcile_schema.sql` converges either origin onto one schema and logs what it found to `schema_reconciliation_log`.
-- Apply: `npx supabase db push`, or loop `psql -v ON_ERROR_STOP=1 -f` over `supabase/migrations/*.sql`.
+- Apply locally: `npx supabase migration up --local`, or loop `psql -h localhost -d <local db> -v ON_ERROR_STOP=1 -f` over `supabase/migrations/*.sql`. WARNING: `npx supabase db push` without `--local` changes the linked remote database and cannot be undone. Only the project owner runs it. See `docs/db/README.md`.
 - Migrations are append-only and numerically ordered; create the next file rather than editing past ones.
 
 ## Architecture
@@ -66,7 +67,7 @@ Voting sessions are the performance-critical path: chair advances PNMs via the b
 - `frontend/.env.local` — `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_BASE_URL`. Set `NEXT_PUBLIC_API_BASE_URL` with **no trailing slash and no `/api`**: `getApiBase()` appends `/api`, and `useSessionWebSocket` derives the socket origin by stripping it back off, so a trailing slash breaks both.
   - `NEXT_PUBLIC_WS_BASE_URL` is an optional override, only for deployments that terminate websockets on a different host than the API. Leave it unset otherwise.
   - There is no `NEXT_PUBLIC_SITE_URL`. Auth redirects are built from `window.location.origin` (`components/marketing/SignupWizard.tsx`, `app/login/page.tsx`), so the deployed domain must instead be allowlisted in **Supabase → Authentication → URL Configuration** (Site URL + Redirect URLs), or email verification and password reset will fail.
-- `main.py` has its own minimal `.env` loader; it reads root `.env` and `backend/.env` without overriding existing env vars.
+- `main.py` has its own minimal `.env` loader; it reads root `.env` and `backend/.env` without overriding existing env vars. When the file's `DATABASE_URL` is remote and `ALLOW_REMOTE_DB=1` is not set in the shell (setting it in the file does not count), the loader skips `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_JWT_SECRET`.
 
 ## Deployment
 

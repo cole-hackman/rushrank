@@ -13,8 +13,23 @@
 -- Note: it also references the Supabase `auth` schema, so it cannot be applied
 -- to a bare Postgres without errors.
 --
+-- WARNING: it drops every core table. It only runs in the integration tests'
+-- own databases (rr_it_*). The check below stops it anywhere else, and the
+-- transaction means a client that carries on after an error changes nothing.
+--
 -- See docs/AUDIT-2026-08.md.
 -- ============================================================================
+
+BEGIN;
+
+DO $$
+BEGIN
+    IF current_database() NOT LIKE 'rr\_it\_%' THEN
+        RAISE EXCEPTION 'schema_pre_migrations.sql drops every table and only runs in an rr_it_* test database, not in %',
+            current_database();
+    END IF;
+END
+$$;
 
 -- RushRank Enhanced Schema with Multi-tenancy and RLS
 -- This replaces the existing Drizzle schema with Supabase-compatible tables
@@ -353,3 +368,5 @@ CREATE POLICY "Admins can delete notes" ON notes
             AND m.role = 'admin'
         )
     );
+
+COMMIT;

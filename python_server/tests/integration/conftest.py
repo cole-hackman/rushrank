@@ -34,6 +34,8 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
+from python_server.database import is_local_database_url
+
 MIGRATIONS_DIR = pathlib.Path(__file__).resolve().parents[3] / "supabase" / "migrations"
 LEGACY_SCHEMA = (
     pathlib.Path(__file__).resolve().parents[3]
@@ -47,6 +49,12 @@ def _require_test_db() -> str:
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
         pytest.skip("TEST_DATABASE_URL not set; skipping integration tests")
+    if not is_local_database_url(url):
+        pytest.exit(
+            "TEST_DATABASE_URL is not a local Postgres. These tests drop and create "
+            "databases on that server, so nothing was run.",
+            returncode=2,
+        )
     return url
 
 
@@ -98,16 +106,28 @@ async def apply_legacy_schema(conn: asyncpg.Connection) -> None:
     assert has_score, "legacy fixture did not create the legacy votes shape"
 
 
+def _split_outside_dollar_quotes(sql: str) -> list[str]:
+    chunks = [""]
+    for i, part in enumerate(sql.split("$$")):
+        if i % 2:  # inside a body
+            chunks[-1] += f"$${part}$$"
+            continue
+        first, *rest = part.split(";")
+        chunks[-1] += first
+        chunks.extend(rest)
+    return chunks
+
+
 def _split_statements(sql: str) -> list[str]:
     """Split on `;` and strip leading comment lines from each statement.
 
-    The legacy schema has no dollar-quoted bodies, so splitting on `;` is safe.
+    A `;` inside a `$$` body does not end a statement.
     Stripping leading comments matters: nearly every statement in that file is
     preceded by one, and discarding those chunks wholesale silently skipped most
     of the schema.
     """
     statements: list[str] = []
-    for chunk in sql.split(";"):
+    for chunk in _split_outside_dollar_quotes(sql):
         lines = [
             line for line in chunk.splitlines()
             if line.strip() and not line.strip().startswith("--")

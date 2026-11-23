@@ -1,7 +1,10 @@
 /** Why does one voter have two buttons named "No"? Dump the DOM and find out. */
 import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
+import { guard } from "./guard.mjs";
 import { fixtures, signIn, settle, APP } from "./lib/harness.mjs";
+
+await guard();
 
 const sql = (q) =>
   execFileSync("psql", [process.env.E2E_DATABASE_URL, "-tAF", "|", "-c", q], {

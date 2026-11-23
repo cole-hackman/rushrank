@@ -22,7 +22,8 @@ Usage
 
 Idempotent: every id below is fixed, every write is an upsert, and re-running
 converges on the same chapter rather than minting a second one. Safe to wire
-into a deploy hook.
+into a deploy hook. Only the account this script created for the demo is ever
+given a password; any other account using DEMO_USER_EMAIL is left alone.
 
 Superseded `db/seed_dev.sql`, which was written against the pre-0013 schema
 (`users.chapter_id`, `users.role`, `email_allowlist`) and no longer applies.
@@ -33,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import pathlib
 import random
 import sys
 import uuid
@@ -51,6 +53,8 @@ def _id(*parts: str) -> uuid.UUID:
 
 CHAPTER_ID = _id("chapter")
 CHAPTER_NAME = "Sigma Demo at Riverside"
+# Set on the Supabase Auth account this script creates.
+DEMO_FLAG = "rushrank_demo"
 
 BROTHERS = [
     ("Marcus Webb", "marcus@demo.rushrank.app", "admin"),
@@ -426,6 +430,30 @@ async def _upsert_audit(conn, brother_ids, round_ids, bid_list_id) -> None:
         )
 
 
+async def _refuse_non_demo_account(conn, account: dict) -> str | None:
+    """A reason to leave this account alone, or None when it is the demo account.
+
+    The demo account is marked when this script creates it. One created before
+    the mark existed is recognized by its observer membership in the demo
+    chapter. Either way it belongs to no other chapter.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT COUNT(*) FILTER (WHERE chapter_id <> $2) AS elsewhere,
+               COUNT(*) FILTER (WHERE chapter_id = $2 AND role = 'observer') AS demo
+        FROM memberships WHERE user_id = $1::uuid
+        """,
+        account["id"], CHAPTER_ID,
+    )
+    marked = (account.get("app_metadata") or {}).get(DEMO_FLAG) is True
+    if row["elsewhere"] or not (marked or row["demo"]):
+        return (
+            "refused: DEMO_USER_EMAIL already belongs to an account that is not the demo "
+            "account. Nothing was changed on it. Use an address no one signs in with."
+        )
+    return None
+
+
 async def _provision_demo_login(conn) -> str:
     """Create (or repair) the Supabase auth user the demo endpoint signs in as.
 
@@ -443,24 +471,36 @@ async def _provision_demo_login(conn) -> str:
 
     import httpx
 
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+    from python_server.auth_admin import AuthLookupError, find_auth_user_by_email
+
     headers = {"Authorization": f"Bearer {service_key}", "apikey": service_key}
     async with httpx.AsyncClient(timeout=30.0) as client:
-        existing = await client.get(
-            f"{supabase_url}/auth/v1/admin/users", params={"email": email}, headers=headers
-        )
-        users = existing.json().get("users", []) if existing.status_code == 200 else []
+        try:
+            existing = await find_auth_user_by_email(client, supabase_url, service_key, email)
+        except AuthLookupError as e:
+            return f"failed: {e}"
 
-        if users:
-            user_id = users[0]["id"]
-            await client.put(
+        if existing:
+            user_id = existing["id"]
+            refusal = await _refuse_non_demo_account(conn, existing)
+            if refusal:
+                return refusal
+            updated = await client.put(
                 f"{supabase_url}/auth/v1/admin/users/{user_id}",
                 json={"password": password, "email_confirm": True}, headers=headers,
             )
+            if updated.status_code not in (200, 201):
+                return f"failed: {updated.status_code} updating the demo account"
             outcome = "password reset"
         else:
             created = await client.post(
                 f"{supabase_url}/auth/v1/admin/users",
-                json={"email": email, "password": password, "email_confirm": True},
+                json={
+                    "email": email, "password": password, "email_confirm": True,
+                    # app_metadata can only be set with the service key.
+                    "app_metadata": {DEMO_FLAG: True},
+                },
                 headers=headers,
             )
             if created.status_code not in (200, 201):
@@ -531,7 +571,7 @@ async def main() -> int:
           f"{counts['events']} events, {counts['rounds']} rounds, "
           f"{counts['votes']} votes, {counts['members']} members")
     print(f"  demo login: {login}")
-    return 0
+    return 1 if login.startswith(("failed", "refused")) else 0
 
 
 if __name__ == "__main__":
