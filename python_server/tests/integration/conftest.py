@@ -106,16 +106,28 @@ async def apply_legacy_schema(conn: asyncpg.Connection) -> None:
     assert has_score, "legacy fixture did not create the legacy votes shape"
 
 
+def _split_outside_dollar_quotes(sql: str) -> list[str]:
+    chunks = [""]
+    for i, part in enumerate(sql.split("$$")):
+        if i % 2:  # inside a body
+            chunks[-1] += f"$${part}$$"
+            continue
+        first, *rest = part.split(";")
+        chunks[-1] += first
+        chunks.extend(rest)
+    return chunks
+
+
 def _split_statements(sql: str) -> list[str]:
     """Split on `;` and strip leading comment lines from each statement.
 
-    The legacy schema has no dollar-quoted bodies, so splitting on `;` is safe.
+    A `;` inside a `$$` body does not end a statement.
     Stripping leading comments matters: nearly every statement in that file is
     preceded by one, and discarding those chunks wholesale silently skipped most
     of the schema.
     """
     statements: list[str] = []
-    for chunk in sql.split(";"):
+    for chunk in _split_outside_dollar_quotes(sql):
         lines = [
             line for line in chunk.splitlines()
             if line.strip() and not line.strip().startswith("--")
