@@ -34,6 +34,8 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
+from python_server.database import is_local_database_url
+
 MIGRATIONS_DIR = pathlib.Path(__file__).resolve().parents[3] / "supabase" / "migrations"
 LEGACY_SCHEMA = (
     pathlib.Path(__file__).resolve().parents[3]
@@ -47,6 +49,12 @@ def _require_test_db() -> str:
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
         pytest.skip("TEST_DATABASE_URL not set; skipping integration tests")
+    if not is_local_database_url(url):
+        pytest.exit(
+            "TEST_DATABASE_URL is not a local Postgres. These tests drop and create "
+            "databases on that server, so nothing was run.",
+            returncode=2,
+        )
     return url
 
 

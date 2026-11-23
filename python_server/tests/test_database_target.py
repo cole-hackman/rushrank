@@ -131,3 +131,14 @@ def test_bind_host(monkeypatch, env, expected):
     monkeypatch.setattr(sys, "argv", [str(script)])
     runpy.run_path(str(script), run_name="__main__")
     assert seen["host"] == expected
+
+
+def test_integration_tests_abort_on_a_remote_server(monkeypatch):
+    from python_server.tests.integration import conftest
+
+    monkeypatch.setenv("TEST_DATABASE_URL", REMOTE)
+    with pytest.raises(pytest.exit.Exception, match="not a local Postgres"):
+        conftest._require_test_db()
+
+    monkeypatch.setenv("TEST_DATABASE_URL", LOCAL)
+    assert conftest._require_test_db() == LOCAL
