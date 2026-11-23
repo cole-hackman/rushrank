@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(supabase db push:*)",
+      "Bash(npx supabase db push:*)",
+      "Bash(supabase db reset --linked:*)",
+      "Bash(npx supabase db reset --linked:*)",
+      "Bash(supabase db reset --db-url:*)",
+      "Bash(npx supabase db reset --db-url:*)",
+      "Bash(supabase link:*)",
+      "Bash(npx supabase link:*)",
+      "Bash(supabase migration repair:*)",
+      "Bash(npx supabase migration repair:*)",
+      "Bash(psql $DATABASE_URL:*)",
+      "Bash(psql \"$DATABASE_URL\":*)",
+      "Bash(psql \"${DATABASE_URL}\":*)",
+      "Bash(python e2e/seed.py:*)",
+      "Bash(python3 e2e/seed.py:*)",
+      "Bash(ALLOW_REMOTE_DB=1:*)",
+      "Bash(export ALLOW_REMOTE_DB=1:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./backend/.env)",
+      "Read(./frontend/.env)",
+      "Read(./frontend/.env.local)",
+      "Read(./.backups/**)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "mcp__claude_ai_Supabase__reset_branch",
+      "mcp__claude_ai_Supabase__delete_branch"
+    ]
+  }
+}
