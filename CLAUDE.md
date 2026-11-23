@@ -27,7 +27,7 @@ RushRank — fraternity rush management app. Next.js 14 frontend (`frontend/`) +
 - **`supabase/migrations/` is the single source of truth.** Apply every file in numeric order.
 - `supabase/legacy/schema_pre_migrations.sql` is the pre-migrations schema the project was created from. Reference and test fixture only — never apply it. It drops every core table and refuses to run outside an `rr_it_*` test database.
 - `0013_reconcile_schema.sql` converges either origin onto one schema and logs what it found to `schema_reconciliation_log`.
-- Apply: `npx supabase db push`, or loop `psql -v ON_ERROR_STOP=1 -f` over `supabase/migrations/*.sql`.
+- Apply locally: `npx supabase migration up --local`, or loop `psql -h localhost -d <local db> -v ON_ERROR_STOP=1 -f` over `supabase/migrations/*.sql`. WARNING: `npx supabase db push` without `--local` changes the linked remote database and cannot be undone. Only the project owner runs it. See `docs/db/README.md`.
 - Migrations are append-only and numerically ordered; create the next file rather than editing past ones.
 
 ## Architecture
