@@ -52,7 +52,7 @@ To go back, choose **Generic (cream & black)** and save.
 2. For one person: stay on **Single**, type their email in **Email to invite...** and choose **Invite**.
 3. For many: switch to **Bulk**, paste one email per line, and choose **Invite All**.
 
-Everyone is invited as a **Member**. Each invited brother gets an account with a generated password.
+Everyone is invited as a **Member**. A brother without an account gets one with a generated password. A brother who already has an account keeps it, password included.
 
 **Tell each brother how to get in.** Do not rely on the invitation email arriving (see [Known problems](#known-problems)). The dependable route is:
 
@@ -164,8 +164,7 @@ These do not work as you would expect today. Each has a workaround where one exi
 | Problem | What to do |
 |---|---|
 | **"Invitation sent" appears even when no email was sent.** Invitation emails depend on a separate email service being configured for your RushRank installation. | Tell brothers to use **Forgot password?**, as in step 5. |
-| **Inviting someone who already has a RushRank account resets their password.** | Do not re-invite people who can already sign in. |
-| **Re-inviting an existing admin turns them into a member.** | If it happens, set their role back to Admin on User Management. |
+| **You cannot invite someone who is already in the chapter.** | Change their role on User Management. If they cannot sign in, have them use **Forgot password?**. |
 | **There is no "exec" role to pick,** although some screens mention one. | Make your rush committee Admins. |
 | **You cannot remove someone from the chapter.** | Set them to **Observer**. |
 | **Nothing stops you demoting the last admin, including yourself.** | Keep at least two admins. |
