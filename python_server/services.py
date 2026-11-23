@@ -3200,8 +3200,8 @@ class InvitationService:
                     # The automation will send the email when subscriber is added to the group
                     return True
                 else:
-                    error_text = subscriber_response.text
-                    logger.error(f"❌ Failed to create subscriber for invitation: {subscriber_response.status_code} - {error_text}")
+                    # Not the body: it can repeat the fields that were sent.
+                    logger.error(f"Failed to create subscriber for invitation: {subscriber_response.status_code}")
                     # Still return True - user is created, email sending can be retried
                     return False
             

@@ -104,3 +104,23 @@ def test_lookup_refuses_to_choose_between_duplicates():
 def test_lookup_needs_an_email():
     with pytest.raises(AuthLookupError):
         _find(FakeAuth(OTHERS), " ")
+
+
+@pytest.mark.parametrize("mail_status", [200, 422])
+def test_generated_password_is_not_logged_or_returned(invite, monkeypatch, caplog, mail_status):
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setattr(services.InvitationService, "_generate_password", lambda self: "Zq9-generated-secret")
+    sent = []
+
+    class Auth(FakeAuth):
+        def __call__(self, request):
+            if request.url.host == "connect.mailerlite.com":
+                sent.append(request.content)
+                return httpx.Response(mail_status, content=request.content)
+            return super().__call__(request)
+
+    monkeypatch.setenv("MAILERLITE_API_KEY", "unit-test")
+    result = invite(Auth(OTHERS), FakeDb(), "new@test.local")
+    assert any(b"Zq9-generated-secret" in body for body in sent)
+    assert "Zq9" not in caplog.text
+    assert "Zq9-generated-secret" not in str(result)
