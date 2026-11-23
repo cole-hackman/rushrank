@@ -38,6 +38,7 @@ I have created a `render.yaml` file in your repository root. This is a Blueprint
 You need to copy these from your local `.env` or Supabase dashboard:
 *   `DATABASE_URL`: Your Supabase PostgreSQL connection string (Mode: Transaction or Session. Transaction is recommended for serverless but Render is a persistent server, so Session is fine, but Supabase usually gives a pooler URL).
 *   `SUPABASE_URL`: Your Supabase project URL.
+*   `ALLOW_REMOTE_DB`: Not needed on Render. The server refuses a database on another host unless Render's own `RENDER` variable is present, so on any other platform set `ALLOW_REMOTE_DB=1` and `BIND_HOST=0.0.0.0`.
 *   `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase Service Role Key (Server-side only!).
 *   `ALLOWED_ORIGINS`: The URL of your Vercel frontend (you'll get this in Step 2). For now, you can leave it empty or put `http://localhost:3000`. You **MUST** update this after deploying the frontend.
 

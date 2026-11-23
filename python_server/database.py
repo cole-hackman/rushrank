@@ -4,17 +4,70 @@ Database connection and utilities for FastAPI + Supabase
 import asyncpg
 import os
 from typing import Optional
+from urllib.parse import parse_qsl, unquote, urlsplit
 import logging
 import asyncio
 
 logger = logging.getLogger(__name__)
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def is_local_database_url(url: str) -> bool:
+    """True when the URL can only reach a Postgres on this machine."""
+    try:
+        parts = urlsplit(url)
+        # Either can replace the host named in the rest of the URL.
+        params = {k.lower(): v for k, v in parse_qsl(parts.query)}
+        netloc_host = unquote(parts.netloc.rpartition("@")[2])
+        if "service" in params:
+            return False
+        hosts = [params[k] for k in ("host", "hostaddr") if k in params]
+        if netloc_host and not netloc_host.startswith("/"):
+            hosts.append(parts.hostname or "")
+            parts.port  # raises on a malformed or multi-host netloc
+    except ValueError:
+        return False
+    if parts.scheme not in ("postgres", "postgresql"):
+        return False
+    if not hosts and not netloc_host:
+        # No host at all: libpq and asyncpg fall back to these, then a socket.
+        if os.getenv("PGSERVICE"):
+            return False
+        hosts = [h for h in (os.getenv("PGHOST"), os.getenv("PGHOSTADDR")) if h]
+    return all(h.startswith("/") or h.lower() in _LOCAL_HOSTS for h in hosts)
+
+
+def remote_database_allowed() -> bool:
+    """A remote database is expected on Render, and opt-in anywhere else.
+
+    Render sets RENDER on every service. Any other host sets ALLOW_REMOTE_DB=1.
+    """
+    return bool(os.getenv("RENDER")) or os.getenv("ALLOW_REMOTE_DB") == "1"
+
+
+def check_database_target(database_url: str) -> None:
+    """Raise unless the database is local or a remote one was opted into."""
+    if is_local_database_url(database_url):
+        return
+    if not remote_database_allowed():
+        raise RuntimeError(
+            "DATABASE_URL is not a local database. Point it at a local Postgres, "
+            "or set ALLOW_REMOTE_DB=1 for this run to use the remote one."
+        )
+    if not os.getenv("RENDER"):
+        logger.warning(
+            "WARNING: ALLOW_REMOTE_DB=1 and DATABASE_URL is a remote database. Every "
+            "create, edit and delete made through this server changes real data there."
+        )
 
 async def get_db_pool() -> asyncpg.Pool:
     """Create database connection pool with retry logic"""
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL environment variable not set")
-    
+    check_database_target(database_url)
+
     # Log that we have a database URL configured (without exposing the actual value)
     logger.info("DATABASE_URL configured, creating connection pool...")
     
